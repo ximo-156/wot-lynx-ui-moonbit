@@ -1,0 +1,91 @@
+// Generated using `moon info`, DON'T EDIT IT
+package "ximo-156/moonlint"
+
+import {
+  "moonbitlang/core/debug",
+  "moonbitlang/core/set",
+}
+
+// Values
+pub fn collect_extensions(Array[Rule]) -> Array[String]
+
+pub fn finding_hash(Finding) -> String
+
+pub fn lint_lines(String, Array[(Int32, String)], Array[Rule]) -> Array[Finding]
+
+pub fn lint_tree(String, Array[Rule], Array[String]) -> Result[LintResult, Error]
+
+pub fn parse_config(String) -> Result[Array[Rule], ConfigError]
+
+pub fn read_lines(String) -> Array[(Int32, String)]
+
+pub fn render_detail(Array[Finding]) -> String
+
+pub fn render_summary(LintResult) -> String
+
+pub fn validate_rules(Array[Rule]) -> Result[Unit, ConfigError]
+
+pub fn walk_files(String, Array[String]) -> Array[String] raise
+
+// Errors
+pub(all) suberror ConfigError {
+  ConfigError(String)
+}
+
+// Types and methods
+pub struct Baseline {
+  hashes : @set.Set[String]
+}
+pub fn Baseline::contains(Self, Finding) -> Bool
+pub fn Baseline::load(String) -> Self
+pub fn Baseline::partition(Self, Array[Finding]) -> (Array[Finding], Array[Finding])
+pub fn Baseline::render(Array[Finding]) -> String
+
+pub struct Finding {
+  rule_id : String
+  severity : Severity
+  message : String
+  file : String
+  line : Int32
+  snippet : String
+} derive(@debug.Debug)
+
+pub struct LintResult {
+  findings : Array[Finding]
+  files_scanned : Int32
+  baseline_hits : Int32
+} derive(@debug.Debug)
+pub fn LintResult::count_by(Self, Severity) -> Int32
+pub fn LintResult::has_errors(Self) -> Bool
+pub fn LintResult::new(Array[Finding], Int32, Int32) -> Self
+
+pub enum MatchKind {
+  Contains(String)
+  HasPrefix(String)
+  HasSuffix(String)
+  Regex(String)
+} derive(Eq, @debug.Debug)
+pub fn MatchKind::matches(Self, String) -> Bool
+pub fn MatchKind::validate(Self) -> String?
+
+pub struct Rule {
+  id : String
+  severity : Severity
+  message : String
+  extensions : Array[String]
+  match_ : MatchKind
+  unless : MatchKind?
+} derive(@debug.Debug)
+
+pub enum Severity {
+  Error
+  Warning
+} derive(Eq, @debug.Debug)
+pub fn Severity::error() -> Self
+pub fn Severity::parse(String) -> Self
+pub fn Severity::tag(Self) -> String
+pub fn Severity::warning() -> Self
+
+// Type aliases
+
+// Traits

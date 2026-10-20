@@ -1,0 +1,47 @@
+{
+  "rules": [
+    {
+      "id": "vue/import-from-vue",
+      "severity": "error",
+      "message": "Must import from 'vue-lynx', not 'vue' (Lynx runtime differs)",
+      "extensions": [".vue", ".ts"],
+      "match": { "regex": "from[[:space:]]+['\"]vue['\"]" },
+      "unless": { "regex": "from[[:space:]]+['\"]vue-lynx['\"]" }
+    },
+    {
+      "id": "vue/no-style-block",
+      "severity": "error",
+      "message": "No <style> block in components — styles go through index.scss",
+      "extensions": [".vue"],
+      "match": { "regex": "<style[[:space:]>]" }
+    },
+    {
+      "id": "vue/no-pseudo-element",
+      "severity": "warning",
+      "message": "No ::before/::after — Lynx does not support pseudo-elements",
+      "extensions": [".css", ".scss", ".vue"],
+      "match": { "regex": "::?(before|after)[[:space:]]" }
+    },
+    {
+      "id": "ts/no-console-log",
+      "severity": "warning",
+      "message": "Avoid console.log in library code",
+      "extensions": [".ts", ".vue"],
+      "match": { "contains": "console.log" }
+    },
+    {
+      "id": "ts/no-debugger",
+      "severity": "error",
+      "message": "No debugger statements",
+      "extensions": [".ts", ".js", ".vue"],
+      "match": { "regex": "^[[:space:]]*debugger[[:space:]]*$" }
+    },
+    {
+      "id": "ts/no-todo",
+      "severity": "warning",
+      "message": "TODO comments should be tracked as issues",
+      "extensions": [".ts", ".js", ".vue", ".mbt"],
+      "match": { "contains": "TODO" }
+    }
+  ]
+}

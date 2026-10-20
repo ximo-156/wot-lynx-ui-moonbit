@@ -1,0 +1,19 @@
+# --- OS / editor ---
+.DS_Store
+*.swp
+*~
+.idea/
+.vscode/
+
+# --- MoonBit build output & dependency cache ---
+_build/
+.mooncakes/
+
+# --- moon tooling scratch ---
+.moonagent/
+
+# --- Logs (e.g. `moon coverage analyze > uncovered.log`) ---
+*.log
+
+# --- Rust-style target (harmless if unused) ---
+target/
