@@ -11,6 +11,14 @@
 ///   --summary           print a per-rule tally instead of detail
 ///   --errors-only       only report error-severity findings
 ///   --ext <list>        comma-separated extensions to scan (default: rule union)
+///
+/// Scan modes (mutually exclusive; default is tree walk):
+///   --changed <ref>     only scan files changed since git ref
+///   --staged            only scan staged files (git diff --cached)
+///   --glob <pattern>    only scan files matching glob pattern
+///   --stdin             read file paths from stdin, one per line
+///   --incremental       skip files whose content hash matches the cache
+///
 ///   -h, --help          show this help
 ///
 /// Exit code: 0 when no error-severity findings remain, 1 otherwise.
@@ -26,6 +34,9 @@ struct Options {
   mut errors_only : Bool
   mut exts : Array[String]
   mut help : Bool
+  mut scan_mode : @lib.ScanMode
+  mut watch : Bool
+  mut watch_interval : Int32
 }
 
 ///|
@@ -54,11 +65,12 @@ fn main {
   } else {
     @lib.collect_extensions(rules)
   }
-  // Run the engine.
-  let result = match @lib.lint_tree(opts.directory, rules, exts) {
-    Ok(r) => r
-    Err(_) => die("cannot scan directory: \{opts.directory}")
+  // Select files based on scan mode.
+  let files = @lib.select_files(opts.scan_mode, opts.directory, exts) catch {
+    _ => die("cannot select files for scanning")
   }
+  // Run the engine on the selected files.
+  let result = @lib.lint_files(opts.directory, files, rules)
   // Apply the baseline.
   let (findings, suppressed) = match opts.baseline {
     Some(path) =>
@@ -139,6 +151,9 @@ fn parse_args(args : Array[String]) -> Options {
     errors_only: false,
     exts: [],
     help: false,
+    scan_mode: @lib.ScanMode::tree(),
+    watch: false,
+    watch_interval: 2,
   }
   let mut i = 1
   while i < args.length() {
@@ -160,6 +175,30 @@ fn parse_args(args : Array[String]) -> Options {
       "--update-baseline" => opts.update_baseline = true
       "--summary" => opts.summary = true
       "--errors-only" => opts.errors_only = true
+      "--changed" => {
+        i += 1
+        if i < args.length() {
+          opts.scan_mode = @lib.ScanMode::changed(args.unsafe_get(i))
+        }
+      }
+      "--staged" => opts.scan_mode = @lib.ScanMode::staged()
+      "--glob" => {
+        i += 1
+        if i < args.length() {
+          opts.scan_mode = @lib.ScanMode::glob(args.unsafe_get(i))
+        }
+      }
+      "--stdin" => opts.scan_mode = @lib.ScanMode::stdin()
+      "--incremental" => opts.scan_mode = @lib.ScanMode::incremental()
+      "--watch" => opts.watch = true
+      "--watch-interval" => {
+        i += 1
+        if i < args.length() {
+          opts.watch_interval = @string.parse_int(args.unsafe_get(i)) catch {
+            _ => 2
+          }
+        }
+      }
       "--ext" => {
         i += 1
         if i < args.length() {
@@ -185,8 +224,11 @@ fn print_help() -> Unit {
       "", "Options:", "  --config <file>     rules config JSON (default: moonlint.json)",
       "  --baseline <file>   baseline JSON of exempted finding hashes", "  --update-baseline   write current findings to the baseline and exit",
       "  --summary           print a per-rule tally instead of detail", "  --errors-only       only report error-severity findings",
-      "  --ext <list>        comma-separated extensions (default: rule union)", "  -h, --help          show this help",
-      "", "Exit code: 0 when no error-severity findings remain, 1 otherwise.",
+      "  --ext <list>        comma-separated extensions (default: rule union)", "",
+      "Scan modes (default: tree walk):", "  --changed <ref>     only scan files changed since git ref",
+      "  --staged            only scan staged files (git diff --cached)", "  --glob <pattern>    only scan files matching glob pattern",
+      "  --stdin             read file paths from stdin, one per line", "  --incremental       skip files whose content hash matches the cache",
+      "", "  -h, --help          show this help", "", "Exit code: 0 when no error-severity findings remain, 1 otherwise.",
     ].join("\n"),
   )
 }

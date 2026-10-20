@@ -52,6 +52,36 @@ moon run cmd/main -- --update-baseline /path/to/project
 moon run cmd/main -- --baseline moonlint.baseline.json /path/to/project
 ```
 
+## Scan Modes
+
+By default, moonlint walks the directory tree recursively. Five alternative scan modes are available:
+
+```bash
+# Only scan files changed since a git ref (ideal for CI)
+moon run cmd/main -- --changed origin/main /path/to/project
+
+# Only scan staged files (ideal for pre-commit hooks)
+moon run cmd/main -- --staged /path/to/project
+
+# Only scan files matching a glob pattern
+moon run cmd/main -- --glob "src/**/*.ts" /path/to/project
+
+# Read file paths from stdin, one per line
+git diff --name-only | moon run cmd/main -- --stdin /path/to/project
+
+# Skip files whose content hash matches the cache
+moon run cmd/main -- --incremental /path/to/project
+```
+
+### Glob syntax
+
+| Pattern | Matches |
+|---------|---------|
+| `*` | Any characters except `/` |
+| `**` | Any characters including `/` |
+| `?` | Any single character except `/` |
+| Literal | Exact match |
+
 ## Configuration
 
 Rules are defined in a JSON file (default: `moonlint.json`):

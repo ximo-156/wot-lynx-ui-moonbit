@@ -100,6 +100,39 @@ pub fn lint_tree(
 }
 
 ///|
+/// Lint a specific list of files.
+///
+/// Unlike `lint_tree`, this does not walk the directory — the caller
+/// provides the exact file list (e.g. from git diff, glob, or stdin).
+/// `root` is used to resolve relative paths to absolute paths for reading.
+pub fn lint_files(
+  root : String,
+  files : Array[String],
+  rules : Array[Rule],
+) -> LintResult {
+  let findings : Array[Finding] = []
+  let mut scanned = 0
+  for rel in files {
+    let full = join_root(root, rel)
+    let lines = read_lines(full)
+    scanned += 1
+    let file_findings = lint_lines(rel, lines, rules)
+    for f in file_findings {
+      findings.push(f)
+    }
+  }
+  findings.sort_by((a, b) => {
+    let c = a.file.compare(b.file)
+    if c != 0 {
+      c
+    } else {
+      a.line.compare(b.line)
+    }
+  })
+  { findings, files_scanned: scanned, baseline_hits: 0, }
+}
+
+///|
 /// Join the scan root with a relative path.
 fn join_root(root : String, rel : String) -> String {
   if root.has_suffix("/") {

@@ -11,6 +11,14 @@ pub fn collect_extensions(Array[Rule]) -> Array[String]
 
 pub fn finding_hash(Finding) -> String
 
+pub fn git_changed_files(String, String) -> Array[String]?
+
+pub fn git_is_repo(String) -> Bool
+
+pub fn git_staged_files(String) -> Array[String]?
+
+pub fn lint_files(String, Array[String], Array[Rule]) -> LintResult
+
 pub fn lint_lines(String, Array[(Int32, String)], Array[Rule]) -> Array[Finding]
 
 pub fn lint_tree(String, Array[Rule], Array[String]) -> Result[LintResult, Error]
@@ -22,6 +30,10 @@ pub fn read_lines(String) -> Array[(Int32, String)]
 pub fn render_detail(Array[Finding]) -> String
 
 pub fn render_summary(LintResult) -> String
+
+pub fn run_command(String) -> String?
+
+pub fn select_files(ScanMode, String, Array[String]) -> Array[String] raise
 
 pub fn validate_rules(Array[Rule]) -> Result[Unit, ConfigError]
 
@@ -50,6 +62,12 @@ pub struct Finding {
   snippet : String
 } derive(@debug.Debug)
 
+type GlobPattern derive(@debug.Debug)
+pub fn GlobPattern::matches(Self, String) -> Bool
+pub fn GlobPattern::new(String) -> Self
+
+type GlobSegment derive(Eq, @debug.Debug)
+
 pub struct LintResult {
   findings : Array[Finding]
   files_scanned : Int32
@@ -76,6 +94,21 @@ pub struct Rule {
   match_ : MatchKind
   unless : MatchKind?
 } derive(@debug.Debug)
+
+pub enum ScanMode {
+  Tree
+  Changed(String)
+  Staged
+  Glob(String)
+  Stdin
+  Incremental
+} derive(Eq, @debug.Debug)
+pub fn ScanMode::changed(String) -> Self
+pub fn ScanMode::glob(String) -> Self
+pub fn ScanMode::incremental() -> Self
+pub fn ScanMode::staged() -> Self
+pub fn ScanMode::stdin() -> Self
+pub fn ScanMode::tree() -> Self
 
 pub enum Severity {
   Error
