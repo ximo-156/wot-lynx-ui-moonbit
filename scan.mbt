@@ -1,245 +1,180 @@
 ///|
-/// File selection strategies for different scanning modes.
-///
-/// Each mode produces a list of file paths (relative to the scan root) to
-/// lint. The default mode is `Tree`, which walks the directory recursively.
-/// Other modes select a subset of files based on git state, glob patterns,
-/// stdin input, or incremental caching.
-
-///|
-/// How to select files for scanning.
+/// File selection. Git modes read immutable HEAD/index contents in the engine.
 pub enum ScanMode {
-  /// Walk the directory tree recursively (default).
   Tree
-  /// Only files changed since a git ref.
   Changed(String)
-  /// Only staged files (git diff --cached).
   Staged
-  /// Files matching a glob pattern.
   Glob(String)
-  /// File paths read from stdin, one per line.
   Stdin
-  /// Tree walk, but skip files whose content hash matches the cache.
+  Stdin0
+  /// Kept for source compatibility; selecting it raises an explicit error.
   Incremental
 } derive(Debug, Eq)
 
 ///|
-/// Convenience constructors (pub so external packages can build values).
-pub fn ScanMode::tree() -> ScanMode {
-  Tree
+pub fn ScanMode::tree() -> ScanMode { Tree }
+
+///|
+pub fn ScanMode::changed(git_ref : String) -> ScanMode { Changed(git_ref) }
+
+///|
+pub fn ScanMode::staged() -> ScanMode { Staged }
+
+///|
+pub fn ScanMode::glob(pattern : String) -> ScanMode { Glob(pattern) }
+
+///|
+pub fn ScanMode::stdin() -> ScanMode { Stdin }
+
+///|
+pub fn ScanMode::stdin0() -> ScanMode { Stdin0 }
+
+///|
+#deprecated("incremental caching is not implemented; this mode now raises an error")
+pub fn ScanMode::incremental() -> ScanMode { Incremental }
+
+///|
+pub fn ScanMode::tag(self : ScanMode) -> String {
+  match self {
+    Tree => "tree"
+    Changed(_) => "changed"
+    Staged => "staged"
+    Glob(_) => "glob"
+    Stdin => "stdin"
+    Stdin0 => "stdin0"
+    Incremental => "incremental"
+  }
 }
 
 ///|
-pub fn ScanMode::changed(git_ref : String) -> ScanMode {
-  Changed(git_ref)
-}
-
-///|
-pub fn ScanMode::staged() -> ScanMode {
-  Staged
-}
-
-///|
-pub fn ScanMode::glob(pattern : String) -> ScanMode {
-  Glob(pattern)
-}
-
-///|
-pub fn ScanMode::stdin() -> ScanMode {
-  Stdin
-}
-
-///|
-pub fn ScanMode::incremental() -> ScanMode {
-  Incremental
-}
-
-///|
-/// Select files to scan based on the scan mode.
-///
-/// Returns paths relative to `root`. For `Tree` and `Incremental` modes,
-/// `exts` filters by extension. For git-based modes, all returned files
-/// are included regardless of extension (the caller filters).
+/// One selection contract across all modes: root-relative, deduplicated,
+/// sorted, with the same extension/noise filtering. Failures never fall back
+/// to a successful empty scan. Empty extension filters select all candidates.
 pub fn select_files(
   mode : ScanMode,
   root : String,
   exts : Array[String],
 ) -> Array[String] raise {
-  match mode {
-    Tree => walk_files(root, exts)
-    Changed(git_ref) =>
-      match git_changed_files(root, git_ref) {
-        Some(files) => files
-        None => walk_files(root, exts)
-      }
-    Staged =>
-      match git_staged_files(root) {
-        Some(files) => files
-        None => walk_files(root, exts)
-      }
-    Glob(pattern) => glob_files(root, pattern)
-    Stdin => read_stdin_paths()
-    Incremental => walk_files(root, exts)
+  let absolute = canonical_root(root)
+  let files = match mode {
+    Tree => walk_files(absolute, exts)
+    Changed(ref_) => git_changed_files(absolute, ref_)
+    Staged => git_staged_files(absolute)
+    Glob(pattern) => {
+      validate_glob(pattern)
+      let matcher = GlobPattern::new(pattern)
+      walk_files(absolute, exts).filter(f => matcher.matches(f))
+    }
+    Stdin => parse_stdin_paths(read_stdin_text(), false)
+    Stdin0 => parse_stdin_paths(read_stdin_text(), true)
+    Incremental => raise Failure("incremental caching is not implemented")
   }
+  let wanted = Set::from_iter(exts.iter().map(e => e.to_lower()))
+  let seen : Set[String] = Set::from_iter([].iter())
+  let selected : Array[String] = []
+  for path in files {
+    let rel = normalize_relative(path)
+    if !path_is_noise(rel) && has_wanted_ext(rel, wanted) && !seen.contains(rel) {
+      seen.add(rel)
+      selected.push(rel)
+    }
+  }
+  selected.sort()
+  selected
 }
 
 ///|
-/// Simple glob matching: supports `*` (any chars except `/`) and `**`
-/// (any chars including `/`). Returns files under `root` matching the pattern.
-fn glob_files(root : String, pattern : String) -> Array[String] raise {
-  let all = walk_files(root, [])
-  let matcher = GlobPattern::new(pattern)
-  all.filter(f => matcher.matches(f))
-}
-
-///|
-/// Read file paths from stdin, one per line.
-fn read_stdin_paths() -> Array[String] {
+/// Newlines delimit --stdin; NUL delimiters in --stdin0 preserve embedded
+/// newlines. Only CRLF's terminal CR is removed; no filename is trim()ed.
+fn parse_stdin_paths(content : String, nul : Bool) -> Array[String] raise {
+  if !nul && content.contains("\x00") {
+    raise Failure("NUL in --stdin input; use --stdin0 for NUL-separated paths")
+  }
   let paths : Array[String] = []
-  let stdin_path = "/dev/stdin"
-  let content = @fs.read_file_to_string(stdin_path) catch { _ => "" }
-  for line in content.split("\n") {
-    let trimmed = line.trim().to_owned()
-    if trimmed.length() > 0 {
-      paths.push(trimmed)
+  let delimiter = if nul { "\x00" } else { "\n" }
+  for view in content.split(delimiter) {
+    let path = if nul { view.to_owned() } else { trim_end_char(view.to_owned(), '\r') }
+    if path != "" {
+      paths.push(normalize_relative(path))
     }
   }
   paths
 }
 
 ///|
-/// A simple glob pattern matcher.
-///
-/// Supports:
-/// - `*` — matches any sequence of characters except `/`
-/// - `**` — matches any sequence of characters including `/`
-/// - `?` — matches any single character except `/`
-/// - Literal characters match themselves
+/// The supported portable subset is literal segments, *, ?, and standalone **.
+/// Reject unsupported syntax instead of silently interpreting it differently.
+pub fn validate_glob(pattern : String) -> Unit raise {
+  if pattern == "" || pattern.has_prefix("/") || pattern.contains("\x00") {
+    raise Failure("glob must be non-empty and relative to the scan root")
+  }
+  for c in pattern.iter() {
+    if c == '[' || c == ']' || c == '{' || c == '}' || c == '\\' || c == '!' {
+      raise Failure("unsupported glob syntax; supported: literals, *, ?, and ** path segments")
+    }
+  }
+  for segment in pattern.split("/") {
+    if segment == ".." || segment == "." || segment == "" {
+      raise Failure("glob may not contain empty, . or .. path segments")
+    }
+    if segment.contains("**") && segment != "**" {
+      raise Failure("** must occupy an entire glob path segment")
+    }
+  }
+}
+
+///|
+/// Match path segments separately: ** means zero or more complete segments,
+/// never part of a filename. Dynamic programming avoids exponential backtracking.
 struct GlobPattern {
-  segments : Array[GlobSegment]
-} derive(Debug)
+  segments : Array[String]
+}
 
 ///|
-/// A segment of a glob pattern.
-enum GlobSegment {
-  Literal(String)
-  Star
-  DoubleStar
-  AnyChar
-} derive(Debug, Eq)
-
-///|
-/// Create a glob pattern from a string.
 pub fn GlobPattern::new(pattern : String) -> GlobPattern {
-  let segments : Array[GlobSegment] = []
-  let chars = pattern.to_array()
-  let mut i = 0
-  let mut literal = ""
-  while i < chars.length() {
-    let c = chars.unsafe_get(i)
-    match c {
-      '*' =>
-        if i + 1 < chars.length() && chars.unsafe_get(i + 1) == '*' {
-          if literal.length() > 0 {
-            segments.push(Literal(literal))
-            literal = ""
-          }
-          segments.push(DoubleStar)
-          i += 2
-          if i < chars.length() && chars.unsafe_get(i) == '/' {
-            i += 1
-          }
-        } else {
-          if literal.length() > 0 {
-            segments.push(Literal(literal))
-            literal = ""
-          }
-          segments.push(Star)
-          i += 1
-        }
-      _ if c == '?' => {
-        if literal.length() > 0 {
-          segments.push(Literal(literal))
-          literal = ""
-        }
-        segments.push(AnyChar)
-        i += 1
-      }
-      _ => {
-        literal = literal + c.to_string()
-        i += 1
-      }
-    }
-  }
-  if literal.length() > 0 {
-    segments.push(Literal(literal))
-  }
-  { segments, }
+  { segments: pattern.split("/").map(v => v.to_owned()).to_array() }
 }
 
 ///|
-/// Match a path against this glob pattern.
 pub fn GlobPattern::matches(self : GlobPattern, path : String) -> Bool {
-  glob_match(self.segments, 0, path.to_array(), 0)
+  let parts = path.split("/").map(v => v.to_owned()).to_array()
+  let mut previous : Array[Bool] = Array::make(parts.length() + 1, false)
+  previous[0] = true
+  for segment in self.segments {
+    let current : Array[Bool] = Array::make(parts.length() + 1, false)
+    if segment == "**" {
+      current[0] = previous[0]
+      for j in 1..=parts.length() {
+        current[j] = previous[j] || current[j - 1]
+      }
+    } else {
+      for j in 1..=parts.length() {
+        current[j] = previous[j - 1] && glob_segment_matches(segment, parts[j - 1])
+      }
+    }
+    previous = current
+  }
+  previous[parts.length()]
 }
 
 ///|
-/// Recursive glob matching helper operating on a char array.
-fn glob_match(
-  segments : Array[GlobSegment],
-  seg_idx : Int32,
-  path : Array[Char],
-  pos : Int32,
-) -> Bool {
-  if seg_idx >= segments.length() {
-    return pos >= path.length()
+fn glob_segment_matches(pattern : String, value : String) -> Bool {
+  let chars = value.to_array()
+  let mut previous : Array[Bool] = Array::make(chars.length() + 1, false)
+  previous[0] = true
+  for c in pattern.iter() {
+    let current : Array[Bool] = Array::make(chars.length() + 1, false)
+    if c == '*' {
+      current[0] = previous[0]
+      for j in 1..=chars.length() {
+        current[j] = previous[j] || current[j - 1]
+      }
+    } else {
+      for j in 1..=chars.length() {
+        current[j] = previous[j - 1] && (c == '?' || c == chars[j - 1])
+      }
+    }
+    previous = current
   }
-  let seg = segments.unsafe_get(seg_idx)
-  match seg {
-    Literal(s) => {
-      let s_chars = s.to_array()
-      if pos + s_chars.length() <= path.length() {
-        let mut ok = true
-        for k in 0..<s_chars.length() {
-          if path.unsafe_get(pos + k) != s_chars.unsafe_get(k) {
-            ok = false
-            break
-          }
-        }
-        if ok {
-          glob_match(segments, seg_idx + 1, path, pos + s_chars.length())
-        } else {
-          false
-        }
-      } else {
-        false
-      }
-    }
-    Star => {
-      let mut end = pos
-      while end < path.length() && path.unsafe_get(end) != '/' {
-        end += 1
-      }
-      for len in 0..<=(end - pos) {
-        if glob_match(segments, seg_idx + 1, path, pos + len) {
-          return true
-        }
-      }
-      false
-    }
-    DoubleStar => {
-      for len in 0..<=(path.length() - pos) {
-        if glob_match(segments, seg_idx + 1, path, pos + len) {
-          return true
-        }
-      }
-      false
-    }
-    AnyChar =>
-      if pos < path.length() && path.unsafe_get(pos) != '/' {
-        glob_match(segments, seg_idx + 1, path, pos + 1)
-      } else {
-        false
-      }
-  }
+  previous[chars.length()]
 }

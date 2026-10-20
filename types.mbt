@@ -97,23 +97,59 @@ pub struct Finding {
 } derive(Debug)
 
 ///|
-/// Aggregate result of a lint run.
-pub struct LintResult {
-  pub findings : Array[Finding]
-  /// Number of files scanned.
-  pub files_scanned : Int32
-  /// Number of findings suppressed by the baseline.
-  pub baseline_hits : Int32
+/// A scan failure. These are operational errors, not lint findings.
+pub struct Diagnostic {
+  file : String
+  message : String
 } derive(Debug)
 
 ///|
-/// Construct a LintResult.
+/// Aggregate result. Selection is counted after path normalization, extension
+/// filtering and de-duplication; each selected file is scanned, skipped or failed.
+pub struct LintResult {
+  findings : Array[Finding]
+  files_selected : Int32
+  files_scanned : Int32
+  files_skipped : Int32
+  files_failed : Int32
+  baseline_hits : Int32
+  diagnostics : Array[Diagnostic]
+} derive(Debug)
+
+///|
+/// Backwards-compatible constructor for callers supplying successful findings.
 pub fn LintResult::new(
   findings : Array[Finding],
   files_scanned : Int32,
   baseline_hits : Int32,
 ) -> LintResult {
-  { findings, files_scanned, baseline_hits, }
+  {
+    findings,
+    files_selected: files_scanned,
+    files_scanned,
+    files_skipped: 0,
+    files_failed: 0,
+    baseline_hits,
+    diagnostics: [],
+  }
+}
+
+///|
+/// Replace displayed findings without losing the run's IO counters.
+pub fn LintResult::with_findings(
+  self : LintResult,
+  findings : Array[Finding],
+  baseline_hits : Int32,
+) -> LintResult {
+  {
+    findings,
+    files_selected: self.files_selected,
+    files_scanned: self.files_scanned,
+    files_skipped: self.files_skipped,
+    files_failed: self.files_failed,
+    baseline_hits,
+    diagnostics: self.diagnostics,
+  }
 }
 
 ///|

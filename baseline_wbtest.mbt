@@ -54,9 +54,14 @@ test "baseline partition splits findings" {
 test "baseline render produces sorted json" {
   let f1 = make_finding("r1", "a.ts", 10)
   let f2 = make_finding("r2", "b.ts", 20)
-  let rendered = Baseline::render([f2, f1])
-  assert_true(rendered.starts_with("["))
-  assert_true(rendered.ends_with("]"))
+  let rendered = Baseline::render([f2, f1, f2])
+  let hashes = [finding_hash(f1), finding_hash(f2)]
+  hashes.sort()
+  let expected = "[\n  \"\{hashes[0]}\",\n  \"\{hashes[1]}\"\n]\n"
+  assert_eq(rendered, expected)
+  let loaded = Baseline::parse(rendered)
+  assert_true(loaded.contains(f1))
+  assert_true(loaded.contains(f2))
 }
 
 ///|

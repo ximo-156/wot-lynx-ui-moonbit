@@ -157,6 +157,9 @@ pub fn validate_rules(rules : Array[Rule]) -> Result[Unit, ConfigError] {
 ///|
 /// Collect the union of all rule extensions (for the default scan set).
 pub fn collect_extensions(rules : Array[Rule]) -> Array[String] {
+  if rules.any(rule => rule.extensions.is_empty()) {
+    return []
+  }
   let exts : Array[String] = []
   for rule in rules {
     for e in rule.extensions {

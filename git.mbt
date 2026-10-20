@@ -1,124 +1,220 @@
 ///|
-/// Git integration via FFI.
-///
-/// MoonBit core has no subprocess API, so we shell out to `git` through
-/// `popen` / `pclose` / `fgets` (declared in `git_native.c`). Only read-only
-/// `git diff --name-only` style commands are used.
+/// Native filesystem and Git operations use fixed argv, never a shell.
+/// Source text is strict UTF-8 with BOMs and embedded NULs preserved.
+pub(all) suberror NativeError {
+  NativeError(String)
+} derive(Debug)
 
 ///|
-/// Opaque handle for a `FILE*` stream.
-priv type Pipe
+#deprecated
+pub extend NativeError with Debug::{to_repr}
 
 ///|
-/// Open a pipe to a command (like `popen`).
-#borrow(cmd, mode)
-extern "C" fn popen_ffi(cmd : Bytes, mode : Bytes) -> Pipe = "moonlint_popen"
+#cfg(all(target="native", not(platform="windows")))
+#external
+priv type NativeResult
 
 ///|
-/// Close a pipe and return the exit status.
-#borrow(pipe)
-extern "C" fn pclose_ffi(pipe : Pipe) -> Int32 = "moonlint_pclose"
+#cfg(all(target="native", not(platform="windows")))
+#borrow(first, second)
+extern "C" fn native_request_ffi(
+  operation : Int32,
+  first : Bytes,
+  second : Bytes,
+  second_len : Int32,
+  flag : Int32,
+) -> NativeResult = "moonlint_native_request"
 
 ///|
-/// Whether a pipe pointer is null.
-#borrow(ptr)
-extern "C" fn pipe_is_null(ptr : Pipe) -> Int32 = "moonlint_pipe_is_null"
+#cfg(all(target="native", not(platform="windows")))
+#borrow(result)
+extern "C" fn native_result_is_null(result : NativeResult) -> Int32 = "moonlint_native_result_is_null"
 
 ///|
-/// Read one line from a pipe stream.
-#borrow(buf, stream)
-extern "C" fn fgets_ffi(
-  buf : FixedArray[Byte],
-  size : Int32,
-  stream : Pipe,
-) -> Pipe = "moonlint_fgets"
+#cfg(all(target="native", not(platform="windows")))
+#borrow(result)
+extern "C" fn native_result_status(result : NativeResult) -> Int32 = "moonlint_native_result_status"
 
 ///|
-/// Run a shell command and return its stdout as a string.
-///
-/// Returns `None` if `popen` failed. Each line is trimmed; empty lines
-/// are dropped.
-pub fn run_command(cmd : String) -> String? {
-  let cmd_bytes = @utf8.encode(cmd) + Bytes::make(1, b'\x00')
-  let mode_bytes = @utf8.encode("r") + Bytes::make(1, b'\x00')
-  let pipe = popen_ffi(cmd_bytes, mode_bytes)
-  if pipe_is_null(pipe) != 0 {
-    return None
+#cfg(all(target="native", not(platform="windows")))
+#borrow(result)
+extern "C" fn native_result_value(result : NativeResult) -> Int32 = "moonlint_native_result_value"
+
+///|
+#cfg(all(target="native", not(platform="windows")))
+#borrow(result)
+extern "C" fn native_result_bytes(result : NativeResult) -> Bytes = "moonlint_native_result_bytes"
+
+///|
+#cfg(all(target="native", not(platform="windows")))
+#borrow(result)
+extern "C" fn native_result_error(result : NativeResult) -> Bytes = "moonlint_native_result_error"
+
+///|
+#cfg(all(target="native", not(platform="windows")))
+#borrow(result)
+extern "C" fn native_result_free(result : NativeResult) -> Unit = "moonlint_native_result_free"
+
+///|
+/// Private operations: root=0, lstat=1, stdin=2, changed=3, staged=4,
+/// blob=5, Git kind=6, atomic write=7.
+#cfg(all(target="native", not(platform="windows")))
+fn native_operation(
+  operation : Int32,
+  first : Bytes,
+  second : Bytes,
+  flag : Int32,
+) -> (Bytes, Int32) raise NativeError {
+  let result = native_request_ffi(operation, first, second, second.length(), flag)
+  guard native_result_is_null(result) == 0 else {
+    raise NativeError("native bridge: out of memory")
   }
-  let buf : FixedArray[Byte] = FixedArray::make(4096, b'\x00')
-  let lines : Array[String] = []
-  let mut running = true
-  while running {
-    let result = fgets_ffi(buf, 4096, pipe)
-    if pipe_is_null(result) != 0 {
-      running = false
-    } else {
-      let mut len = 0
-      while len < 4096 && buf.unsafe_get(len) != b'\x00' {
-        len += 1
-      }
-      if len > 0 {
-        let arr : Array[Byte] = Array::make(len, b'\x00')
-        for k in 0..<len {
-          arr[k] = buf.unsafe_get(k)
-        }
-        let bytes = Bytes::from_array(arr)
-        let line = @utf8.decode_lossy(bytes)
-        let trimmed = line.trim().to_owned()
-        if trimmed.length() > 0 {
-          lines.push(trimmed)
-        }
-      }
-      for i in 0..<4096 {
-        buf.unsafe_set(i, b'\x00')
-      }
+  if native_result_status(result) != 0 {
+    let message = native_result_error(result)
+    native_result_free(result)
+    raise NativeError(@utf8.decode_lossy(message))
+  }
+  let bytes = native_result_bytes(result)
+  let value = native_result_value(result)
+  native_result_free(result)
+  (bytes, value)
+}
+
+///|
+#cfg(not(all(target="native", not(platform="windows"))))
+fn native_operation(
+  _operation : Int32,
+  _first : Bytes,
+  _second : Bytes,
+  _flag : Int32,
+) -> (Bytes, Int32) raise NativeError {
+  raise NativeError(
+    "native filesystem/Git bridge is unsupported: use the native backend on macOS or Linux",
+  )
+}
+
+///|
+fn native_os_string(value : String, label : String) -> Bytes raise NativeError {
+  let bytes = @utf8.encode(value)
+  for byte in bytes {
+    guard byte != b'\x00' else {
+      raise NativeError("\{label} must not contain NUL")
     }
   }
-  let _ = pclose_ffi(pipe)
-  Some(lines.join("\n"))
+  bytes + b"\x00"
 }
 
 ///|
-/// Get the list of files changed since a git ref.
-///
-/// Runs `git diff --name-only <ref>` in the given directory.
-/// Returns `None` if git is not available or the directory is not a repo.
-pub fn git_changed_files(dir : String, git_ref : String) -> Array[String]? {
-  let cmd = "cd \{dir} && git diff --name-only \{git_ref} 2>/dev/null"
-  match run_command(cmd) {
-    None => None
-    Some(output) =>
-      if output.length() == 0 {
-        Some([])
-      } else {
-        Some(output.split("\n").map(v => v.to_owned()).to_array())
-      }
+fn native_utf8(bytes : Bytes, label : String) -> String raise NativeError {
+  try @utf8.decode(bytes[:], ignore_bom=false) catch {
+    _ => raise NativeError("\{label} is not valid UTF-8")
   }
 }
 
 ///|
-/// Get the list of staged files (git diff --cached --name-only).
-///
-/// Returns `None` if git is not available or the directory is not a repo.
-pub fn git_staged_files(dir : String) -> Array[String]? {
-  let cmd = "cd \{dir} && git diff --cached --name-only 2>/dev/null"
-  match run_command(cmd) {
-    None => None
-    Some(output) =>
-      if output.length() == 0 {
-        Some([])
-      } else {
-        Some(output.split("\n").map(v => v.to_owned()).to_array())
-      }
+fn native_paths(bytes : Bytes) -> Array[String] raise NativeError {
+  let paths : Array[String] = []
+  let mut start = 0
+  for i in 0..<bytes.length() {
+    if bytes[i] == b'\x00' {
+      guard i > start else { raise NativeError("Git returned an empty path") }
+      paths.push(native_utf8(bytes[start:i].to_owned(), "Git path"))
+      start = i + 1
+    }
   }
+  guard start == bytes.length() else {
+    raise NativeError("Git returned a path without its NUL terminator")
+  }
+  paths
 }
 
 ///|
-/// Check whether a directory is inside a git repository.
-pub fn git_is_repo(dir : String) -> Bool {
-  let cmd = "cd \{dir} && git rev-parse --is-inside-work-tree 2>/dev/null"
-  match run_command(cmd) {
-    None => false
-    Some(output) => output.trim() == "true"
-  }
+/// Resolve an existing directory to its absolute realpath.
+pub fn canonical_root(root : String) -> String raise NativeError {
+  let (bytes, _) = native_operation(0, native_os_string(root, "root"), b"", 0)
+  native_utf8(bytes, "canonical root")
+}
+
+///|
+/// lstat: 0 missing, 1 regular, 2 directory, 3 symlink/other. Never follow the
+/// final component; callers prohibiting ancestor symlinks must check them too.
+pub fn source_path_kind(path : String) -> Int32 raise NativeError {
+  let (_, kind) = native_operation(1, native_os_string(path, "path"), b"", 0)
+  kind
+}
+
+///|
+/// Read stdin incrementally until EOF, without seeking or closing stdin.
+/// Preserve whitespace, newlines, UTF-8 BOMs and embedded NULs exactly.
+pub fn read_stdin_text() -> String raise NativeError {
+  let (bytes, _) = native_operation(2, b"", b"", 0)
+  native_utf8(bytes, "stdin")
+}
+
+///|
+/// ACMR paths from merge-base(ref, HEAD) to committed HEAD, not working tree.
+/// Validate ref as a commit and reject failures. Names are relative to root,
+/// including when root is a repository subdirectory.
+pub fn git_changed_files(
+  root : String,
+  git_ref : String,
+) -> Array[String] raise NativeError {
+  let (bytes, _) = native_operation(
+    3,
+    native_os_string(root, "root"),
+    native_os_string(git_ref, "Git reference"),
+    0,
+  )
+  native_paths(bytes)
+}
+
+///|
+/// Actual index changes: omit deletions, retain rename destinations, support
+/// unborn HEAD, and reject an unmerged index anywhere in the repository.
+pub fn git_staged_files(root : String) -> Array[String] raise NativeError {
+  let (bytes, _) = native_operation(4, native_os_string(root, "root"), b"", 0)
+  native_paths(bytes)
+}
+
+///|
+/// Read regular source from the index (true) or HEAD (false), never working tree.
+/// Missing and nonregular (including Git symlink) entries raise an error.
+pub fn git_blob(
+  root : String,
+  rel : String,
+  staged : Bool,
+) -> String raise NativeError {
+  let (bytes, _) = native_operation(
+    5,
+    native_os_string(root, "root"),
+    native_os_string(rel, "relative Git path"),
+    if staged { 1 } else { 0 },
+  )
+  native_utf8(bytes, "Git blob")
+}
+
+///|
+/// Index/HEAD kind: 0 missing, 1 regular, 2 tree, 3 symlink/gitlink/other.
+/// Never consult working tree; an unmerged index always raises an error.
+pub fn git_source_kind(
+  root : String,
+  rel : String,
+  staged : Bool,
+) -> Int32 raise NativeError {
+  let (_, kind) = native_operation(
+    6,
+    native_os_string(root, "root"),
+    native_os_string(rel, "relative Git path"),
+    if staged { 1 } else { 0 },
+  )
+  kind
+}
+
+///|
+/// Same-directory mkstemp, complete write, fsync, close, then atomic rename.
+/// Failure before rename preserves old file; refuse existing nonregulars.
+pub fn write_atomic_text(path : String, content : String) -> Unit raise NativeError {
+  let _ = native_operation(
+    7, native_os_string(path, "atomic-write path"), @utf8.encode(content), 0,
+  )
 }

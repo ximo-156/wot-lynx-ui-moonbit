@@ -1,13 +1,7 @@
 ///|
-/// Baseline support: exempt known findings so an existing codebase can adopt
-/// the linter incrementally.
-///
-/// A baseline is a JSON array of finding hashes. A finding is suppressed when
-/// its hash is present. The hash covers the rule id, file, line, and snippet
-/// — so editing the offending line re-arms the finding, but moving unrelated
-/// code around does not.
-///
-/// This mirrors the `review-lint.baseline.json` mechanism in `wot-lynx-ui`.
+/// Baseline support. Legacy array keys are line-sensitive: moving a finding
+/// changes its key. This format is retained for backwards compatibility; a
+/// future line-stable fingerprint must use an explicit version and migration.
 
 ///|
 /// Compute the stable hash key for a finding.
@@ -84,13 +78,36 @@ pub fn Baseline::partition(
 }
 
 ///|
-/// Render a baseline file (sorted JSON array of hashes) from findings.
-pub fn Baseline::render(findings : Array[Finding]) -> String {
-  let hashes : Array[String] = []
-  for f in findings {
-    hashes.push(finding_hash(f))
+/// Strict loader used by the CLI. A corrupt or misspecified baseline is an
+/// operational error, not an empty exemption list.
+pub fn Baseline::parse(src : String) -> Baseline raise {
+  let json = @json.parse(src) catch { _ => raise Failure("baseline is not valid JSON") }
+  let values = match json {
+    Array(values) => values
+    _ => raise Failure("baseline must be a JSON array of finding hashes")
   }
+  let hashes : Set[String] = Set::from_iter([].iter())
+  for value in values {
+    match value {
+      String(hash) => {
+        if hash.length() != 16 || !hash.iter().all(c =>
+          (c >= '0' && c <= '9') || (c >= 'a' && c <= 'f')) {
+          raise Failure("baseline hashes must be 16 lowercase hex characters")
+        }
+        hashes.add(hash)
+      }
+      _ => raise Failure("baseline entries must be hash strings")
+    }
+  }
+  { hashes }
+}
+
+///|
+/// Render a stable, deduplicated legacy baseline from all raw findings.
+pub fn Baseline::render(findings : Array[Finding]) -> String {
+  let unique : Set[String] = Set::from_iter(findings.iter().map(f => finding_hash(f)))
+  let hashes = unique.iter().to_array()
   hashes.sort()
   let items = hashes.map(h => "  \"\{h}\"").join(",\n")
-  "[\n\{items}\n]"
+  "[\n\{items}\n]\n"
 }

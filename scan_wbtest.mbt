@@ -84,7 +84,7 @@ test "scan mode: incremental constructor" {
 }
 
 ///|
-test "lint_files: scans specific file list" {
+test "lint_files: missing file is a failure, not a successful read" {
   let rules = [
     Rule::{
       id: "test/rule",
@@ -95,8 +95,11 @@ test "lint_files: scans specific file list" {
       unless: None,
     },
   ]
-  let result = lint_files(".", ["test.mbt"], rules)
-  assert_eq(result.files_scanned, 1)
+  let result = lint_files(".", ["moonlint-missing-regression-file.mbt"], rules)
+  assert_eq(result.files_selected, 1)
+  assert_eq(result.files_scanned, 0)
+  assert_eq(result.files_failed, 1)
+  assert_eq(result.diagnostics.length(), 1)
 }
 
 ///|

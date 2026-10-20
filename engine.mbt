@@ -1,13 +1,5 @@
 ///|
-/// The lint engine: apply a set of rules to a source tree.
-///
-/// `lint_tree` walks the directory, reads each matching file, and tests every
-/// line against every applicable rule. A finding is emitted when a rule's
-/// `match` fires and its optional `unless` guard does not.
-
-///|
-/// Lint a single file's content against the rules. `rel` is the path used in
-/// findings; `lines` are the comment-stripped `(lineno, text)` pairs.
+/// Apply declarative line rules to successfully read source content.
 pub fn lint_lines(
   rel : String,
   lines : Array[(Int32, String)],
@@ -15,24 +7,23 @@ pub fn lint_lines(
 ) -> Array[Finding] {
   let findings : Array[Finding] = []
   for rule in rules {
+    if !rule_applies(rule, rel) {
+      continue
+    }
     for (lineno, text) in lines {
-      if not(rule_applies(rule, rel)) {
-        continue
-      }
       if rule.match_.matches(text) {
-        // Negative guard: skip when `unless` also matches.
         let skip = match rule.unless {
           None => false
-          Some(u) => u.matches(text)
+          Some(unless_) => unless_.matches(text)
         }
-        if not(skip) {
+        if !skip {
           findings.push({
             rule_id: rule.id,
             severity: rule.severity,
             message: rule.message,
             file: rel,
             line: lineno,
-            snippet: text.trim_space().to_owned(),
+            snippet: text.trim().to_owned(),
           })
         }
       }
@@ -42,102 +33,127 @@ pub fn lint_lines(
 }
 
 ///|
-/// Whether a rule applies to a file, based on its extension list. An empty
-/// extension list means the rule applies to every scanned file.
 fn rule_applies(rule : Rule, rel : String) -> Bool {
-  if rule.extensions.length() == 0 {
-    return true
-  }
-  match rel.rev_split_once(".") {
-    None => false
-    Some((_, ext)) => {
-      let ext_lower = ext.to_owned().to_lower()
-      // Rule extensions may be written with or without a leading dot.
-      rule.extensions.any(e => {
-        let normalized = if e.starts_with(".") {
-          e.substring(start=1).to_lower()
-        } else {
-          e.to_lower()
-        }
-        normalized == ext_lower
-      })
-    }
-  }
+  has_wanted_ext(rel, Set::from_iter(rule.extensions.iter().map(e => e.to_lower())))
 }
 
 ///|
-/// Lint an entire directory tree.
-///
-/// `root` is the directory to scan; `rules` the rule set; `exts` the file
-/// extensions to consider (union of all rule extensions is a good default).
-/// Findings are returned sorted by file then line for stable output.
 pub fn lint_tree(
   root : String,
   rules : Array[Rule],
   exts : Array[String],
 ) -> Result[LintResult, Error] {
-  let files = walk_files(root, exts) catch {
-    _ => return Err(Failure("cannot scan directory"))
+  try {
+    let absolute = canonical_root(root)
+    let files = select_files(Tree, absolute, exts)
+    Ok(lint_selected(absolute, Tree, files, rules))
+  } catch {
+    error => Err(error)
   }
-  let findings : Array[Finding] = []
-  for rel in files {
-    let full = join_root(root, rel)
-    let lines = read_lines(full)
-    let file_findings = lint_lines(rel, lines, rules)
-    for f in file_findings {
-      findings.push(f)
-    }
-  }
-  findings.sort_by((a, b) => {
-    let c = a.file.compare(b.file)
-    if c != 0 {
-      c
-    } else {
-      a.line.compare(b.line)
-    }
-  })
-  Ok({ findings, files_scanned: files.length(), baseline_hits: 0, })
 }
 
 ///|
-/// Lint a specific list of files.
-///
-/// Unlike `lint_tree`, this does not walk the directory — the caller
-/// provides the exact file list (e.g. from git diff, glob, or stdin).
-/// `root` is used to resolve relative paths to absolute paths for reading.
+/// Lint explicit working-tree paths. Paths are validated and deduplicated;
+/// unreadable/missing files produce diagnostics instead of successful counters.
 pub fn lint_files(
   root : String,
   files : Array[String],
   rules : Array[Rule],
-) -> LintResult {
-  let findings : Array[Finding] = []
-  let mut scanned = 0
-  for rel in files {
-    let full = join_root(root, rel)
-    let lines = read_lines(full)
-    scanned += 1
-    let file_findings = lint_lines(rel, lines, rules)
-    for f in file_findings {
-      findings.push(f)
-    }
-  }
-  findings.sort_by((a, b) => {
-    let c = a.file.compare(b.file)
-    if c != 0 {
-      c
-    } else {
-      a.line.compare(b.line)
-    }
-  })
-  { findings, files_scanned: scanned, baseline_hits: 0, }
+) -> LintResult raise {
+  lint_selected(canonical_root(root), Tree, files, rules)
 }
 
 ///|
-/// Join the scan root with a relative path.
-fn join_root(root : String, rel : String) -> String {
-  if root.has_suffix("/") {
-    "\{root}\{rel}"
-  } else {
-    "\{root}/\{rel}"
+/// `Changed` uses committed HEAD blobs; `Staged` uses actual index blobs.
+/// Other modes read regular working-tree files without following links.
+pub fn lint_selected(
+  root : String,
+  mode : ScanMode,
+  files : Array[String],
+  rules : Array[Rule],
+) -> LintResult raise {
+  let selected : Array[String] = []
+  let seen : Set[String] = Set::from_iter([].iter())
+  for file in files {
+    let rel = normalize_relative(file)
+    if !seen.contains(rel) {
+      selected.push(rel)
+      seen.add(rel)
+    }
+  }
+  selected.sort()
+  let findings : Array[Finding] = []
+  let diagnostics : Array[Diagnostic] = []
+  let mut scanned = 0
+  let mut skipped = 0
+  let mut failed = 0
+  for rel in selected {
+    // No applicable rule is intentionally skipped; it is not a successful read.
+    if !rules.any(rule => rule_applies(rule, rel)) {
+      skipped += 1
+      continue
+    }
+    try {
+      let kind = match mode {
+        Changed(_) => git_source_kind(root, rel, false)
+        Staged => git_source_kind(root, rel, true)
+        _ => rooted_source_kind(root, rel)
+      }
+      if kind == 3 {
+        skipped += 1
+        continue
+      }
+      if kind != 1 {
+        raise Failure("source is missing or is not a regular file")
+      }
+      let source = match mode {
+        Changed(_) => git_blob(root, rel, false)
+        Staged => git_blob(root, rel, true)
+        _ => read_source(join_path(root, rel))
+      }
+      if source.contains("\x00") {
+        raise Failure("binary source contains NUL bytes")
+      }
+      let lines = split_lines(strip_comments(source))
+      for finding in lint_lines(rel, lines, rules) {
+        findings.push(finding)
+      }
+      scanned += 1
+    } catch {
+      error => {
+        failed += 1
+        diagnostics.push({ file: rel, message: error_message(error) })
+      }
+    }
+  }
+  findings.sort_by((a, b) => {
+    let file_order = a.file.compare(b.file)
+    if file_order != 0 {
+      file_order
+    } else {
+      let line_order = a.line.compare(b.line)
+      if line_order != 0 { line_order } else { a.rule_id.compare(b.rule_id) }
+    }
+  })
+  {
+    findings,
+    files_selected: selected.length(),
+    files_scanned: scanned,
+    files_skipped: skipped,
+    files_failed: failed,
+    baseline_hits: 0,
+    diagnostics,
+  }
+}
+
+///|
+/// Human-readable operational errors with their useful context retained.
+pub fn error_message(error : Error) -> String {
+  match error {
+    Failure(message) => message
+    @fs.IOError(message) => message
+    NativeError(message) => message
+    ConfigError(message) => message
+    _ => "scan operation failed"
   }
 }

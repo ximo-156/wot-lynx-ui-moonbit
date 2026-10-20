@@ -44,7 +44,7 @@ pub fn render_summary(result : LintResult) -> String {
   let warnings = result.count_by(Severity::Warning)
   lines.push("")
   lines.push(
-    "files scanned: \{result.files_scanned}  errors: \{errors}  warnings: \{warnings}  baseline-suppressed: \{result.baseline_hits}",
+    "files selected: \{result.files_selected}  files scanned: \{result.files_scanned}  skipped: \{result.files_skipped}  failed: \{result.files_failed}  errors: \{errors}  warnings: \{warnings}  baseline-suppressed: \{result.baseline_hits}",
   )
   lines.join("\n")
 }

@@ -7,42 +7,62 @@ import {
 }
 
 // Values
+pub fn canonical_root(String) -> String raise NativeError
+
 pub fn collect_extensions(Array[Rule]) -> Array[String]
+
+pub fn error_message(Error) -> String
 
 pub fn finding_hash(Finding) -> String
 
-pub fn git_changed_files(String, String) -> Array[String]?
+pub fn git_blob(String, String, Bool) -> String raise NativeError
 
-pub fn git_is_repo(String) -> Bool
+pub fn git_changed_files(String, String) -> Array[String] raise NativeError
 
-pub fn git_staged_files(String) -> Array[String]?
+pub fn git_source_kind(String, String, Bool) -> Int32 raise NativeError
 
-pub fn lint_files(String, Array[String], Array[Rule]) -> LintResult
+pub fn git_staged_files(String) -> Array[String] raise NativeError
+
+pub fn lint_files(String, Array[String], Array[Rule]) -> LintResult raise
 
 pub fn lint_lines(String, Array[(Int32, String)], Array[Rule]) -> Array[Finding]
+
+pub fn lint_selected(String, ScanMode, Array[String], Array[Rule]) -> LintResult raise
 
 pub fn lint_tree(String, Array[Rule], Array[String]) -> Result[LintResult, Error]
 
 pub fn parse_config(String) -> Result[Array[Rule], ConfigError]
 
-pub fn read_lines(String) -> Array[(Int32, String)]
+pub fn read_lines(String) -> Array[(Int32, String)] raise
+
+pub fn read_stdin_text() -> String raise NativeError
 
 pub fn render_detail(Array[Finding]) -> String
 
 pub fn render_summary(LintResult) -> String
 
-pub fn run_command(String) -> String?
-
 pub fn select_files(ScanMode, String, Array[String]) -> Array[String] raise
+
+pub fn source_path_kind(String) -> Int32 raise NativeError
+
+pub fn validate_glob(String) -> Unit raise
 
 pub fn validate_rules(Array[Rule]) -> Result[Unit, ConfigError]
 
 pub fn walk_files(String, Array[String]) -> Array[String] raise
 
+pub fn write_atomic_text(String, String) -> Unit raise NativeError
+
 // Errors
 pub(all) suberror ConfigError {
   ConfigError(String)
 }
+
+pub(all) suberror NativeError {
+  NativeError(String)
+} derive(@debug.Debug)
+#deprecated
+pub fn NativeError::to_repr(Self) -> @debug.Repr
 
 // Types and methods
 pub struct Baseline {
@@ -50,8 +70,14 @@ pub struct Baseline {
 }
 pub fn Baseline::contains(Self, Finding) -> Bool
 pub fn Baseline::load(String) -> Self
+pub fn Baseline::parse(String) -> Self raise
 pub fn Baseline::partition(Self, Array[Finding]) -> (Array[Finding], Array[Finding])
 pub fn Baseline::render(Array[Finding]) -> String
+
+pub struct Diagnostic {
+  file : String
+  message : String
+} derive(@debug.Debug)
 
 pub struct Finding {
   rule_id : String
@@ -62,20 +88,23 @@ pub struct Finding {
   snippet : String
 } derive(@debug.Debug)
 
-type GlobPattern derive(@debug.Debug)
+type GlobPattern
 pub fn GlobPattern::matches(Self, String) -> Bool
 pub fn GlobPattern::new(String) -> Self
 
-type GlobSegment derive(Eq, @debug.Debug)
-
 pub struct LintResult {
   findings : Array[Finding]
+  files_selected : Int32
   files_scanned : Int32
+  files_skipped : Int32
+  files_failed : Int32
   baseline_hits : Int32
+  diagnostics : Array[Diagnostic]
 } derive(@debug.Debug)
 pub fn LintResult::count_by(Self, Severity) -> Int32
 pub fn LintResult::has_errors(Self) -> Bool
 pub fn LintResult::new(Array[Finding], Int32, Int32) -> Self
+pub fn LintResult::with_findings(Self, Array[Finding], Int32) -> Self
 
 pub enum MatchKind {
   Contains(String)
@@ -101,13 +130,17 @@ pub enum ScanMode {
   Staged
   Glob(String)
   Stdin
+  Stdin0
   Incremental
 } derive(Eq, @debug.Debug)
 pub fn ScanMode::changed(String) -> Self
 pub fn ScanMode::glob(String) -> Self
+#deprecated
 pub fn ScanMode::incremental() -> Self
 pub fn ScanMode::staged() -> Self
 pub fn ScanMode::stdin() -> Self
+pub fn ScanMode::stdin0() -> Self
+pub fn ScanMode::tag(Self) -> String
 pub fn ScanMode::tree() -> Self
 
 pub enum Severity {
