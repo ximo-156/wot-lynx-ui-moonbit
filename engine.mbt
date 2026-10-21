@@ -45,13 +45,14 @@ fn rule_applies(rule : Rule, rel : String) -> Bool {
 pub fn lint_tree(
   root : String,
   rules : Array[Rule],
+  file_rules : Array[FileRule],
   exts : Array[String],
   scope : Scope,
 ) -> Result[LintResult, Error] {
   try {
     let absolute = canonical_root(root)
     let files = select_files(Tree, absolute, exts)
-    Ok(lint_selected(absolute, Tree, files, rules, scope))
+    Ok(lint_selected(absolute, Tree, files, rules, file_rules, scope))
   } catch {
     error => Err(error)
   }
@@ -64,9 +65,10 @@ pub fn lint_files(
   root : String,
   files : Array[String],
   rules : Array[Rule],
+  file_rules : Array[FileRule],
   scope : Scope,
 ) -> LintResult raise {
-  lint_selected(canonical_root(root), Tree, files, rules, scope)
+  lint_selected(canonical_root(root), Tree, files, rules, file_rules, scope)
 }
 
 ///|
@@ -81,6 +83,7 @@ pub fn lint_selected(
   mode : ScanMode,
   files : Array[String],
   rules : Array[Rule],
+  file_rules : Array[FileRule],
   scope : Scope,
 ) -> LintResult raise {
   let candidates : Array[String] = []
@@ -103,7 +106,8 @@ pub fn lint_selected(
   let mut failed = 0
   for rel in selected {
     // No applicable rule is intentionally skipped; it is not a successful read.
-    if !rules.any(rule => rule_applies(rule, rel)) {
+    if !rules.any(rule => rule_applies(rule, rel)) &&
+      !file_rules.any(fr => file_rule_applies(fr, rel)) {
       skipped += 1
       skipped_files.push({ file: rel, reason: "no-applicable-rule", })
       continue
@@ -132,6 +136,9 @@ pub fn lint_selected(
       }
       let lines = split_lines(strip_comments(source))
       for finding in lint_lines(rel, lines, rules) {
+        findings.push(finding)
+      }
+      for finding in lint_file(rel, source, lines, file_rules) {
         findings.push(finding)
       }
       scanned += 1
@@ -177,5 +184,189 @@ pub fn error_message(error : Error) -> String {
     NativeError(message) => message
     ConfigError(message) => message
     _ => "scan operation failed"
+  }
+}
+
+///|
+/// Whether a file rule applies to a given path.
+fn file_rule_applies(fr : FileRule, rel : String) -> Bool {
+  has_wanted_ext(
+    rel,
+    Set::from_iter(fr.extensions.iter().map(e => e.to_lower())),
+  ) &&
+  fr.scope.allows(rel)
+}
+
+///|
+/// Evaluate file-level rules against a file's content. Each finding points to
+/// the specific line where the violation occurs (or line 1 for file-level
+/// properties like naming).
+pub fn lint_file(
+  rel : String,
+  source : String,
+  lines : Array[(Int32, String)],
+  file_rules : Array[FileRule],
+) -> Array[Finding] {
+  let findings : Array[Finding] = []
+  for fr in file_rules {
+    if !file_rule_applies(fr, rel) {
+      continue
+    }
+    match fr.check {
+      MaxLines(limit) =>
+        if lines.length() > limit {
+          findings.push(
+            file_finding(
+              fr,
+              rel,
+              lines.length(),
+              "file has \{lines.length()} lines (limit: \{limit})",
+            ),
+          )
+        }
+      MaxLineLength(limit) =>
+        for (lineno, text) in lines {
+          if text.length() > limit {
+            findings.push(
+              file_finding(
+                fr,
+                rel,
+                lineno,
+                "line has \{text.length()} characters (limit: \{limit})",
+              ),
+            )
+          }
+        }
+      NoTrailingWhitespace =>
+        for (lineno, text) in lines {
+          if text.length() > 0 && text.has_suffix(" ") {
+            findings.push(file_finding(fr, rel, lineno, "trailing whitespace"))
+          } else if text.length() > 0 && text.has_suffix("\t") {
+            findings.push(file_finding(fr, rel, lineno, "trailing whitespace"))
+          }
+        }
+      NoTabs =>
+        for (lineno, text) in lines {
+          if text.contains("\t") {
+            findings.push(file_finding(fr, rel, lineno, "tab character found"))
+          }
+        }
+      FinalNewline =>
+        if source.length() > 0 && !source.has_suffix("\n") {
+          findings.push(
+            file_finding(
+              fr,
+              rel,
+              lines.length(),
+              "file does not end with a newline",
+            ),
+          )
+        }
+      NoDuplicateLines => {
+        let seen : Set[String] = Set::new()
+        for (lineno, text) in lines {
+          let trimmed = text.trim().to_owned()
+          if trimmed != "" {
+            if seen.contains(trimmed) {
+              findings.push(
+                file_finding(fr, rel, lineno, "duplicate line: \{trimmed}"),
+              )
+            } else {
+              seen.add(trimmed)
+            }
+          }
+        }
+      }
+      FileNaming(style) => {
+        let name = file_stem(rel)
+        if !naming_matches(style, name) {
+          findings.push(
+            file_finding(
+              fr,
+              rel,
+              1,
+              "file name \"\{name}\" does not match \{naming_style_name(style)} convention",
+            ),
+          )
+        }
+      }
+    }
+  }
+  findings
+}
+
+///|
+/// Build a finding for a file-level rule.
+fn file_finding(
+  fr : FileRule,
+  file : String,
+  line : Int32,
+  detail : String,
+) -> Finding {
+  {
+    rule_id: fr.id,
+    severity: fr.severity,
+    message: "\{fr.message} (\{detail})",
+    file,
+    line,
+    snippet: detail,
+  }
+}
+
+///|
+/// Extract the file name without extension from a relative path.
+fn file_stem(rel : String) -> String {
+  let name = match rel.rev_split_once("/") {
+    Some((_, n)) => n.to_owned()
+    None => rel
+  }
+  match name.rev_split_once(".") {
+    Some((stem, _)) => stem.to_owned()
+    None => name
+  }
+}
+
+///|
+/// Whether a file name matches the given naming convention.
+fn naming_matches(style : NamingStyle, name : String) -> Bool {
+  if name == "" {
+    return false
+  }
+  match style {
+    CamelCase =>
+      // First char lowercase, no underscores or hyphens
+      name[0] >= 'a' &&
+      name[0] <= 'z' &&
+      !name.contains("_") &&
+      !name.contains("-")
+    PascalCase =>
+      // First char uppercase, no underscores or hyphens
+      name[0] >= 'A' &&
+      name[0] <= 'Z' &&
+      !name.contains("_") &&
+      !name.contains("-")
+    SnakeCase =>
+      // All lowercase with underscores, no hyphens
+      !name.contains("-") &&
+      name
+      .iter()
+      .all(c => (c >= 'a' && c <= 'z') || (c >= '0' && c <= '9') || c == '_')
+    KebabCase =>
+      // All lowercase with hyphens, no underscores
+      !name.contains("_") &&
+      name
+      .iter()
+      .all(c => (c >= 'a' && c <= 'z') || (c >= '0' && c <= '9') || c == '-')
+  }
+}
+
+///|
+/// Human-readable name for a naming style.
+fn naming_style_name(style : NamingStyle) -> String {
+  match style {
+    CamelCase => "camelCase"
+    PascalCase => "PascalCase"
+    SnakeCase => "snake_case"
+    KebabCase => "kebab-case"
   }
 }

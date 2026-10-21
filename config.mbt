@@ -49,23 +49,33 @@ pub fn parse_config(src : String) -> Result[LintConfig, ConfigError] {
     Ok(scope) => scope
     Err(message) => return Err(ConfigError(message))
   }
-  let rules_json = match obj.get("rules") {
-    Some(r) => r
-    None => return Err(ConfigError("config missing \"rules\" array"))
-  }
-  let arr = match rules_json.as_array() {
-    Some(a) => a
-    None => return Err(ConfigError("\"rules\" must be an array"))
-  }
   let rules : Array[Rule] = []
-  for (idx, rj) in arr.iter2() {
-    let rule = match parse_rule(rj) {
-      Ok(r) => r
-      Err(ConfigError(msg)) => return Err(ConfigError("rule #\{idx}: \{msg}"))
+  match obj.get("rules") {
+    Some(rules_json) => {
+      let arr = match rules_json.as_array() {
+        Some(a) => a
+        None => return Err(ConfigError("\"rules\" must be an array"))
+      }
+      for (idx, rj) in arr.iter2() {
+        let rule = match parse_rule(rj) {
+          Ok(r) => r
+          Err(ConfigError(msg)) =>
+            return Err(ConfigError("rule #\{idx}: \{msg}"))
+        }
+        rules.push(rule)
+      }
     }
-    rules.push(rule)
+    None =>
+      // rules is optional when file_rules is present
+      if !obj.contains("file_rules") {
+        return Err(ConfigError("config missing \"rules\" array"))
+      }
   }
-  Ok({ rules, scope, })
+  let file_rules = match parse_file_rules(obj) {
+    Ok(fr) => fr
+    Err(ConfigError(msg)) => return Err(ConfigError(msg))
+  }
+  Ok({ rules, file_rules, scope, })
 }
 
 ///|
@@ -136,7 +146,135 @@ fn parse_rule(rj : Json) -> Result[Rule, ConfigError] {
 }
 
 ///|
-/// Parse a matcher object: exactly one of contains / prefix / suffix / regex.
+/// Parse the optional `file_rules` array from the config object.
+fn parse_file_rules(
+  obj : Map[String, Json],
+) -> Result[Array[FileRule], ConfigError] {
+  let fr_json = match obj.get("file_rules") {
+    Some(r) => r
+    None => return Ok([])
+  }
+  let arr = match fr_json.as_array() {
+    Some(a) => a
+    None => return Err(ConfigError("\"file_rules\" must be an array"))
+  }
+  let rules : Array[FileRule] = []
+  for (idx, rj) in arr.iter2() {
+    let rule = match parse_file_rule(rj) {
+      Ok(r) => r
+      Err(ConfigError(msg)) =>
+        return Err(ConfigError("file_rule #\{idx}: \{msg}"))
+    }
+    rules.push(rule)
+  }
+  Ok(rules)
+}
+
+///|
+/// Parse a single file rule object.
+fn parse_file_rule(rj : Json) -> Result[FileRule, ConfigError] {
+  let obj = match rj.as_object() {
+    Some(o) => o
+    None => return Err(ConfigError("file_rule must be an object"))
+  }
+  let id = match get_str(obj, "id") {
+    Some(s) => s
+    None => return Err(ConfigError("file_rule missing \"id\""))
+  }
+  let severity = match get_str(obj, "severity") {
+    Some(s) => Severity::parse(s)
+    None => Severity::Warning
+  }
+  let message = match get_str(obj, "message") {
+    Some(s) => s
+    None => return Err(ConfigError("file_rule \"\{id}\" missing \"message\""))
+  }
+  let extensions = match get_str_array(obj, "extensions") {
+    Some(a) => a
+    None => []
+  }
+  let scope = match parse_scope(obj, "file_rule \"\{id}\"") {
+    Ok(scope) => scope
+    Err(message) => return Err(ConfigError(message))
+  }
+  let check_json = match obj.get("check") {
+    Some(c) => c
+    None => return Err(ConfigError("file_rule \"\{id}\" missing \"check\""))
+  }
+  let check = match parse_file_check(check_json) {
+    Ok(c) => c
+    Err(ConfigError(msg)) =>
+      return Err(ConfigError("file_rule \"\{id}\": \{msg}"))
+  }
+  Ok({ id, severity, message, extensions, check, scope, })
+}
+
+///|
+/// Parse a file check object: exactly one of max_lines / max_line_length /
+/// no_trailing_whitespace / no_tabs / final_newline / no_duplicate_lines /
+/// file_naming.
+fn parse_file_check(cj : Json) -> Result[FileCheck, ConfigError] {
+  let obj = match cj.as_object() {
+    Some(o) => o
+    None => return Err(ConfigError("check must be an object"))
+  }
+  if obj.contains("max_lines") {
+    return match obj.get("max_lines") {
+      Some(v) =>
+        match v.as_number() {
+          Some(n) => Ok(MaxLines(n.to_int()))
+          None => Err(ConfigError("\"max_lines\" must be a number"))
+        }
+      None => Err(ConfigError("\"max_lines\" must be a number"))
+    }
+  }
+  if obj.contains("max_line_length") {
+    return match obj.get("max_line_length") {
+      Some(v) =>
+        match v.as_number() {
+          Some(n) => Ok(MaxLineLength(n.to_int()))
+          None => Err(ConfigError("\"max_line_length\" must be a number"))
+        }
+      None => Err(ConfigError("\"max_line_length\" must be a number"))
+    }
+  }
+  if obj.contains("no_trailing_whitespace") {
+    return Ok(NoTrailingWhitespace)
+  }
+  if obj.contains("no_tabs") {
+    return Ok(NoTabs)
+  }
+  if obj.contains("final_newline") {
+    return Ok(FinalNewline)
+  }
+  if obj.contains("no_duplicate_lines") {
+    return Ok(NoDuplicateLines)
+  }
+  if obj.contains("file_naming") {
+    return match get_str(obj, "file_naming") {
+      Some(s) =>
+        match NamingStyle::parse(s) {
+          Some(style) => Ok(FileNaming(style))
+          None =>
+            Err(
+              ConfigError(
+                "\"file_naming\" must be one of: camelCase, PascalCase, snake_case, kebab-case",
+              ),
+            )
+        }
+      None => Err(ConfigError("\"file_naming\" must be a string"))
+    }
+  }
+  Err(
+    ConfigError(
+      "check needs one of: max_lines, max_line_length, no_trailing_whitespace, no_tabs, final_newline, no_duplicate_lines, file_naming",
+    ),
+  )
+}
+
+///|
+/// Parse a matcher object: exactly one of contains / prefix / suffix / regex /
+/// equals / word.
 fn parse_match_kind(mj : Json) -> Result[MatchKind, ConfigError] {
   let obj = match mj.as_object() {
     Some(o) => o
@@ -166,7 +304,23 @@ fn parse_match_kind(mj : Json) -> Result[MatchKind, ConfigError] {
       None => Err(ConfigError("\"suffix\" must be a string"))
     }
   }
-  Err(ConfigError("matcher needs one of: regex, contains, prefix, suffix"))
+  if obj.contains("equals") {
+    return match get_str(obj, "equals") {
+      Some(s) => Ok(Equals(s))
+      None => Err(ConfigError("\"equals\" must be a string"))
+    }
+  }
+  if obj.contains("word") {
+    return match get_str(obj, "word") {
+      Some(s) => Ok(Word(s))
+      None => Err(ConfigError("\"word\" must be a string"))
+    }
+  }
+  Err(
+    ConfigError(
+      "matcher needs one of: regex, contains, prefix, suffix, equals, word",
+    ),
+  )
 }
 
 ///|
@@ -191,15 +345,27 @@ pub fn validate_rules(rules : Array[Rule]) -> Result[Unit, ConfigError] {
 }
 
 ///|
-/// Collect the union of all rule extensions (for the default scan set). An
-/// empty rule list keeps the scan set empty rather than scanning every file.
-pub fn collect_extensions(rules : Array[Rule]) -> Array[String] {
-  if rules.any(rule => rule.extensions.is_empty()) {
+/// Collect the union of all rule and file-rule extensions (for the default
+/// scan set). An empty rule list keeps the scan set empty rather than scanning
+/// every file.
+pub fn collect_extensions(
+  rules : Array[Rule],
+  file_rules : Array[FileRule],
+) -> Array[String] {
+  if rules.any(rule => rule.extensions.is_empty()) ||
+    file_rules.any(fr => fr.extensions.is_empty()) {
     return []
   }
   let exts : Array[String] = []
   for rule in rules {
     for e in rule.extensions {
+      if not(exts.contains(e)) {
+        exts.push(e)
+      }
+    }
+  }
+  for fr in file_rules {
+    for e in fr.extensions {
       if not(exts.contains(e)) {
         exts.push(e)
       }

@@ -26,6 +26,8 @@ pub struct Preset {
   description : String
   /// The preset's rules, in declaration order.
   rules : Array[Rule]
+  /// The preset's file-level rules.
+  file_rules : Array[FileRule]
 }
 
 ///|
@@ -574,6 +576,216 @@ fn next_rules() -> Array[Rule] {
 }
 
 // ---------------------------------------------------------------------------
+// solid — SolidJS conventions
+// ---------------------------------------------------------------------------
+
+///|
+fn solid_rules() -> Array[Rule] {
+  let solid_exts = [".jsx", ".tsx"]
+  [
+    rule(
+      "solid/no-innerhtml",
+      Severity::error(),
+      "Avoid innerHTML (XSS risk); use textContent or JSX",
+      solid_exts,
+      Contains("innerHTML"),
+    ),
+    rule(
+      "solid/no-dangerous-html",
+      Severity::error(),
+      "Avoid dangerouslySetInnerHTML in Solid; use innerHTML with sanitized content",
+      solid_exts,
+      Contains("dangerouslySetInnerHTML"),
+    ),
+    rule(
+      "solid/prefer-for",
+      Severity::warning(),
+      "Use <For> instead of .map() for list rendering in Solid",
+      solid_exts,
+      Regex("\\.map\\("),
+    ),
+    rule(
+      "solid/prefer-show",
+      Severity::warning(),
+      "Use <Show> instead of ternary for conditional rendering in Solid",
+      solid_exts,
+      Regex("\\?[[:space:]]*<"),
+    ),
+    rule(
+      "solid/no-react-imports",
+      Severity::error(),
+      "Do not import from 'react' in a Solid project",
+      solid_exts,
+      Regex("from[[:space:]]+['\"]react['\"]"),
+    ),
+    rule(
+      "solid/event-directives",
+      Severity::warning(),
+      "Use on:click instead of onClick in Solid JSX",
+      solid_exts,
+      Regex("onClick=|onChange=|onInput="),
+    ),
+  ]
+}
+
+// ---------------------------------------------------------------------------
+// astro — Astro conventions
+// ---------------------------------------------------------------------------
+
+///|
+fn astro_rules() -> Array[Rule] {
+  let astro_exts = [".astro"]
+  [
+    rule(
+      "astro/no-set-html-directive",
+      Severity::error(),
+      "Avoid set:html (XSS risk); use text interpolation",
+      astro_exts,
+      Contains("set:html"),
+    ),
+    rule(
+      "astro/no-unused-define-vars",
+      Severity::warning(),
+      "Define vars in frontmatter, not in template",
+      astro_exts,
+      Regex("const[[:space:]]+[[:alpha:]_$][[:alnum:]_$]*[[:space:]]*="),
+    ),
+    rule(
+      "astro/prefer-class-list",
+      Severity::warning(),
+      "Use class:list instead of template literals for conditional classes",
+      astro_exts,
+      Regex("class=[{]"),
+    ),
+    guarded_rule(
+      "astro/no-target-blank",
+      Severity::warning(),
+      "target=\"_blank\" without rel=\"noopener\" is a security risk",
+      astro_exts,
+      Regex("target=\"_blank\""),
+      Regex("noopener"),
+    ),
+    guarded_rule(
+      "astro/valid-compile",
+      Severity::error(),
+      "Avoid raw <script> without type=\"module\" in Astro",
+      astro_exts,
+      Regex("<script"),
+      Regex("type="),
+    ),
+  ]
+}
+
+// ---------------------------------------------------------------------------
+// nuxt — Nuxt conventions (Vue-based)
+// ---------------------------------------------------------------------------
+
+///|
+fn nuxt_rules() -> Array[Rule] {
+  let nuxt_exts = [".vue", ".js", ".ts"]
+  [
+    rule(
+      "nuxt/no-env-in-runtime",
+      Severity::error(),
+      "Avoid process.env in client-side code; use runtimeConfig",
+      nuxt_exts,
+      Regex("process\\.env\\."),
+    ),
+    rule(
+      "nuxt/prefer-use-fetch",
+      Severity::warning(),
+      "Use useFetch or useAsyncData instead of raw fetch in Nuxt",
+      nuxt_exts,
+      Regex("\\bfetch\\("),
+    ),
+    rule(
+      "nuxt/no-window-in-ssr",
+      Severity::error(),
+      "Avoid window/document in SSR code; use onMounted or process.client",
+      nuxt_exts,
+      Regex("\\b(window|document)\\."),
+    ),
+    rule(
+      "nuxt/prefer-auto-imports",
+      Severity::warning(),
+      "Use Nuxt auto-imports instead of explicit imports from 'vue'",
+      nuxt_exts,
+      Regex(
+        "import[[:space:]]*\\{[^}]*\\}[[:space:]]*from[[:space:]]+['\"]vue['\"]",
+      ),
+    ),
+    rule(
+      "nuxt/no-v-html",
+      Severity::warning(),
+      "Avoid v-html (XSS risk); use text interpolation or a sanitizer",
+      nuxt_exts,
+      Contains("v-html"),
+    ),
+  ]
+}
+
+// ---------------------------------------------------------------------------
+// file — file-level checks (size, whitespace, naming, duplicates)
+// ---------------------------------------------------------------------------
+
+///|
+fn file_rules_preset() -> Array[FileRule] {
+  let all_exts = [
+    ".js", ".jsx", ".ts", ".tsx", ".mjs", ".cjs", ".vue", ".svelte",
+  ]
+  [
+    FileRule::{
+      id: "file/max-lines",
+      severity: Severity::warning(),
+      message: "File exceeds 500 lines",
+      extensions: all_exts,
+      check: MaxLines(500),
+      scope: Scope::empty(),
+    },
+    FileRule::{
+      id: "file/max-line-length",
+      severity: Severity::warning(),
+      message: "Line exceeds 120 characters",
+      extensions: all_exts,
+      check: MaxLineLength(120),
+      scope: Scope::empty(),
+    },
+    FileRule::{
+      id: "file/no-trailing-whitespace",
+      severity: Severity::warning(),
+      message: "Trailing whitespace found",
+      extensions: all_exts,
+      check: NoTrailingWhitespace,
+      scope: Scope::empty(),
+    },
+    FileRule::{
+      id: "file/no-tabs",
+      severity: Severity::warning(),
+      message: "Tab character found; use spaces",
+      extensions: all_exts,
+      check: NoTabs,
+      scope: Scope::empty(),
+    },
+    FileRule::{
+      id: "file/final-newline",
+      severity: Severity::warning(),
+      message: "File must end with a newline",
+      extensions: all_exts,
+      check: FinalNewline,
+      scope: Scope::empty(),
+    },
+    FileRule::{
+      id: "file/no-duplicate-lines",
+      severity: Severity::warning(),
+      message: "Duplicate line found",
+      extensions: all_exts,
+      check: NoDuplicateLines,
+      scope: Scope::empty(),
+    },
+  ]
+}
+
+// ---------------------------------------------------------------------------
 // Preset registry
 // ---------------------------------------------------------------------------
 
@@ -585,31 +797,61 @@ fn all_presets() -> Array[Preset] {
       name: "common",
       description: "Framework-agnostic JS/TS hygiene (no-console, no-debugger, no-eval, ...)",
       rules: common_rules(),
+      file_rules: [],
     },
     {
       name: "react",
       description: "React and JSX conventions (no-danger, jsx-key, self-closing, ...)",
       rules: react_rules(),
+      file_rules: [],
     },
     {
       name: "vue",
       description: "Vue 3 template and SFC conventions (no-v-html, require-v-for-key, ...)",
       rules: vue_rules(),
+      file_rules: [],
     },
     {
       name: "angular",
       description: "Angular component conventions (no-input-rename, no-output-native, ...)",
       rules: angular_rules(),
+      file_rules: [],
     },
     {
       name: "svelte",
       description: "Svelte component conventions (no-at-html, require-each-key, a11y, ...)",
       rules: svelte_rules(),
+      file_rules: [],
     },
     {
       name: "next",
       description: "Next.js conventions (no-img-element, no-head-element, ...)",
       rules: next_rules(),
+      file_rules: [],
+    },
+    {
+      name: "file",
+      description: "File-level checks (max-lines, no-trailing-whitespace, no-tabs, ...)",
+      rules: [],
+      file_rules: file_rules_preset(),
+    },
+    {
+      name: "solid",
+      description: "SolidJS conventions (no-innerhtml, prefer-for, no-react-imports, ...)",
+      rules: solid_rules(),
+      file_rules: [],
+    },
+    {
+      name: "astro",
+      description: "Astro conventions (no-set-html-directive, prefer-class-list, ...)",
+      rules: astro_rules(),
+      file_rules: [],
+    },
+    {
+      name: "nuxt",
+      description: "Nuxt conventions (no-env-in-runtime, prefer-use-fetch, no-window-in-ssr, ...)",
+      rules: nuxt_rules(),
+      file_rules: [],
     },
   ]
 }
@@ -665,23 +907,32 @@ pub fn preset_by_name(name : String) -> Preset? {
 ///|
 /// Merge several presets into one rule set. Rules are concatenated in preset
 /// order; a rule whose id already appeared is dropped (first occurrence wins).
-/// The merged config carries no global scope.
+/// File rules are merged the same way. The merged config carries no global
+/// scope.
 pub fn merge_presets(names : Array[String]) -> Result[LintConfig, ConfigError] {
   let rules : Array[Rule] = []
+  let file_rules : Array[FileRule] = []
   let seen : Set[String] = Set::new()
   for name in names {
     match preset_by_name(name) {
       None => return Err(ConfigError("unknown preset: \{name}"))
-      Some(preset) =>
+      Some(preset) => {
         for r in preset.rules {
           if !seen.contains(r.id) {
             seen.add(r.id)
             rules.push(r)
           }
         }
+        for fr in preset.file_rules {
+          if !seen.contains(fr.id) {
+            seen.add(fr.id)
+            file_rules.push(fr)
+          }
+        }
+      }
     }
   }
-  Ok({ rules, scope: Scope::empty(), })
+  Ok({ rules, file_rules, scope: Scope::empty(), })
 }
 
 ///|

@@ -4,13 +4,17 @@
 ///|
 test "preset_names lists all presets sorted" {
   let names = preset_names()
-  assert_eq(names.length(), 6)
+  assert_eq(names.length(), 10)
   assert_eq(names[0], "angular")
-  assert_eq(names[1], "common")
-  assert_eq(names[2], "next")
-  assert_eq(names[3], "react")
-  assert_eq(names[4], "svelte")
-  assert_eq(names[5], "vue")
+  assert_eq(names[1], "astro")
+  assert_eq(names[2], "common")
+  assert_eq(names[3], "file")
+  assert_eq(names[4], "next")
+  assert_eq(names[5], "nuxt")
+  assert_eq(names[6], "react")
+  assert_eq(names[7], "solid")
+  assert_eq(names[8], "svelte")
+  assert_eq(names[9], "vue")
 }
 
 ///|
@@ -21,6 +25,7 @@ test "preset_by_name finds known presets" {
   assert_true(preset_by_name("svelte") is Some(_))
   assert_true(preset_by_name("next") is Some(_))
   assert_true(preset_by_name("common") is Some(_))
+  assert_true(preset_by_name("file") is Some(_))
 }
 
 ///|
@@ -118,13 +123,17 @@ test "render_preset_list contains all preset names" {
 test "render_preset_list is sorted alphabetically" {
   let text = render_preset_list()
   let lines = text.split("\n").to_array()
-  assert_eq(lines.length(), 6)
+  assert_eq(lines.length(), 10)
   assert_true(lines[0].has_prefix("angular"))
-  assert_true(lines[1].has_prefix("common"))
-  assert_true(lines[2].has_prefix("next"))
-  assert_true(lines[3].has_prefix("react"))
-  assert_true(lines[4].has_prefix("svelte"))
-  assert_true(lines[5].has_prefix("vue"))
+  assert_true(lines[1].has_prefix("astro"))
+  assert_true(lines[2].has_prefix("common"))
+  assert_true(lines[3].has_prefix("file"))
+  assert_true(lines[4].has_prefix("next"))
+  assert_true(lines[5].has_prefix("nuxt"))
+  assert_true(lines[6].has_prefix("react"))
+  assert_true(lines[7].has_prefix("solid"))
+  assert_true(lines[8].has_prefix("svelte"))
+  assert_true(lines[9].has_prefix("vue"))
 }
 
 ///|
@@ -186,4 +195,65 @@ test "merge_presets concatenates in preset order" {
   assert_eq(config.rules[0].id, "common/no-console-log")
   assert_eq(config.rules[4].id, "common/no-var")
   assert_eq(config.rules[5].id, "react/no-danger")
+}
+
+///|
+test "file preset has expected file rule count" {
+  let config = merge_presets(["file"]).unwrap()
+  assert_eq(config.file_rules.length(), 6)
+  assert_eq(config.rules.length(), 0)
+}
+
+///|
+test "file preset file rules have valid ids" {
+  let config = merge_presets(["file"]).unwrap()
+  assert_eq(config.file_rules[0].id, "file/max-lines")
+  assert_eq(config.file_rules[1].id, "file/max-line-length")
+  assert_eq(config.file_rules[2].id, "file/no-trailing-whitespace")
+  assert_eq(config.file_rules[3].id, "file/no-tabs")
+  assert_eq(config.file_rules[4].id, "file/final-newline")
+  assert_eq(config.file_rules[5].id, "file/no-duplicate-lines")
+}
+
+///|
+test "merge_presets merges file rules from multiple presets" {
+  let config = merge_presets(["file", "react"]).unwrap()
+  assert_eq(config.file_rules.length(), 6)
+  assert_eq(config.rules.length(), 20)
+}
+
+///|
+test "merge_presets deduplicates file rules by id" {
+  let config = merge_presets(["file", "file"]).unwrap()
+  assert_eq(config.file_rules.length(), 6)
+}
+
+///|
+test "solid preset has expected rule count" {
+  let config = merge_presets(["solid"]).unwrap()
+  assert_eq(config.rules.length(), 6)
+}
+
+///|
+test "astro preset has expected rule count" {
+  let config = merge_presets(["astro"]).unwrap()
+  assert_eq(config.rules.length(), 5)
+}
+
+///|
+test "nuxt preset has expected rule count" {
+  let config = merge_presets(["nuxt"]).unwrap()
+  assert_eq(config.rules.length(), 5)
+}
+
+///|
+test "all preset file rules have valid checks" {
+  for name in preset_names() {
+    let config = merge_presets([name]).unwrap()
+    for fr in config.file_rules {
+      assert_true(fr.id.length() > 0)
+      assert_true(fr.message.length() > 0)
+      assert_true(fr.extensions.length() > 0)
+    }
+  }
 }

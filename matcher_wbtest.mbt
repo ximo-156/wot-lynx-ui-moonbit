@@ -41,3 +41,23 @@ test "validate accepts good regex" {
 test "validate rejects bad regex" {
   assert_true(Regex("[bad").validate() is Some(_))
 }
+
+///|
+test "equals matches trimmed line exactly" {
+  assert_eq(Equals("export default").matches("export default"), true)
+  assert_eq(Equals("export default").matches("  export default  "), true)
+  assert_eq(Equals("export default").matches("export default x"), false)
+  assert_eq(Equals("export default").matches("export"), false)
+}
+
+///|
+test "word matches whole word only" {
+  assert_eq(Word("foo").matches("let foo = 1"), true)
+  assert_eq(Word("foo").matches("let foobar = 2"), false)
+  assert_eq(Word("foo").matches("foo"), true)
+  assert_eq(Word("foo").matches("foo_bar"), false)
+  assert_eq(Word("foo").matches("myfoo"), false)
+  assert_eq(Word("foo").matches("foo."), true)
+  assert_eq(Word("foo").matches("(foo)"), true)
+  assert_eq(Word("foo").matches(""), false)
+}

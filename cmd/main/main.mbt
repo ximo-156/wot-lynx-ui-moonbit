@@ -72,6 +72,7 @@ fn run(opts : Options) -> Unit raise {
     }
   }
   let rules = config.rules
+  let file_rules = config.file_rules
   match @lib.validate_rules(rules) {
     Ok(_) => ()
     Err(@lib.ConfigError(message)) => raise Failure("config error: \{message}")
@@ -85,7 +86,7 @@ fn run(opts : Options) -> Unit raise {
   let exts = if !opts.exts.is_empty() {
     opts.exts
   } else {
-    @lib.collect_extensions(rules)
+    @lib.collect_extensions(rules, file_rules)
   }
   let files = @lib.select_files(opts.scan_mode, root, exts)
   // Repeated --glob patterns form a union, then the selector de-duplicates it.
@@ -101,6 +102,7 @@ fn run(opts : Options) -> Unit raise {
     opts.scan_mode,
     files,
     rules,
+    file_rules,
     config.scope,
   )
   let scan = @lib.ScanInfo::new(opts.scan_mode.tag(), root, exts)

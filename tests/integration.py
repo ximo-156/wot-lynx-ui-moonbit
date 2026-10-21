@@ -1101,14 +1101,15 @@ class PresetTests(FixtureCase):
         result = self.run_cli(["--list-presets"])
         self.assert_exit(result, 0)
         output = self.output(result)
-        for name in ("angular", "common", "next", "react", "svelte", "vue"):
+        for name in ("angular", "astro", "common", "file", "next",
+                     "nuxt", "react", "solid", "svelte", "vue"):
             self.assertIn(name, output)
 
     def test_list_presets_is_sorted(self):
         result = self.run_cli(["--list-presets"])
         self.assert_exit(result, 0)
         lines = [line for line in self.output(result).splitlines() if line.strip()]
-        self.assertEqual(len(lines), 6)
+        self.assertEqual(len(lines), 10)
         names = [line.split(" ")[0] for line in lines]
         self.assertEqual(names, sorted(names))
 
@@ -1257,6 +1258,109 @@ class PresetTests(FixtureCase):
         self.assertIn("next/no-head-element", output)
         self.assertIn("next/no-html-link-for-pages", output)
         self.assertIn("next/no-img-element", output)
+
+    def test_preset_file_finds_violations(self):
+        self.write_file("test.ts",
+                        "const x = 1;   \n"
+                        "\tconst y = 2;\n"
+                        "const x = 1;\n")
+        result = self.run_cli(["--preset", "file", self.root])
+        self.assert_exit(result, 0)
+        output = self.output(result)
+        self.assertIn("file/no-trailing-whitespace", output)
+        self.assertIn("file/no-tabs", output)
+        self.assertIn("file/no-duplicate-lines", output)
+
+    def test_preset_file_clean_code_exits_zero(self):
+        self.write_file("test.ts", "const x = 1;\nconst y = 2;\n")
+        result = self.run_cli(["--preset", "file", self.root])
+        self.assert_exit(result, 0)
+        self.assertNotIn("file/", self.output(result))
+
+    def test_preset_solid_finds_violations(self):
+        self.write_file("App.tsx",
+                        "import { render } from 'solid-js'\n"
+                        "<div innerHTML=\"raw\" />\n")
+        result = self.run_cli(["--preset", "solid", self.root])
+        self.assert_exit(result, 1)
+        output = self.output(result)
+        self.assertIn("solid/no-innerhtml", output)
+
+    def test_preset_astro_finds_violations(self):
+        self.write_file("page.astro",
+                        "<div set:html={raw} />\n")
+        result = self.run_cli(["--preset", "astro", self.root])
+        self.assert_exit(result, 1)
+        output = self.output(result)
+        self.assertIn("astro/no-set-html-directive", output)
+
+    def test_preset_nuxt_finds_violations(self):
+        self.write_file("index.vue",
+                        "<div>{{ process.env.API_URL }}</div>\n")
+        result = self.run_cli(["--preset", "nuxt", self.root])
+        self.assert_exit(result, 1)
+        output = self.output(result)
+        self.assertIn("nuxt/no-env-in-runtime", output)
+
+    def test_config_with_equals_matcher(self):
+        self.write_config([{
+            "id": "test/equals",
+            "severity": "error",
+            "message": "Line equals export default",
+            "extensions": [".ts"],
+            "match": {"equals": "export default"},
+        }])
+        self.write_file("test.ts", "export default\nconst x = 1\n")
+        result = self.invoke()
+        self.assert_findings(result, 1, rule_id="test/equals")
+
+    def test_config_with_word_matcher(self):
+        self.write_config([{
+            "id": "test/word",
+            "severity": "error",
+            "message": "Contains word foo",
+            "extensions": [".ts"],
+            "match": {"word": "foo"},
+        }])
+        self.write_file("test.ts", "let foo = 1\nlet foobar = 2\n")
+        result = self.invoke()
+        self.assert_findings(result, 1, rule_id="test/word")
+
+    def test_config_with_file_rules(self):
+        self.write_config(rules=[], file_rules=[{
+            "id": "file/no-tabs",
+            "severity": "error",
+            "message": "No tabs",
+            "extensions": [".ts"],
+            "check": {"no_tabs": True},
+        }])
+        self.write_file("test.ts", "const x = 1;\n\tconst y = 2;\n")
+        result = self.invoke()
+        self.assert_findings(result, 1, rule_id="file/no-tabs")
+
+    def test_config_with_file_rules_max_lines(self):
+        self.write_config(rules=[], file_rules=[{
+            "id": "file/max-lines",
+            "severity": "error",
+            "message": "Too many lines",
+            "extensions": [".ts"],
+            "check": {"max_lines": 2},
+        }])
+        self.write_file("test.ts", "a\nb\nc\n")
+        result = self.invoke()
+        self.assert_findings(result, 1, rule_id="file/max-lines")
+
+    def test_config_file_rules_only_no_rules_key(self):
+        self.write_config(rules=[], file_rules=[{
+            "id": "file/final-newline",
+            "severity": "error",
+            "message": "Must end with newline",
+            "extensions": [".ts"],
+            "check": {"final_newline": True},
+        }])
+        self.write_file("test.ts", "no newline")
+        result = self.invoke()
+        self.assert_findings(result, 1, rule_id="file/final-newline")
 
 
 PHASES = {

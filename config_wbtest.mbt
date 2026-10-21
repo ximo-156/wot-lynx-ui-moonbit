@@ -58,7 +58,7 @@ test "validate_rules rejects invalid regex" {
 test "collect_extensions unions all rule extensions" {
   let json = "{\"rules\":[{\"id\":\"r1\",\"message\":\"m\",\"extensions\":[\".vue\",\".ts\"],\"match\":{\"contains\":\"x\"}},{\"id\":\"r2\",\"message\":\"m\",\"extensions\":[\".ts\",\".js\"],\"match\":{\"contains\":\"y\"}}]}"
   let rules = parse_config(json).unwrap().rules
-  let exts = collect_extensions(rules)
+  let exts = collect_extensions(rules, [])
   assert_eq(exts.length(), 3)
   assert_true(exts.contains(".vue"))
   assert_true(exts.contains(".ts"))
@@ -141,17 +141,74 @@ test "config: a malformed rule scope list is rejected" {
 
 ///|
 test "collect_extensions keeps the scan set empty for no rules" {
-  assert_eq(collect_extensions([]), [])
+  assert_eq(collect_extensions([], []), [])
 }
 
 ///|
 test "collect_extensions returns all files when any rule has no extension filter" {
   let json = "{\"rules\":[{\"id\":\"r1\",\"message\":\"m\",\"extensions\":[\".ts\"],\"match\":{\"contains\":\"x\"}},{\"id\":\"r2\",\"message\":\"m\",\"match\":{\"contains\":\"y\"}}]}"
-  assert_eq(collect_extensions(parse_config(json).unwrap().rules), [])
+  assert_eq(collect_extensions(parse_config(json).unwrap().rules, []), [])
 }
 
 ///|
 test "collect_extensions deduplicates the union" {
   let json = "{\"rules\":[{\"id\":\"r1\",\"message\":\"m\",\"extensions\":[\".ts\",\".ts\"],\"match\":{\"contains\":\"x\"}},{\"id\":\"r2\",\"message\":\"m\",\"extensions\":[\".ts\"],\"match\":{\"contains\":\"y\"}}]}"
-  assert_eq(collect_extensions(parse_config(json).unwrap().rules), [".ts"])
+  assert_eq(collect_extensions(parse_config(json).unwrap().rules, []), [".ts"])
+}
+
+///|
+test "config parses equals matcher" {
+  let json = "{\"rules\":[{\"id\":\"r1\",\"message\":\"m\",\"match\":{\"equals\":\"export default\"}}]}"
+  let rules = parse_config(json).unwrap().rules
+  assert_eq(rules[0].match_, Equals("export default"))
+}
+
+///|
+test "config parses word matcher" {
+  let json = "{\"rules\":[{\"id\":\"r1\",\"message\":\"m\",\"match\":{\"word\":\"foo\"}}]}"
+  let rules = parse_config(json).unwrap().rules
+  assert_eq(rules[0].match_, Word("foo"))
+}
+
+///|
+test "config parses file_rules with max_lines" {
+  let json = "{\"rules\":[],\"file_rules\":[{\"id\":\"file/max-lines\",\"message\":\"too long\",\"extensions\":[\".ts\"],\"check\":{\"max_lines\":100}}]}"
+  let config = parse_config(json).unwrap()
+  assert_eq(config.file_rules.length(), 1)
+  assert_eq(config.file_rules[0].id, "file/max-lines")
+}
+
+///|
+test "config parses file_rules with no_trailing_whitespace" {
+  let json = "{\"rules\":[],\"file_rules\":[{\"id\":\"file/tws\",\"message\":\"tws\",\"extensions\":[],\"check\":{\"no_trailing_whitespace\":true}}]}"
+  let config = parse_config(json).unwrap()
+  assert_eq(config.file_rules.length(), 1)
+  assert_eq(config.file_rules[0].check, NoTrailingWhitespace)
+}
+
+///|
+test "config parses file_rules with file_naming" {
+  let json = "{\"rules\":[],\"file_rules\":[{\"id\":\"file/naming\",\"message\":\"naming\",\"extensions\":[\".ts\"],\"check\":{\"file_naming\":\"kebab-case\"}}]}"
+  let config = parse_config(json).unwrap()
+  assert_eq(config.file_rules.length(), 1)
+  assert_eq(config.file_rules[0].check, FileNaming(KebabCase))
+}
+
+///|
+test "config rejects invalid file_naming style" {
+  let json = "{\"rules\":[],\"file_rules\":[{\"id\":\"file/naming\",\"message\":\"naming\",\"extensions\":[\".ts\"],\"check\":{\"file_naming\":\"invalid\"}}]}"
+  assert_true(parse_config(json) is Err(_))
+}
+
+///|
+test "config rejects file_rule without check" {
+  let json = "{\"rules\":[],\"file_rules\":[{\"id\":\"file/x\",\"message\":\"m\",\"extensions\":[\".ts\"]}]}"
+  assert_true(parse_config(json) is Err(_))
+}
+
+///|
+test "config with no file_rules yields empty array" {
+  let json = "{\"rules\":[{\"id\":\"r1\",\"message\":\"m\",\"match\":{\"contains\":\"x\"}}]}"
+  let config = parse_config(json).unwrap()
+  assert_eq(config.file_rules.length(), 0)
 }

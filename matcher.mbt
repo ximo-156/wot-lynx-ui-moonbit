@@ -14,7 +14,55 @@ pub fn MatchKind::matches(self : MatchKind, line : String) -> Bool {
     HasPrefix(s) => line.has_prefix(s)
     HasSuffix(s) => line.has_suffix(s)
     Regex(pattern) => regex_matches(pattern, line)
+    Equals(s) => line.trim().to_owned() == s
+    Word(w) => word_matches(w, line)
   }
+}
+
+///|
+/// Test whether `line` contains `word` as a whole word — bounded by
+/// non-alphanumeric characters (or string boundaries) on both sides.
+fn word_matches(word : String, line : String) -> Bool {
+  if word == "" {
+    return false
+  }
+  let line_chars = line.to_array()
+  let word_chars = word.to_array()
+  let wlen = word_chars.length()
+  let llen = line_chars.length()
+  if wlen > llen {
+    return false
+  }
+  for start in 0..<=(llen - wlen) {
+    // Check if word matches at this position
+    let mut matches = true
+    for i in 0..<wlen {
+      if line_chars[start + i] != word_chars[i] {
+        matches = false
+        break
+      }
+    }
+    if matches {
+      // Check left boundary
+      let left_ok = start == 0 || !is_word_char(line_chars[start - 1])
+      // Check right boundary
+      let right_ok = start + wlen == llen ||
+        !is_word_char(line_chars[start + wlen])
+      if left_ok && right_ok {
+        return true
+      }
+    }
+  }
+  false
+}
+
+///|
+/// Whether a character is a word character (alphanumeric or underscore).
+fn is_word_char(c : Char) -> Bool {
+  (c >= 'a' && c <= 'z') ||
+  (c >= 'A' && c <= 'Z') ||
+  (c >= '0' && c <= '9') ||
+  c == '_'
 }
 
 ///|

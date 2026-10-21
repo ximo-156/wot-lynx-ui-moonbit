@@ -100,6 +100,7 @@ test "lint_files: missing file is a failure, not a successful read" {
     ".",
     ["moonlint-missing-regression-file.mbt"],
     rules,
+    [],
     Scope::empty(),
   )
   assert_eq(result.files_selected, 1)
@@ -111,7 +112,7 @@ test "lint_files: missing file is a failure, not a successful read" {
 ///|
 test "lint_files: empty file list yields empty result" {
   let rules : Array[Rule] = []
-  let result = lint_files(".", [], rules, Scope::empty())
+  let result = lint_files(".", [], rules, [], Scope::empty())
   assert_eq(result.files_scanned, 0)
   assert_eq(result.findings.length(), 0)
 }

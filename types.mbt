@@ -63,6 +63,10 @@ pub enum MatchKind {
   HasSuffix(String)
   /// Line matches the regular expression.
   Regex(String)
+  /// Trimmed line equals the string exactly.
+  Equals(String)
+  /// Line contains the string as a whole word (bounded by non-word chars).
+  Word(String)
 } derive(Debug, Eq)
 
 ///|
@@ -140,8 +144,66 @@ pub fn ScanInfo::new(
 pub struct LintConfig {
   /// The configured rules, in declaration order.
   pub rules : Array[Rule]
+  /// File-level rules evaluated once per file.
+  pub file_rules : Array[FileRule]
   /// The global scope applied to every scan.
   pub scope : Scope
+} derive(Debug)
+
+///|
+/// Naming convention for file-level naming checks.
+pub enum NamingStyle {
+  CamelCase
+  PascalCase
+  SnakeCase
+  KebabCase
+} derive(Debug, Eq)
+
+///|
+/// Parse a naming style from its string tag.
+pub fn NamingStyle::parse(s : String) -> NamingStyle? {
+  match s {
+    "camelCase" => Some(CamelCase)
+    "PascalCase" => Some(PascalCase)
+    "snake_case" => Some(SnakeCase)
+    "kebab-case" => Some(KebabCase)
+    _ => None
+  }
+}
+
+///|
+/// A file-level check evaluated once per file, not per line.
+pub enum FileCheck {
+  /// File must not exceed N lines.
+  MaxLines(Int32)
+  /// No line may exceed N characters.
+  MaxLineLength(Int32)
+  /// No trailing whitespace on any line.
+  NoTrailingWhitespace
+  /// No tab characters anywhere in the file.
+  NoTabs
+  /// File must end with a newline.
+  FinalNewline
+  /// No duplicate lines in the file.
+  NoDuplicateLines
+  /// File name (without extension) must follow a naming convention.
+  FileNaming(NamingStyle)
+} derive(Debug, Eq)
+
+///|
+/// A file-level lint rule.
+pub struct FileRule {
+  /// Stable identifier, e.g. `file/max-lines`.
+  id : String
+  severity : Severity
+  /// Human-readable explanation shown when the rule fires.
+  message : String
+  /// File extensions this rule applies to. Empty means "all scanned files".
+  extensions : Array[String]
+  /// The file-level check to perform.
+  check : FileCheck
+  /// Paths this rule applies to. An empty scope means "every file".
+  scope : Scope
 } derive(Debug)
 
 ///|

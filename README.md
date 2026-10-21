@@ -96,6 +96,10 @@ usage error (exit code 2).
 | `angular` | `.ts` | 9 | Angular: no-input-rename, no-output-native, no-forward-ref, relative-url-prefix, ... |
 | `svelte` | `.svelte` | 8 | Svelte: no-at-html, require-each-key, a11y-missing-attribute, no-goto-without-base, ... |
 | `next` | `.jsx` `.tsx` `.js` `.ts` | 7 | Next.js: no-img-element, no-head-element, no-html-link-for-pages, google-font-display, ... |
+| `solid` | `.jsx` `.tsx` | 6 | SolidJS: no-innerhtml, prefer-for, no-react-imports, event-directives, ... |
+| `astro` | `.astro` | 5 | Astro: no-set-html-directive, prefer-class-list, no-unused-define-vars, ... |
+| `nuxt` | `.vue` `.js` `.ts` | 5 | Nuxt: no-env-in-runtime, prefer-use-fetch, no-window-in-ssr, ... |
+| `file` | `.js` `.jsx` `.ts` `.tsx` `.mjs` `.cjs` `.vue` `.svelte` | 6 file rules | File-level: max-lines, max-line-length, no-trailing-whitespace, no-tabs, final-newline, no-duplicate-lines |
 
 The same rule sets are also available as standalone JSON files under
 `presets/` for users who prefer to copy and customize them:
@@ -107,6 +111,66 @@ moon run cmd/main -- --config presets/react.json /path/to/project
 > **Note:** Preset rules are line-oriented — they match one source line at a
 > time, after comments have been blanked out. Rules that need an AST (unused
 > variables, hook dependencies, prop types) are intentionally absent.
+
+## Matcher Types
+
+A matcher object has exactly one of:
+
+- `{ "contains": "substring" }` — line contains the substring
+- `{ "prefix": "text" }` — line starts with the text
+- `{ "suffix": "text" }` — line ends with the text
+- `{ "regex": "pattern" }` — line matches the regex
+- `{ "equals": "text" }` — trimmed line equals the text exactly
+- `{ "word": "text" }` — line contains the text as a whole word
+
+## File-Level Rules
+
+File-level rules check whole-file properties (size, whitespace, naming,
+duplicates) rather than individual lines. They are declared in a separate
+`file_rules` array in the config:
+
+```json
+{
+  "rules": [],
+  "file_rules": [
+    {
+      "id": "file/max-lines",
+      "severity": "warning",
+      "message": "File exceeds 500 lines",
+      "extensions": [".ts", ".tsx"],
+      "check": { "max_lines": 500 }
+    },
+    {
+      "id": "file/no-trailing-whitespace",
+      "severity": "warning",
+      "message": "Trailing whitespace found",
+      "extensions": [],
+      "check": { "no_trailing_whitespace": true }
+    },
+    {
+      "id": "file/naming",
+      "severity": "warning",
+      "message": "File name must be kebab-case",
+      "extensions": [".ts"],
+      "check": { "file_naming": "kebab-case" }
+    }
+  ]
+}
+```
+
+### File check types
+
+| Check | JSON | Description |
+|-------|------|-------------|
+| `max_lines` | `{ "max_lines": 500 }` | File must not exceed N lines |
+| `max_line_length` | `{ "max_line_length": 120 }` | No line may exceed N characters |
+| `no_trailing_whitespace` | `{ "no_trailing_whitespace": true }` | No trailing whitespace on any line |
+| `no_tabs` | `{ "no_tabs": true }` | No tab characters |
+| `final_newline` | `{ "final_newline": true }` | File must end with a newline |
+| `no_duplicate_lines` | `{ "no_duplicate_lines": true }` | No duplicate lines |
+| `file_naming` | `{ "file_naming": "kebab-case" }` | File name must follow a convention (camelCase, PascalCase, snake_case, kebab-case) |
+
+The `rules` array is optional when `file_rules` is present.
 
 ## Scan Modes
 

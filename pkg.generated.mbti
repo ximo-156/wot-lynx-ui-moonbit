@@ -9,7 +9,7 @@ import {
 // Values
 pub fn canonical_root(String) -> String raise NativeError
 
-pub fn collect_extensions(Array[Rule]) -> Array[String]
+pub fn collect_extensions(Array[Rule], Array[FileRule]) -> Array[String]
 
 pub fn error_message(Error) -> String
 
@@ -25,13 +25,15 @@ pub fn git_staged_files(String) -> Array[String] raise NativeError
 
 pub fn glob_pattern_error(String) -> String?
 
-pub fn lint_files(String, Array[String], Array[Rule], Scope) -> LintResult raise
+pub fn lint_file(String, String, Array[(Int32, String)], Array[FileRule]) -> Array[Finding]
+
+pub fn lint_files(String, Array[String], Array[Rule], Array[FileRule], Scope) -> LintResult raise
 
 pub fn lint_lines(String, Array[(Int32, String)], Array[Rule]) -> Array[Finding]
 
-pub fn lint_selected(String, ScanMode, Array[String], Array[Rule], Scope) -> LintResult raise
+pub fn lint_selected(String, ScanMode, Array[String], Array[Rule], Array[FileRule], Scope) -> LintResult raise
 
-pub fn lint_tree(String, Array[Rule], Array[String], Scope) -> Result[LintResult, Error]
+pub fn lint_tree(String, Array[Rule], Array[FileRule], Array[String], Scope) -> Result[LintResult, Error]
 
 pub fn merge_presets(Array[String]) -> Result[LintConfig, ConfigError]
 
@@ -93,6 +95,25 @@ pub struct Diagnostic {
   message : String
 } derive(@debug.Debug)
 
+pub enum FileCheck {
+  MaxLines(Int32)
+  MaxLineLength(Int32)
+  NoTrailingWhitespace
+  NoTabs
+  FinalNewline
+  NoDuplicateLines
+  FileNaming(NamingStyle)
+} derive(Eq, @debug.Debug)
+
+pub struct FileRule {
+  id : String
+  severity : Severity
+  message : String
+  extensions : Array[String]
+  check : FileCheck
+  scope : Scope
+} derive(@debug.Debug)
+
 pub struct Finding {
   rule_id : String
   severity : Severity
@@ -111,6 +132,7 @@ pub fn GlobPattern::new(String) -> Self
 
 pub struct LintConfig {
   rules : Array[Rule]
+  file_rules : Array[FileRule]
   scope : Scope
 } derive(@debug.Debug)
 
@@ -135,14 +157,25 @@ pub enum MatchKind {
   HasPrefix(String)
   HasSuffix(String)
   Regex(String)
+  Equals(String)
+  Word(String)
 } derive(Eq, @debug.Debug)
 pub fn MatchKind::matches(Self, String) -> Bool
 pub fn MatchKind::validate(Self) -> String?
+
+pub enum NamingStyle {
+  CamelCase
+  PascalCase
+  SnakeCase
+  KebabCase
+} derive(Eq, @debug.Debug)
+pub fn NamingStyle::parse(String) -> Self?
 
 pub struct Preset {
   name : String
   description : String
   rules : Array[Rule]
+  file_rules : Array[FileRule]
 }
 
 pub struct Rule {
