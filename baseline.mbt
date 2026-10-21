@@ -81,7 +81,9 @@ pub fn Baseline::partition(
 /// Strict loader used by the CLI. A corrupt or misspecified baseline is an
 /// operational error, not an empty exemption list.
 pub fn Baseline::parse(src : String) -> Baseline raise {
-  let json = @json.parse(src) catch { _ => raise Failure("baseline is not valid JSON") }
+  let json = @json.parse(src) catch {
+    _ => raise Failure("baseline is not valid JSON")
+  }
   let values = match json {
     Array(values) => values
     _ => raise Failure("baseline must be a JSON array of finding hashes")
@@ -90,8 +92,10 @@ pub fn Baseline::parse(src : String) -> Baseline raise {
   for value in values {
     match value {
       String(hash) => {
-        if hash.length() != 16 || !hash.iter().all(c =>
-          (c >= '0' && c <= '9') || (c >= 'a' && c <= 'f')) {
+        if hash.length() != 16 ||
+          !hash
+          .iter()
+          .all(c => (c >= '0' && c <= '9') || (c >= 'a' && c <= 'f')) {
           raise Failure("baseline hashes must be 16 lowercase hex characters")
         }
         hashes.add(hash)
@@ -99,13 +103,15 @@ pub fn Baseline::parse(src : String) -> Baseline raise {
       _ => raise Failure("baseline entries must be hash strings")
     }
   }
-  { hashes }
+  { hashes, }
 }
 
 ///|
 /// Render a stable, deduplicated legacy baseline from all raw findings.
 pub fn Baseline::render(findings : Array[Finding]) -> String {
-  let unique : Set[String] = Set::from_iter(findings.iter().map(f => finding_hash(f)))
+  let unique : Set[String] = Set::from_iter(
+    findings.iter().map(f => finding_hash(f)),
+  )
   let hashes = unique.iter().to_array()
   hashes.sort()
   let items = hashes.map(h => "  \"\{h}\"").join(",\n")

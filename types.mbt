@@ -80,6 +80,8 @@ pub struct Rule {
   match_ : MatchKind
   /// Optional negative guard: if this also matches, the finding is skipped.
   unless : MatchKind?
+  /// Paths this rule applies to. An empty scope means "every file".
+  scope : Scope
 } derive(Debug)
 
 ///|
@@ -99,21 +101,68 @@ pub struct Finding {
 ///|
 /// A scan failure. These are operational errors, not lint findings.
 pub struct Diagnostic {
-  file : String
-  message : String
+  pub file : String
+  pub message : String
+} derive(Debug)
+
+///|
+/// A file that entered the scan but was not read.
+pub struct SkippedFile {
+  /// Path relative to the scan root.
+  pub file : String
+  /// Why the file was not read, e.g. `no-applicable-rule`.
+  pub reason : String
+} derive(Debug)
+
+///|
+/// Scan metadata attached to machine-readable reports.
+pub struct ScanInfo {
+  /// Scan mode tag, e.g. `tree`, `staged`, `glob`.
+  pub mode : String
+  /// Absolute scan root.
+  pub root : String
+  /// Effective extension filter; an empty list means "all files".
+  pub extensions : Array[String]
+} derive(Debug)
+
+///|
+/// Build the scan metadata carried by machine-readable reports.
+pub fn ScanInfo::new(
+  mode : String,
+  root : String,
+  extensions : Array[String],
+) -> ScanInfo {
+  { mode, root, extensions, }
+}
+
+///|
+/// A parsed configuration: the rule set plus the global file scope.
+pub struct LintConfig {
+  /// The configured rules, in declaration order.
+  pub rules : Array[Rule]
+  /// The global scope applied to every scan.
+  pub scope : Scope
 } derive(Debug)
 
 ///|
 /// Aggregate result. Selection is counted after path normalization, extension
 /// filtering and de-duplication; each selected file is scanned, skipped or failed.
 pub struct LintResult {
-  findings : Array[Finding]
-  files_selected : Int32
-  files_scanned : Int32
-  files_skipped : Int32
-  files_failed : Int32
-  baseline_hits : Int32
-  diagnostics : Array[Diagnostic]
+  pub findings : Array[Finding]
+  /// Files that passed path, extension and scope filters.
+  pub files_selected : Int32
+  /// Files read successfully and linted.
+  pub files_scanned : Int32
+  /// Selected files that were not read, with a reason for each.
+  pub files_skipped : Int32
+  /// Files that could not be read, with a diagnostic for each.
+  pub files_failed : Int32
+  /// Candidate files removed by the global scope before scanning.
+  pub files_out_of_scope : Int32
+  /// Findings suppressed by the baseline.
+  pub baseline_hits : Int32
+  pub diagnostics : Array[Diagnostic]
+  pub skipped_files : Array[SkippedFile]
 } derive(Debug)
 
 ///|
@@ -129,8 +178,10 @@ pub fn LintResult::new(
     files_scanned,
     files_skipped: 0,
     files_failed: 0,
+    files_out_of_scope: 0,
     baseline_hits,
     diagnostics: [],
+    skipped_files: [],
   }
 }
 
@@ -147,8 +198,10 @@ pub fn LintResult::with_findings(
     files_scanned: self.files_scanned,
     files_skipped: self.files_skipped,
     files_failed: self.files_failed,
+    files_out_of_scope: self.files_out_of_scope,
     baseline_hits,
     diagnostics: self.diagnostics,
+    skipped_files: self.skipped_files,
   }
 }
 

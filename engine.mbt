@@ -34,7 +34,11 @@ pub fn lint_lines(
 
 ///|
 fn rule_applies(rule : Rule, rel : String) -> Bool {
-  has_wanted_ext(rel, Set::from_iter(rule.extensions.iter().map(e => e.to_lower())))
+  has_wanted_ext(
+    rel,
+    Set::from_iter(rule.extensions.iter().map(e => e.to_lower())),
+  ) &&
+  rule.scope.allows(rel)
 }
 
 ///|
@@ -42,11 +46,12 @@ pub fn lint_tree(
   root : String,
   rules : Array[Rule],
   exts : Array[String],
+  scope : Scope,
 ) -> Result[LintResult, Error] {
   try {
     let absolute = canonical_root(root)
     let files = select_files(Tree, absolute, exts)
-    Ok(lint_selected(absolute, Tree, files, rules))
+    Ok(lint_selected(absolute, Tree, files, rules, scope))
   } catch {
     error => Err(error)
   }
@@ -59,31 +64,40 @@ pub fn lint_files(
   root : String,
   files : Array[String],
   rules : Array[Rule],
+  scope : Scope,
 ) -> LintResult raise {
-  lint_selected(canonical_root(root), Tree, files, rules)
+  lint_selected(canonical_root(root), Tree, files, rules, scope)
 }
 
 ///|
 /// `Changed` uses committed HEAD blobs; `Staged` uses actual index blobs.
 /// Other modes read regular working-tree files without following links.
+///
+/// The global `scope` is applied to the candidate list first: candidates it
+/// rejects are counted in `files_out_of_scope` and never read. Rule-level
+/// scope then decides which rules see each selected file.
 pub fn lint_selected(
   root : String,
   mode : ScanMode,
   files : Array[String],
   rules : Array[Rule],
+  scope : Scope,
 ) -> LintResult raise {
-  let selected : Array[String] = []
+  let candidates : Array[String] = []
   let seen : Set[String] = Set::from_iter([].iter())
   for file in files {
     let rel = normalize_relative(file)
     if !seen.contains(rel) {
-      selected.push(rel)
+      candidates.push(rel)
       seen.add(rel)
     }
   }
-  selected.sort()
+  candidates.sort()
+  let selected = candidates.filter(rel => scope.allows(rel))
+  let out_of_scope = candidates.length() - selected.length()
   let findings : Array[Finding] = []
   let diagnostics : Array[Diagnostic] = []
+  let skipped_files : Array[SkippedFile] = []
   let mut scanned = 0
   let mut skipped = 0
   let mut failed = 0
@@ -91,6 +105,7 @@ pub fn lint_selected(
     // No applicable rule is intentionally skipped; it is not a successful read.
     if !rules.any(rule => rule_applies(rule, rel)) {
       skipped += 1
+      skipped_files.push({ file: rel, reason: "no-applicable-rule", })
       continue
     }
     try {
@@ -101,6 +116,7 @@ pub fn lint_selected(
       }
       if kind == 3 {
         skipped += 1
+        skipped_files.push({ file: rel, reason: "not-a-regular-file", })
         continue
       }
       if kind != 1 {
@@ -122,7 +138,7 @@ pub fn lint_selected(
     } catch {
       error => {
         failed += 1
-        diagnostics.push({ file: rel, message: error_message(error) })
+        diagnostics.push({ file: rel, message: error_message(error), })
       }
     }
   }
@@ -132,7 +148,11 @@ pub fn lint_selected(
       file_order
     } else {
       let line_order = a.line.compare(b.line)
-      if line_order != 0 { line_order } else { a.rule_id.compare(b.rule_id) }
+      if line_order != 0 {
+        line_order
+      } else {
+        a.rule_id.compare(b.rule_id)
+      }
     }
   })
   {
@@ -141,8 +161,10 @@ pub fn lint_selected(
     files_scanned: scanned,
     files_skipped: skipped,
     files_failed: failed,
+    files_out_of_scope: out_of_scope,
     baseline_hits: 0,
     diagnostics,
+    skipped_files,
   }
 }
 

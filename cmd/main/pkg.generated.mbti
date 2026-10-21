@@ -1,11 +1,17 @@
 // Generated using `moon info`, DON'T EDIT IT
 package "ximo-156/moonlint/cmd/main"
 
+import {
+  "moonbitlang/core/debug",
+}
+
 // Values
 
 // Errors
 
 // Types and methods
+type Format derive(Eq, @debug.Debug)
+
 type Options
 
 // Type aliases

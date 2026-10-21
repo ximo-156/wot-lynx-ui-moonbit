@@ -23,21 +23,27 @@ pub fn git_source_kind(String, String, Bool) -> Int32 raise NativeError
 
 pub fn git_staged_files(String) -> Array[String] raise NativeError
 
-pub fn lint_files(String, Array[String], Array[Rule]) -> LintResult raise
+pub fn glob_pattern_error(String) -> String?
+
+pub fn lint_files(String, Array[String], Array[Rule], Scope) -> LintResult raise
 
 pub fn lint_lines(String, Array[(Int32, String)], Array[Rule]) -> Array[Finding]
 
-pub fn lint_selected(String, ScanMode, Array[String], Array[Rule]) -> LintResult raise
+pub fn lint_selected(String, ScanMode, Array[String], Array[Rule], Scope) -> LintResult raise
 
-pub fn lint_tree(String, Array[Rule], Array[String]) -> Result[LintResult, Error]
+pub fn lint_tree(String, Array[Rule], Array[String], Scope) -> Result[LintResult, Error]
 
-pub fn parse_config(String) -> Result[Array[Rule], ConfigError]
+pub fn parse_config(String) -> Result[LintConfig, ConfigError]
 
 pub fn read_lines(String) -> Array[(Int32, String)] raise
 
 pub fn read_stdin_text() -> String raise NativeError
 
 pub fn render_detail(Array[Finding]) -> String
+
+pub fn render_github(LintResult) -> String
+
+pub fn render_json(LintResult, ScanInfo) -> String
 
 pub fn render_summary(LintResult) -> String
 
@@ -88,9 +94,17 @@ pub struct Finding {
   snippet : String
 } derive(@debug.Debug)
 
-type GlobPattern
+pub struct GlobPattern {
+  segments : Array[String]
+} derive(Eq, @debug.Debug)
 pub fn GlobPattern::matches(Self, String) -> Bool
+pub fn GlobPattern::matches_path(Self, String) -> Bool
 pub fn GlobPattern::new(String) -> Self
+
+pub struct LintConfig {
+  rules : Array[Rule]
+  scope : Scope
+} derive(@debug.Debug)
 
 pub struct LintResult {
   findings : Array[Finding]
@@ -98,8 +112,10 @@ pub struct LintResult {
   files_scanned : Int32
   files_skipped : Int32
   files_failed : Int32
+  files_out_of_scope : Int32
   baseline_hits : Int32
   diagnostics : Array[Diagnostic]
+  skipped_files : Array[SkippedFile]
 } derive(@debug.Debug)
 pub fn LintResult::count_by(Self, Severity) -> Int32
 pub fn LintResult::has_errors(Self) -> Bool
@@ -122,7 +138,15 @@ pub struct Rule {
   extensions : Array[String]
   match_ : MatchKind
   unless : MatchKind?
+  scope : Scope
 } derive(@debug.Debug)
+
+pub struct ScanInfo {
+  mode : String
+  root : String
+  extensions : Array[String]
+} derive(@debug.Debug)
+pub fn ScanInfo::new(String, String, Array[String]) -> Self
 
 pub enum ScanMode {
   Tree
@@ -143,6 +167,15 @@ pub fn ScanMode::stdin0() -> Self
 pub fn ScanMode::tag(Self) -> String
 pub fn ScanMode::tree() -> Self
 
+pub struct Scope {
+  includes : Array[GlobPattern]
+  excludes : Array[GlobPattern]
+} derive(Eq, @debug.Debug)
+pub fn Scope::allows(Self, String) -> Bool
+pub fn Scope::empty() -> Self
+pub fn Scope::is_empty(Self) -> Bool
+pub fn Scope::new(Array[String], Array[String]) -> Result[Self, String]
+
 pub enum Severity {
   Error
   Warning
@@ -151,6 +184,11 @@ pub fn Severity::error() -> Self
 pub fn Severity::parse(String) -> Self
 pub fn Severity::tag(Self) -> String
 pub fn Severity::warning() -> Self
+
+pub struct SkippedFile {
+  file : String
+  reason : String
+} derive(@debug.Debug)
 
 // Type aliases
 

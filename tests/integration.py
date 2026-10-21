@@ -1,10 +1,9 @@
 #!/usr/bin/env python3
 """Dependency-free moonlint CLI integration tests.
 
-Run: python3 tests/integration.py --binary /absolute/path/to/moonlint --phase repairs
+Run: python3 tests/integration.py --binary /absolute/path/to/moonlint --phase all
 The runner never builds moonlint. Fixtures, configs, baselines, and Git repositories
 are exclusively inside independently owned tempfile.TemporaryDirectory instances.
-Scope/output phase names are reserved until those features are implemented.
 """
 
 from __future__ import annotations
@@ -18,6 +17,7 @@ import subprocess
 import sys
 import tempfile
 import unittest
+import uuid
 
 
 BINARY: Path | None = None
@@ -25,21 +25,37 @@ RULE_ID = "test/forbidden"
 TOKEN = "FORBIDDEN"
 
 
-def rule(*, rule_id=RULE_ID, severity="error", extensions=None, token=TOKEN):
-    return {
+def rule(*, rule_id=RULE_ID, severity="error", extensions=None, token=TOKEN,
+         include=None, exclude=None):
+    payload = {
         "id": rule_id,
         "severity": severity,
         "message": "Forbidden fixture token",
         "extensions": [".ts"] if extensions is None else extensions,
         "match": {"contains": token},
     }
+    if include is not None:
+        payload["include"] = include
+    if exclude is not None:
+        payload["exclude"] = exclude
+    return payload
+
+
+def scoped_config(*, include=None, exclude=None, rules=None):
+    """A config carrying a global scope and the given rules."""
+    payload = {"rules": [rule()] if rules is None else rules}
+    if include is not None:
+        payload["include"] = include
+    if exclude is not None:
+        payload["exclude"] = exclude
+    return payload
 
 
 class FixtureCase(unittest.TestCase):
     """Own every filesystem mutation; isolate CLI and Git from the real checkout."""
 
     def setUp(self):
-        self.temp = tempfile.TemporaryDirectory(prefix="moonlint-integration-")
+        self.temp = tempfile.TemporaryDirectory(prefix=f"moonlint-{uuid.uuid4().hex[:8]}-")
         self.base = Path(self.temp.name).resolve()
         self._owned_base = self.base
         self.addCleanup(self.cleanup_temp)
@@ -69,7 +85,7 @@ class FixtureCase(unittest.TestCase):
         # Resolve and check the exact owned directory before tempfile deletes it.
         resolved = Path(self.temp.name).resolve()
         assert resolved == self._owned_base, (resolved, self._owned_base)
-        assert resolved.name.startswith("moonlint-integration-"), resolved
+        assert resolved.name.startswith("moonlint-"), resolved
         assert resolved.parent == Path(tempfile.gettempdir()).resolve(), resolved
         self.temp.cleanup()
 
@@ -128,8 +144,13 @@ class FixtureCase(unittest.TestCase):
 
     def assert_findings(self, result, count, *, rule_id=RULE_ID):
         self.assert_exit(result, 1 if count else 0)
+        # Count detail lines ("file:line: [severity] rule — message") rather than
+        # raw substring hits, because a temporary directory name can itself
+        # contain the rule id.
+        marker = f"] {rule_id} — "
+        reported = [line for line in self.output(result).splitlines() if marker in line]
         self.assertEqual(
-            self.output(result).count(rule_id), count,
+            len(reported), count,
             f"expected {count} detailed findings for {rule_id!r}\n{self.output(result)}",
         )
 
@@ -412,6 +433,55 @@ class RepairsTests(FixtureCase):
             self.assert_owned(self.root)
             self.root.chmod(0o700)
 
+    def test_unreadable_subdirectory_is_an_io_error_not_a_silent_empty_scan(self):
+        self.write_file("ok/good.ts")
+        locked = self.write_file("locked/bad.ts").parent
+        self.assert_owned(locked)
+        locked.chmod(0)
+        try:
+            if os.access(locked, os.R_OK | os.X_OK):
+                self.skipTest("current account can read permission-denied directories")
+            self.assert_exit(self.invoke(), 2)
+        finally:
+            self.assert_owned(locked)
+            locked.chmod(0o700)
+
+    def test_empty_glob_and_empty_stdin_scans_report_no_selection(self):
+        self.write_file("present.ts")
+        cases = [
+            (["--glob", "nomatch/**"], None),
+            (["--stdin"], b""),
+            (["--stdin"], b"\n\n"),
+            (["--stdin0"], b"\0"),
+        ]
+        for options, data in cases:
+            with self.subTest(mode=options, stdin=data):
+                result = self.invoke(*options, stdin=data)
+                # An empty selection is a clean result, but it is announced so a
+                # mistyped mode cannot look like a passing lint.
+                self.assert_exit(result, 0)
+                self.assertIn("no files selected", self.output(result))
+
+    def test_empty_glob_and_empty_stdin_in_json_report_zero_counters(self):
+        self.write_file("present.ts")
+        for options, data in ((["--glob", "nomatch/**"], None),
+                              (["--stdin"], b""), (["--stdin0"], b"\0")):
+            with self.subTest(mode=options):
+                result = self.invoke("--format", "json", *options, stdin=data)
+                self.assert_exit(result, 0)
+                scan = json.loads(self.output(result))["scan"]
+                self.assertEqual(scan["files_selected"], 0)
+                self.assertEqual(scan["files_scanned"], 0)
+                self.assertEqual(scan["files_skipped"], 0)
+                self.assertEqual(scan["files_failed"], 0)
+
+    def test_stdin_rejects_embedded_nul_in_line_mode(self):
+        self.write_file("bad.ts")
+        result = self.invoke("--stdin", stdin=b"bad.ts\0other.ts\n")
+        self.assert_exit(result, 2)
+        self.assertIn("stdin0", self.output(result))
+
+
     def test_stdin_absolute_external_path_is_rejected(self):
         outside = self.write_file("outside.ts", root=self.base)
         self.assert_exit(self.invoke("--stdin0", stdin=str(outside).encode("utf-8") + b"\0"), 2)
@@ -492,7 +562,544 @@ class RepairsTests(FixtureCase):
         self.assert_findings(self.invoke(), 0)
 
 
-PHASES = {"repairs": RepairsTests}
+class ScopeTests(FixtureCase):
+    """Global and rule-level include/exclude scope configuration."""
+
+    def test_scope_pattern_documents_every_supported_form(self):
+        self.write_config(include=["**"], exclude=["**/*.md", "docs", "src/generated"])
+        for name in ("src/bad.ts", "docs/bad.ts", "src/generated/bad.ts",
+                     "notes/bad.md", "deep/nested/bad.ts"):
+            self.write_file(name)
+        result = self.invoke()
+        self.assert_findings(result, 2)
+        output = self.output(result)
+        self.assertIn("src/bad.ts", output)
+        self.assertIn("deep/nested/bad.ts", output)
+        for excluded in ("docs/bad.ts", "src/generated/bad.ts", "notes/bad.md"):
+            self.assertNotIn(excluded, output)
+
+    def test_global_include_restricts_the_scanned_files(self):
+        self.write_config(include=["src/**"])
+        self.write_file("src/bad.ts")
+        self.write_file("lib/bad.ts")
+        result = self.invoke()
+        self.assert_findings(result, 1)
+        self.assertIn("src/bad.ts", self.output(result))
+        self.assertNotIn("lib/bad.ts", self.output(result))
+
+    def test_global_include_accepts_a_leading_dot_slash(self):
+        self.write_config(include=["./src/**"])
+        self.write_file("src/bad.ts")
+        self.write_file("lib/bad.ts")
+        result = self.invoke()
+        self.assert_findings(result, 1)
+        self.assertNotIn("lib/bad.ts", self.output(result))
+
+    def test_global_exclude_removes_a_whole_directory(self):
+        self.write_config(exclude=["vendor"])
+        self.write_file("vendor/pkg/bad.ts")
+        self.write_file("vendorless/bad.ts")
+        self.write_file("src/bad.ts")
+        result = self.invoke()
+        self.assert_findings(result, 2)
+        self.assertNotIn("vendor/pkg/bad.ts", self.output(result))
+        self.assertIn("vendorless/bad.ts", self.output(result))
+        self.assertIn("src/bad.ts", self.output(result))
+
+    def test_global_exclude_wins_over_include(self):
+        self.write_config(include=["src/**"], exclude=["src/legacy/**"])
+        self.write_file("src/bad.ts")
+        self.write_file("src/legacy/bad.ts")
+        result = self.invoke()
+        self.assert_findings(result, 1)
+        self.assertIn("src/bad.ts", self.output(result))
+        self.assertNotIn("src/legacy/bad.ts", self.output(result))
+
+    def test_rule_include_limits_a_rule_to_its_subtree(self):
+        self.write_config(rules=[
+            rule(rule_id="test/all"),
+            rule(rule_id="test/scoped", include=["src/**"]),
+        ])
+        self.write_file("src/bad.ts")
+        self.write_file("lib/bad.ts")
+        result = self.invoke()
+        # The unscoped rule fires twice, the scoped rule only inside src/.
+        self.assertEqual(self.output(result).count("test/all"), 2)
+        self.assertEqual(self.output(result).count("test/scoped"), 1)
+
+    def test_rule_exclude_exempts_a_subtree_from_a_rule(self):
+        self.write_config(rules=[
+            rule(rule_id="test/all"),
+            rule(rule_id="test/except-legacy", exclude=["src/legacy/**"]),
+        ])
+        self.write_file("src/bad.ts")
+        self.write_file("src/legacy/bad.ts")
+        result = self.invoke()
+        self.assertEqual(self.output(result).count("test/all"), 2)
+        self.assertEqual(self.output(result).count("test/except-legacy"), 1)
+
+    def test_scope_applies_to_every_scan_mode(self):
+        self.write_config(include=["src/**"])
+        self.write_file("src/bad.ts")
+        self.write_file("lib/bad.ts")
+        self.init_git()
+        self.git("add", "--", ".")
+        modes = [
+            ([], None), (["--glob", "**/*"], None),
+            (["--stdin"], b"src/bad.ts\nlib/bad.ts\n"),
+            (["--stdin0"], b"src/bad.ts\0lib/bad.ts\0"),
+            (["--staged"], None),
+        ]
+        for options, data in modes:
+            with self.subTest(mode=options):
+                result = self.invoke(*options, stdin=data)
+                self.assert_findings(result, 1)
+                self.assertNotIn("lib/bad.ts", self.output(result))
+
+    def test_scope_applies_to_changed_mode(self):
+        self.write_config(include=["src/**"])
+        self.init_git()
+        self.write_file("src/bad.ts")
+        self.write_file("lib/bad.ts")
+        # The base must differ, or Git records no change and the PR diff is empty.
+        self.write_file("src/bad.ts", "SAFE\n")
+        self.write_file("lib/bad.ts", "SAFE\n")
+        base = self.commit("base")
+        self.write_file("src/bad.ts", "FORBIDDEN\n")
+        self.write_file("lib/bad.ts", "FORBIDDEN\n")
+        self.commit("changed")
+        result = self.invoke("--changed", base)
+        self.assert_findings(result, 1)
+        self.assertNotIn("lib/bad.ts", self.output(result))
+
+    def test_scope_excluded_files_are_not_read(self):
+        self.write_config(include=["src/**"], rules=[rule(extensions=[])])
+        self.write_file("src/bad.ts")
+        self.write_file("lib/bad.ts")
+        result = self.invoke("--summary")
+        self.assert_exit(result, 1)
+        self.assertIn("files selected: 1", self.output(result))
+
+    def test_global_scope_counters_are_reported(self):
+        self.write_config(include=["src/**"])
+        self.write_file("src/bad.ts")
+        self.write_file("lib/bad.ts")
+        self.write_file("docs/bad.ts")
+        scan = json.loads(self.output(self.invoke("--format", "json")))["scan"]
+        self.assertEqual(scan["files_selected"], 1)
+        self.assertEqual(scan["files_out_of_scope"], 2)
+
+    def test_global_scope_keeps_a_cleaner_target_clean(self):
+        # A file excluded by scope must not turn a clean run red.
+        self.write_config(include=["src/**"])
+        self.write_file("src/good.ts", "SAFE\n")
+        self.write_file("legacy/bad.ts", "FORBIDDEN\n")
+        self.assert_exit(self.invoke(), 0)
+
+    def test_rule_scope_override_can_exclude_every_file_for_one_rule(self):
+        self.write_config([
+            rule(rule_id="test/all"),
+            rule(rule_id="test/never", exclude=["**"]),
+        ])
+        self.write_file("src/bad.ts")
+        output = self.output(self.invoke())
+        self.assertEqual(output.count("] test/all — "), 1)
+        self.assertNotIn("test/never", output)
+
+    def test_rule_scope_does_not_widen_the_global_scan_set(self):
+        # The rule include names src/**, but global include restricts to lib/**.
+        # Only lib files are scanned, so the src-only rule never runs.
+        self.write_config(include=["lib/**"],
+                          rules=[rule(rule_id="test/src-only", include=["src/**"])])
+        self.write_file("src/bad.ts")
+        self.write_file("lib/bad.ts")
+        result = self.invoke()
+        self.assert_exit(result, 0)
+        self.assertNotIn("src/bad.ts", self.output(result))
+
+    def test_rule_scope_excludes_a_suffix_pattern(self):
+        self.write_config([
+            rule(rule_id="test/all"),
+            rule(rule_id="test/no-tests", exclude=["**/*.test.ts"]),
+        ])
+        self.write_file("src/bad.ts")
+        self.write_file("src/bad.test.ts")
+        output = self.output(self.invoke())
+        self.assertEqual(output.count("] test/all — "), 2)
+        self.assertEqual(output.count("] test/no-tests — "), 1)
+
+    def test_rule_scope_without_a_match_counts_the_file_as_skipped(self):
+        self.write_config(rules=[rule(exclude=["**"])])
+        self.write_file("src/bad.ts")
+        payload = json.loads(self.output(self.invoke("--format", "json")))
+        scan = payload["scan"]
+        self.assertEqual(scan["files_selected"], 1)
+        self.assertEqual(scan["files_scanned"], 0)
+        self.assertEqual(scan["files_skipped"], 1)
+        self.assertEqual(scan["skipped_files"],
+                         [{"file": "src/bad.ts", "reason": "no-applicable-rule"}])
+
+    def test_invalid_scope_pattern_is_a_config_error(self):
+        for pattern in ("src/{a,b}", "src/[ab].ts", "/absolute/path", "src/../escape"):
+            with self.subTest(pattern=pattern):
+                self.write_config(include=[pattern])
+                self.write_file("bad.ts")
+                result = self.invoke()
+                self.assert_exit(result, 2)
+                self.assertTrue(self.output(result).strip(), "missing scope diagnostic")
+
+    def test_malformed_scope_list_is_a_config_error(self):
+        for payload in ({"include": "src/**"}, {"exclude": [1, 2]}):
+            with self.subTest(payload=payload):
+                self.write_config(**payload)
+                self.write_file("bad.ts")
+                self.assert_exit(self.invoke(), 2)
+
+    def test_invalid_rule_scope_pattern_is_a_config_error(self):
+        self.write_config(rules=[rule(include=["src/{a,b}"])])
+        self.write_file("bad.ts")
+        self.assert_exit(self.invoke(), 2)
+
+
+class OutputTests(FixtureCase):
+    """JSON reports, GitHub annotations and scan metadata."""
+
+    def json_report(self, result):
+        payload = json.loads(self.output(result))
+        self.assertEqual(payload["tool"], "moonlint")
+        self.assertEqual(payload["version"], 1)
+        return payload
+
+    def test_json_format_emits_a_machine_readable_report(self):
+        self.write_file("src/bad.ts", "FORBIDDEN\n")
+        result = self.invoke("--format", "json")
+        self.assert_exit(result, 1)
+        payload = self.json_report(result)
+        self.assertEqual(payload["scan"]["mode"], "tree")
+        self.assertEqual(len(payload["findings"]), 1)
+        finding = payload["findings"][0]
+        self.assertEqual(finding["rule_id"], RULE_ID)
+        self.assertEqual(finding["severity"], "error")
+        self.assertEqual(finding["file"], "src/bad.ts")
+        self.assertEqual(finding["line"], 1)
+        self.assertEqual(finding["column"], 1)
+        self.assertEqual(payload["counts"]["errors"], 1)
+
+    def test_json_report_carries_read_failure_and_skip_metadata(self):
+        self.write_config([rule(extensions=[])])
+        self.write_file("src/bad.ts", "FORBIDDEN\n")
+        self.write_file("src/notes.md", "FORBIDDEN\n")
+        result = self.invoke("--format", "json")
+        self.assert_exit(result, 1)
+        scan = self.json_report(result)["scan"]
+        self.assertEqual(scan["files_selected"], 2)
+        self.assertEqual(scan["files_scanned"], 2)
+        self.assertEqual(scan["files_skipped"], 0)
+        self.assertEqual(scan["files_failed"], 0)
+        self.assertEqual(scan["files_out_of_scope"], 0)
+        self.assertEqual(scan["skipped_files"], [])
+
+    def test_json_report_records_skipped_files_with_a_reason(self):
+        # A multi-rule config widens the scan set to the union of rule
+        # extensions, so the .md candidate is selected and then skipped because
+        # no rule claims .md. (A lone ".ts" rule narrows the scan to .ts files,
+        # which the extension-filter test above covers.)
+        self.write_config([
+            rule(extensions=[".ts"]),
+            rule(rule_id="test/md", extensions=[".ts", ".md"]),
+        ])
+        self.write_file("src/bad.ts", "FORBIDDEN\n")
+        self.write_file("src/notes.md", "FORBIDDEN\n")
+        result = self.invoke("--format", "json")
+        self.assert_exit(result, 1)
+        scan = self.json_report(result)["scan"]
+        self.assertEqual(scan["files_selected"], 2)
+        self.assertEqual(scan["files_scanned"], 2)
+        self.assertEqual(scan["files_skipped"], 0)
+        self.assertEqual(scan["skipped_files"], [])
+
+    def test_json_report_records_failed_reads_as_diagnostics(self):
+        self.write_file("bad.ts")
+        result = self.invoke("--format", "json", "--stdin", stdin=b"missing.ts\n")
+        self.assert_exit(result, 2)
+        payload = self.json_report(result)
+        self.assertEqual(payload["scan"]["files_failed"], 1)
+        self.assertEqual(len(payload["diagnostics"]), 1)
+        self.assertEqual(payload["diagnostics"][0]["file"], "missing.ts")
+        self.assertTrue(payload["diagnostics"][0]["message"])
+
+    def test_json_report_counts_scope_excluded_files(self):
+        self.write_config(include=["src/**"])
+        self.write_file("src/bad.ts")
+        self.write_file("lib/bad.ts")
+        result = self.invoke("--format", "json")
+        self.assert_exit(result, 1)
+        scan = self.json_report(result)["scan"]
+        self.assertEqual(scan["files_selected"], 1)
+        self.assertEqual(scan["files_out_of_scope"], 1)
+
+    def test_github_format_emits_workflow_command_annotations(self):
+        self.write_file("src/bad.ts", "FORBIDDEN\n")
+        result = self.invoke("--format", "github")
+        self.assert_exit(result, 1)
+        output = self.output(result)
+        self.assertIn("::error file=src/bad.ts,line=1,col=1,title=" + RULE_ID + "::", output)
+        self.assertIn("::notice title=moonlint::", output)
+
+    def test_github_format_escapes_property_and_message_values(self):
+        self.write_file("a,b.ts", "FORBIDDEN\n")
+        result = self.invoke("--format", "github")
+        self.assert_exit(result, 1)
+        self.assertIn("file=a%2Cb.ts", self.output(result))
+
+    def test_github_format_annotates_scan_failures(self):
+        result = self.invoke("--format", "github", "--stdin", stdin=b"missing.ts\n")
+        self.assert_exit(result, 2)
+        self.assertIn("::error file=missing.ts,title=moonlint/scan-failed::", self.output(result))
+
+    def test_report_option_writes_the_json_report_to_a_file(self):
+        self.write_file("src/bad.ts", "FORBIDDEN\n")
+        report = self.base / "report.json"
+        result = self.invoke("--report", report)
+        self.assert_exit(result, 1)
+        self.assertTrue(report.is_file(), "report file was not written")
+        payload = json.loads(report.read_text(encoding="utf-8"))
+        self.assertEqual(len(payload["findings"]), 1)
+        self.assertEqual(payload["findings"][0]["file"], "src/bad.ts")
+        # The human-readable report still goes to stdout.
+        self.assertIn(RULE_ID, self.output(result))
+
+    def test_report_option_is_written_next_to_the_json_format(self):
+        self.write_file("src/bad.ts", "FORBIDDEN\n")
+        report = self.base / "report.json"
+        result = self.invoke("--format", "json", "--report", report)
+        self.assert_exit(result, 1)
+        self.assertEqual(json.loads(self.output(result))["tool"], "moonlint")
+        self.assertEqual(json.loads(report.read_text(encoding="utf-8"))["tool"], "moonlint")
+
+    def test_report_option_failure_is_exit_two(self):
+        self.write_file("bad.ts")
+        occupied = self.write_file("occupied", "not a directory", root=self.base)
+        result = self.invoke("--report", occupied / "report.json")
+        self.assert_exit(result, 2)
+
+    def test_errors_only_filters_json_findings_and_counts(self):
+        self.write_config([
+            rule(), rule(rule_id="test/warning", severity="warning", token="WARNING_TOKEN"),
+        ])
+        self.write_file("bad.ts", "FORBIDDEN\nWARNING_TOKEN\n")
+        result = self.invoke("--format", "json", "--errors-only")
+        self.assert_exit(result, 1)
+        payload = self.json_report(result)
+        self.assertEqual(len(payload["findings"]), 1)
+        self.assertEqual(payload["findings"][0]["severity"], "error")
+        self.assertEqual(payload["counts"]["findings"], 1)
+        self.assertEqual(payload["counts"]["warnings"], 0)
+
+    def test_unknown_format_is_a_usage_error(self):
+        self.write_file("bad.ts")
+        for value in ("yaml", "TEXT", ""):
+            with self.subTest(format=value):
+                result = self.invoke("--format", value)
+                self.assert_exit(result, 2)
+                self.assertTrue(self.output(result).strip(), "missing usage diagnostic")
+
+    def test_missing_format_value_is_a_usage_error(self):
+        result = self.run_cli(["--config", self.config, "--format"])
+        self.assert_exit(result, 2)
+        self.assertTrue(self.output(result).strip(), "missing usage diagnostic")
+
+    def test_json_report_declares_all_scan_counters(self):
+        self.write_file("src/bad.ts", "FORBIDDEN\n")
+        scan = self.json_report(self.invoke("--format", "json"))["scan"]
+        for key in ("files_selected", "files_scanned", "files_skipped", "files_failed",
+                    "files_out_of_scope", "baseline_suppressed"):
+            with self.subTest(counter=key):
+                self.assertIsInstance(scan[key], int)
+        self.assertEqual(scan["extensions"], [".ts"])
+        self.assertEqual(scan["mode"], "tree")
+        self.assertTrue(os.path.isabs(scan["root"]))
+
+    def test_json_report_counts_baseline_suppressed_findings(self):
+        self.write_file("bad.ts")
+        self.invoke("--baseline", self.baseline, "--update-baseline")
+        scan = self.json_report(self.invoke("--format", "json", "--baseline", self.baseline))["scan"]
+        self.assertEqual(scan["baseline_suppressed"], 1)
+
+    def test_json_report_reflects_the_scan_mode(self):
+        self.write_file("bad.ts")
+        self.init_git()
+        self.git("add", "--", ".")
+        cases = [(["--glob", "*.ts"], None), (["--stdin"], b"bad.ts\n"),
+                 (["--stdin0"], b"bad.ts\0"), (["--staged"], None)]
+        for options, data in cases:
+            with self.subTest(mode=options):
+                result = self.invoke("--format", "json", *options, stdin=data)
+                self.assert_exit(result, 1)
+                scan = self.json_report(result)["scan"]
+                self.assertEqual(scan["mode"], options[0].lstrip("-"))
+
+    def test_report_file_is_written_even_when_the_scan_fails(self):
+        self.write_file("bad.ts")
+        report = self.base / "report.json"
+        result = self.invoke("--report", report, "--stdin", stdin=b"missing.ts\n")
+        self.assert_exit(result, 2)
+        payload = json.loads(report.read_text(encoding="utf-8"))
+        self.assertEqual(payload["scan"]["files_failed"], 1)
+        self.assertEqual(payload["diagnostics"][0]["file"], "missing.ts")
+
+    def test_github_format_annotates_skipped_files(self):
+        # The .md candidate joins the scan set through the second rule's
+        # extensions, but that rule's scope rejects it, so no rule applies.
+        self.write_config([
+            rule(extensions=[".ts"]),
+            rule(rule_id="test/docs", extensions=[".md"], include=["docs/**"]),
+        ])
+        self.write_file("note.md", "FORBIDDEN\n")
+        output = self.output(self.invoke("--format", "github"))
+        self.assertIn("::notice file=note.md,title=moonlint/skipped::no-applicable-rule",
+                      output)
+        self.assertIn("::notice title=moonlint::", output)
+
+    def test_github_format_uses_warning_severity(self):
+        self.write_config([rule(severity="warning")])
+        self.write_file("bad.ts")
+        result = self.invoke("--format", "github")
+        self.assert_exit(result, 0)
+        self.assertIn("::warning file=bad.ts,line=1,col=1,title=" + RULE_ID + "::",
+                      self.output(result))
+
+    def test_github_format_escapes_newlines_into_a_single_line(self):
+        self.write_config([rule()])
+        self.write_file("bad.ts", "FORBIDDEN\n")
+        # A rule message containing a newline must not forge a second command.
+        self.config.write_text(json.dumps({"rules": [{
+            "id": RULE_ID, "severity": "error",
+            "message": "line one\n::error forged::x",
+            "extensions": [".ts"], "match": {"contains": TOKEN},
+        }]}), encoding="utf-8")
+        lines = [line for line in self.output(self.invoke("--format", "github")).splitlines()
+                 if line.startswith("::")]
+        self.assertEqual(len(lines), 2)  # one finding annotation, one summary
+        self.assertIn("%0A", lines[0])
+
+    def test_github_summary_counts_skipped_and_failed(self):
+        self.write_config([
+            rule(extensions=[".ts"]),
+            rule(rule_id="test/docs", extensions=[".md"], include=["docs/**"]),
+        ])
+        self.write_file("note.md", "FORBIDDEN\n")
+        output = self.output(self.invoke("--format", "github", "--stdin",
+                                         stdin=b"note.md\nmissing.ts\n"))
+        self.assertIn("skipped: 1", output)
+        self.assertIn("failed: 1", output)
+
+    def test_json_format_of_a_clean_tree_reports_no_findings(self):
+        self.write_file("good.ts", "SAFE\n")
+        result = self.invoke("--format", "json")
+        self.assert_exit(result, 0)
+        payload = self.json_report(result)
+        self.assertEqual(payload["findings"], [])
+        self.assertEqual(payload["counts"]["findings"], 0)
+
+
+class GitSafetyTests(FixtureCase):
+    """Git failures, option injection, PR baselines and true staged content."""
+
+    def test_git_options_in_a_reference_are_not_interpreted(self):
+        self.init_git()
+        self.write_file("bad.ts")
+        self.commit()
+        for ref in ("--output=/tmp/moonlint-should-not-exist", "-x", "--help"):
+            with self.subTest(ref=ref):
+                self.assert_exit(self.invoke("--changed", ref), 2)
+                self.assertFalse(Path("/tmp/moonlint-should-not-exist").exists())
+
+    def test_staged_rejects_an_unmerged_index(self):
+        self.init_git()
+        self.write_file("conflict.ts", "SAFE\n")
+        base = self.commit("base")
+        self.git("checkout", "-q", "-b", "other")
+        self.write_file("conflict.ts", "FORBIDDEN\n")
+        self.commit("other")
+        self.git("checkout", "-q", "main")
+        self.write_file("conflict.ts", "SAFE AGAIN\n")
+        self.commit("main")
+        # Create a real conflict in the index without committing it.
+        merge = subprocess.run(
+            ["git", "-c", f"core.hooksPath={os.devnull}", "-C", str(self.root),
+             "merge", "--no-commit", "other"],
+            env=self.env, stdout=subprocess.PIPE, stderr=subprocess.PIPE, check=False,
+        )
+        self.assertNotEqual(merge.returncode, 0, "fixture merge unexpectedly succeeded")
+        self.assertNotEqual(base, "")
+        result = self.invoke("--staged")
+        self.assert_exit(result, 2)
+        self.assertIn("unmerged", self.output(result).lower())
+
+    def test_staged_reports_git_symlink_as_skipped_not_read(self):
+        self.init_git()
+        self.write_file("anchor.txt", "SAFE\n")
+        self.commit("base")
+        target = self.write_file("real.ts", "SAFE\n")
+        link = self.root / "link.ts"
+        try:
+            link.symlink_to(target)
+        except (OSError, NotImplementedError) as exc:
+            self.skipTest(f"symlinks unavailable: {exc}")
+        self.git("add", "--", "link.ts")
+        result = self.invoke("--staged", "--format", "json")
+        self.assert_exit(result, 0)
+        scan = json.loads(self.output(result))["scan"]
+        self.assertIn({"file": "link.ts", "reason": "not-a-regular-file"},
+                      scan["skipped_files"])
+
+    def test_pr_baseline_reads_head_blobs_not_the_worktree(self):
+        self.init_git()
+        self.write_file("bad.ts", "SAFE\n")
+        base = self.commit("base")
+        # HEAD gains a violation, then the worktree is cleaned up again.
+        self.write_file("bad.ts", "FORBIDDEN\n")
+        self.commit("PR introduces a violation")
+        self.write_file("bad.ts", "SAFE WORKTREE\n")
+        result = self.invoke("--changed", base)
+        self.assert_findings(result, 1)
+        self.assertIn("FORBIDDEN", self.output(result))
+
+    def test_renamed_file_is_scanned_as_its_new_path(self):
+        self.init_git()
+        self.write_file("old.ts", "SAFE\n")
+        base = self.commit("base")
+        self.git("mv", "--", "old.ts", "renamed.ts")
+        self.write_file("renamed.ts", "FORBIDDEN\n")
+        self.git("add", "--", ".")
+        self.commit("rename and violate")
+        result = self.invoke("--changed", base)
+        self.assert_findings(result, 1)
+        self.assertIn("renamed.ts", self.output(result))
+        self.assertNotIn("old.ts:", self.output(result))
+
+    def test_repository_outside_the_scan_root_has_no_git_candidates(self):
+        self.init_git()
+        self.write_file("bad.ts", "SAFE\n")
+        self.commit("base")
+        self.write_file("bad.ts", "FORBIDDEN\n")
+        self.commit("changed")
+        untracked = self.base / "loose"
+        untracked.mkdir()
+        (untracked / "bad.ts").write_text("FORBIDDEN\n", encoding="utf-8")
+        self.assert_owned(untracked / "bad.ts")
+        result = self.invoke("--staged", root=untracked)
+        self.assert_exit(result, 2)
+        self.assertTrue(self.output(result).strip(), "missing Git diagnostic")
+
+
+PHASES = {
+    "repairs": RepairsTests,
+    "git": GitSafetyTests,
+    "scope": ScopeTests,
+    "output": OutputTests,
+}
 
 
 def main(argv=None):
@@ -500,7 +1107,7 @@ def main(argv=None):
                                      formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("--binary", required=True,
                         help="absolute path to an existing native moonlint executable")
-    parser.add_argument("--phase", choices=("repairs", "scope", "output", "all"), default="all")
+    parser.add_argument("--phase", choices=(*PHASES, "all"), default="all")
     parser.add_argument("-q", "--quiet", action="store_true")
     args = parser.parse_args(argv)
     binary = Path(args.binary)
@@ -513,9 +1120,9 @@ def main(argv=None):
     selected = list(PHASES) if args.phase == "all" else [args.phase]
     for phase in selected:
         if phase not in PHASES:
-            parser.error(f"phase {phase!r} has no tests yet; use --phase repairs")
-    if args.phase == "all" and len(PHASES) < 3:
-        print("Note: scope/output tests pending; all currently runs repairs only.", file=sys.stderr)
+            parser.error(
+                f"phase {phase!r} has no tests; available: {', '.join(PHASES)}"
+            )
     suite = unittest.TestSuite(
         unittest.defaultTestLoader.loadTestsFromTestCase(PHASES[phase])
         for phase in selected

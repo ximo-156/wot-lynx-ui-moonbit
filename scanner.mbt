@@ -3,10 +3,12 @@
 
 ///|
 fn skip_dirs() -> Set[String] {
-  Set::from_iter([
-    ".git", "node_modules", "dist", "target", "_build", ".mooncakes",
-    "coverage", ".rspeedy", ".vitepress", ".preview",
-  ].iter())
+  Set::from_iter(
+    [
+      ".git", "node_modules", "dist", "target", "_build", ".mooncakes", "coverage",
+      ".rspeedy", ".vitepress", ".preview",
+    ].iter(),
+  )
 }
 
 ///|
@@ -47,9 +49,14 @@ fn strip_comments(src : String) -> String {
       }
       continue
     }
-    let block_comment = c == '/' && i + 1 < chars.length() && chars[i + 1] == '*'
-    let html_comment = c == '<' && i + 3 < chars.length() &&
-      chars[i + 1] == '!' && chars[i + 2] == '-' && chars[i + 3] == '-'
+    let block_comment = c == '/' &&
+      i + 1 < chars.length() &&
+      chars[i + 1] == '*'
+    let html_comment = c == '<' &&
+      i + 3 < chars.length() &&
+      chars[i + 1] == '!' &&
+      chars[i + 2] == '-' &&
+      chars[i + 3] == '-'
     if block_comment || html_comment {
       let opening = if html_comment { 4 } else { 2 }
       for _ in 0..<opening {
@@ -58,8 +65,10 @@ fn strip_comments(src : String) -> String {
       i += opening
       while i < chars.length() {
         let closed = if html_comment {
-          i + 2 < chars.length() && chars[i] == '-' &&
-            chars[i + 1] == '-' && chars[i + 2] == '>'
+          i + 2 < chars.length() &&
+          chars[i] == '-' &&
+          chars[i + 1] == '-' &&
+          chars[i + 2] == '>'
         } else {
           i + 1 < chars.length() && chars[i] == '*' && chars[i + 1] == '/'
         }
@@ -71,7 +80,13 @@ fn strip_comments(src : String) -> String {
           i += closing
           break
         }
-        out.push(if chars[i] == '\n' || chars[i] == '\r' { chars[i] } else { ' ' })
+        out.push(
+          if chars[i] == '\n' || chars[i] == '\r' {
+            chars[i]
+          } else {
+            ' '
+          },
+        )
         i += 1
       }
       continue
@@ -162,13 +177,21 @@ fn path_is_noise(rel : String) -> Bool {
 
 ///|
 fn join_path(dir : String, name : String) -> String {
-  if dir.has_suffix("/") { "\{dir}\{name}" } else { "\{dir}/\{name}" }
+  if dir.has_suffix("/") {
+    "\{dir}\{name}"
+  } else {
+    "\{dir}/\{name}"
+  }
 }
 
 ///|
 fn relative_path(root : String, full : String) -> String {
   let prefix = if root.has_suffix("/") { root } else { "\{root}/" }
-  if full.has_prefix(prefix) { full[prefix.length():].to_owned() } else { full }
+  if full.has_prefix(prefix) {
+    full[prefix.length():].to_owned()
+  } else {
+    full
+  }
 }
 
 ///|

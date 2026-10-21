@@ -12,26 +12,40 @@ pub enum ScanMode {
 } derive(Debug, Eq)
 
 ///|
-pub fn ScanMode::tree() -> ScanMode { Tree }
+pub fn ScanMode::tree() -> ScanMode {
+  Tree
+}
 
 ///|
-pub fn ScanMode::changed(git_ref : String) -> ScanMode { Changed(git_ref) }
+pub fn ScanMode::changed(git_ref : String) -> ScanMode {
+  Changed(git_ref)
+}
 
 ///|
-pub fn ScanMode::staged() -> ScanMode { Staged }
+pub fn ScanMode::staged() -> ScanMode {
+  Staged
+}
 
 ///|
-pub fn ScanMode::glob(pattern : String) -> ScanMode { Glob(pattern) }
+pub fn ScanMode::glob(pattern : String) -> ScanMode {
+  Glob(pattern)
+}
 
 ///|
-pub fn ScanMode::stdin() -> ScanMode { Stdin }
+pub fn ScanMode::stdin() -> ScanMode {
+  Stdin
+}
 
 ///|
-pub fn ScanMode::stdin0() -> ScanMode { Stdin0 }
+pub fn ScanMode::stdin0() -> ScanMode {
+  Stdin0
+}
 
 ///|
 #deprecated("incremental caching is not implemented; this mode now raises an error")
-pub fn ScanMode::incremental() -> ScanMode { Incremental }
+pub fn ScanMode::incremental() -> ScanMode {
+  Incremental
+}
 
 ///|
 pub fn ScanMode::tag(self : ScanMode) -> String {
@@ -93,7 +107,11 @@ fn parse_stdin_paths(content : String, nul : Bool) -> Array[String] raise {
   let paths : Array[String] = []
   let delimiter = if nul { "\x00" } else { "\n" }
   for view in content.split(delimiter) {
-    let path = if nul { view.to_owned() } else { trim_end_char(view.to_owned(), '\r') }
+    let path = if nul {
+      view.to_owned()
+    } else {
+      trim_end_char(view.to_owned(), '\r')
+    }
     if path != "" {
       paths.push(normalize_relative(path))
     }
@@ -105,34 +123,66 @@ fn parse_stdin_paths(content : String, nul : Bool) -> Array[String] raise {
 /// The supported portable subset is literal segments, *, ?, and standalone **.
 /// Reject unsupported syntax instead of silently interpreting it differently.
 pub fn validate_glob(pattern : String) -> Unit raise {
+  match glob_pattern_error(pattern) {
+    Some(message) => raise Failure(message)
+    None => ()
+  }
+}
+
+///|
+/// Validate a glob pattern and return the reason it is invalid, or `None`
+/// when the pattern is well-formed.
+pub fn glob_pattern_error(pattern : String) -> String? {
   if pattern == "" || pattern.has_prefix("/") || pattern.contains("\x00") {
-    raise Failure("glob must be non-empty and relative to the scan root")
+    return Some("glob must be non-empty and relative to the scan root")
   }
   for c in pattern.iter() {
     if c == '[' || c == ']' || c == '{' || c == '}' || c == '\\' || c == '!' {
-      raise Failure("unsupported glob syntax; supported: literals, *, ?, and ** path segments")
+      return Some(
+        "unsupported glob syntax; supported: literals, *, ?, and ** path segments",
+      )
     }
   }
   for segment in pattern.split("/") {
     if segment == ".." || segment == "." || segment == "" {
-      raise Failure("glob may not contain empty, . or .. path segments")
+      return Some("glob may not contain empty, . or .. path segments")
     }
     if segment.contains("**") && segment != "**" {
-      raise Failure("** must occupy an entire glob path segment")
+      return Some("** must occupy an entire glob path segment")
     }
   }
+  None
 }
 
 ///|
 /// Match path segments separately: ** means zero or more complete segments,
 /// never part of a filename. Dynamic programming avoids exponential backtracking.
-struct GlobPattern {
+pub struct GlobPattern {
   segments : Array[String]
-}
+} derive(Debug, Eq)
 
 ///|
 pub fn GlobPattern::new(pattern : String) -> GlobPattern {
-  { segments: pattern.split("/").map(v => v.to_owned()).to_array() }
+  { segments: pattern.split("/").map(v => v.to_owned()).to_array(), }
+}
+
+///|
+/// Match a root-relative path, treating a matched directory as covering
+/// everything below it. `vendor` therefore matches `vendor/pkg/index.ts`
+/// while still not matching `vendorless/index.ts`.
+pub fn GlobPattern::matches_path(self : GlobPattern, path : String) -> Bool {
+  if self.matches(path) {
+    return true
+  }
+  let parts = path.split("/").map(v => v.to_owned()).to_array()
+  let mut prefix = ""
+  for i in 0..<(parts.length() - 1) {
+    prefix = if prefix == "" { parts[i] } else { "\{prefix}/\{parts[i]}" }
+    if self.matches(prefix) {
+      return true
+    }
+  }
+  false
 }
 
 ///|
@@ -144,12 +194,13 @@ pub fn GlobPattern::matches(self : GlobPattern, path : String) -> Bool {
     let current : Array[Bool] = Array::make(parts.length() + 1, false)
     if segment == "**" {
       current[0] = previous[0]
-      for j in 1..=parts.length() {
+      for j in 1..<=parts.length() {
         current[j] = previous[j] || current[j - 1]
       }
     } else {
-      for j in 1..=parts.length() {
-        current[j] = previous[j - 1] && glob_segment_matches(segment, parts[j - 1])
+      for j in 1..<=parts.length() {
+        current[j] = previous[j - 1] &&
+          glob_segment_matches(segment, parts[j - 1])
       }
     }
     previous = current
@@ -166,11 +217,11 @@ fn glob_segment_matches(pattern : String, value : String) -> Bool {
     let current : Array[Bool] = Array::make(chars.length() + 1, false)
     if c == '*' {
       current[0] = previous[0]
-      for j in 1..=chars.length() {
+      for j in 1..<=chars.length() {
         current[j] = previous[j] || current[j - 1]
       }
     } else {
-      for j in 1..=chars.length() {
+      for j in 1..<=chars.length() {
         current[j] = previous[j - 1] && (c == '?' || c == chars[j - 1])
       }
     }

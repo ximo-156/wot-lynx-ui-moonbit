@@ -5,12 +5,16 @@
 ///
 /// ```json
 /// {
+///   "include": ["src/**"],
+///   "exclude": ["**/*.generated.ts"],
 ///   "rules": [
 ///     {
 ///       "id": "vue/import-from-vue",
 ///       "severity": "error",
 ///       "message": "must import from 'vue-lynx', not 'vue'",
 ///       "extensions": [".vue", ".ts"],
+///       "include": ["src/components/**"],
+///       "exclude": ["**/*.test.ts"],
 ///       "match": { "regex": "from\\s+['\"]vue['\"]" },
 ///       "unless": { "regex": "from\\s+['\"]vue-lynx['\"]" }
 ///     }
@@ -20,6 +24,10 @@
 ///
 /// A `match` / `unless` object has exactly one of: `contains`, `prefix`,
 /// `suffix`, `regex`.
+///
+/// `include` / `exclude` at the top level scope the whole run; the same keys
+/// inside a rule scope that rule alone. Both accept root-relative glob
+/// patterns.
 
 ///|
 /// A configuration error with a human-readable message.
@@ -29,13 +37,17 @@ pub(all) suberror ConfigError {
 
 ///|
 /// Parse a rules config from a JSON string.
-pub fn parse_config(src : String) -> Result[Array[Rule], ConfigError] {
+pub fn parse_config(src : String) -> Result[LintConfig, ConfigError] {
   let json = @json.parse(src) catch {
     _ => return Err(ConfigError("config is not valid JSON"))
   }
   let obj = match json.as_object() {
     Some(o) => o
     None => return Err(ConfigError("config root must be a JSON object"))
+  }
+  let scope = match parse_scope(obj, "config") {
+    Ok(scope) => scope
+    Err(message) => return Err(ConfigError(message))
   }
   let rules_json = match obj.get("rules") {
     Some(r) => r
@@ -53,7 +65,27 @@ pub fn parse_config(src : String) -> Result[Array[Rule], ConfigError] {
     }
     rules.push(rule)
   }
-  Ok(rules)
+  Ok({ rules, scope, })
+}
+
+///|
+/// Parse the global or rule-level `include` / `exclude` scope.
+fn parse_scope(
+  obj : Map[String, Json],
+  label : String,
+) -> Result[Scope, String] {
+  let includes = match get_str_array_field(obj, "include") {
+    Ok(values) => values
+    Err(message) => return Err("\{label}: \{message}")
+  }
+  let excludes = match get_str_array_field(obj, "exclude") {
+    Ok(values) => values
+    Err(message) => return Err("\{label}: \{message}")
+  }
+  match Scope::new(includes, excludes) {
+    Ok(scope) => Ok(scope)
+    Err(message) => Err("\{label}: \{message}")
+  }
 }
 
 ///|
@@ -79,6 +111,10 @@ fn parse_rule(rj : Json) -> Result[Rule, ConfigError] {
     Some(a) => a
     None => []
   }
+  let scope = match parse_scope(obj, "rule \"\{id}\"") {
+    Ok(scope) => scope
+    Err(message) => return Err(ConfigError(message))
+  }
   let match_json = match obj.get("match") {
     Some(m) => m
     None => return Err(ConfigError("rule \"\{id}\" missing \"match\""))
@@ -96,7 +132,7 @@ fn parse_rule(rj : Json) -> Result[Rule, ConfigError] {
       }
     None => None
   }
-  Ok({ id, severity, message, extensions, match_: match_kind, unless, })
+  Ok({ id, severity, message, extensions, match_: match_kind, unless, scope, })
 }
 
 ///|
@@ -155,7 +191,8 @@ pub fn validate_rules(rules : Array[Rule]) -> Result[Unit, ConfigError] {
 }
 
 ///|
-/// Collect the union of all rule extensions (for the default scan set).
+/// Collect the union of all rule extensions (for the default scan set). An
+/// empty rule list keeps the scan set empty rather than scanning every file.
 pub fn collect_extensions(rules : Array[Rule]) -> Array[String] {
   if rules.any(rule => rule.extensions.is_empty()) {
     return []
@@ -203,4 +240,30 @@ fn get_str_array(obj : Map[String, Json], key : String) -> Array[String]? {
     }
   }
   Some(out)
+}
+
+///|
+/// Read a string-array field that must be either absent or an array of
+/// strings. Unlike `get_str_array` this distinguishes "absent" from
+/// "present but malformed", so scope lists report a precise error.
+fn get_str_array_field(
+  obj : Map[String, Json],
+  key : String,
+) -> Result[Array[String], String] {
+  let v = match obj.get(key) {
+    Some(v) => v
+    None => return Ok([])
+  }
+  let arr = match v.as_array() {
+    Some(a) => a
+    None => return Err("\"\{key}\" must be an array of strings")
+  }
+  let out : Array[String] = []
+  for item in arr {
+    match item.as_string() {
+      Some(s) => out.push(s)
+      None => return Err("\"\{key}\" must be an array of strings")
+    }
+  }
+  Ok(out)
 }

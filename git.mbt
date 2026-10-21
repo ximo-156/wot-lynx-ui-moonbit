@@ -65,7 +65,13 @@ fn native_operation(
   second : Bytes,
   flag : Int32,
 ) -> (Bytes, Int32) raise NativeError {
-  let result = native_request_ffi(operation, first, second, second.length(), flag)
+  let result = native_request_ffi(
+    operation,
+    first,
+    second,
+    second.length(),
+    flag,
+  )
   guard native_result_is_null(result) == 0 else {
     raise NativeError("native bridge: out of memory")
   }
@@ -106,7 +112,7 @@ fn native_os_string(value : String, label : String) -> Bytes raise NativeError {
 
 ///|
 fn native_utf8(bytes : Bytes, label : String) -> String raise NativeError {
-  try @utf8.decode(bytes[:], ignore_bom=false) catch {
+  @utf8.decode(bytes[:], ignore_bom=false) catch {
     _ => raise NativeError("\{label} is not valid UTF-8")
   }
 }
@@ -188,7 +194,11 @@ pub fn git_blob(
     5,
     native_os_string(root, "root"),
     native_os_string(rel, "relative Git path"),
-    if staged { 1 } else { 0 },
+    if staged {
+      1
+    } else {
+      0
+    },
   )
   native_utf8(bytes, "Git blob")
 }
@@ -205,7 +215,11 @@ pub fn git_source_kind(
     6,
     native_os_string(root, "root"),
     native_os_string(rel, "relative Git path"),
-    if staged { 1 } else { 0 },
+    if staged {
+      1
+    } else {
+      0
+    },
   )
   kind
 }
@@ -213,8 +227,14 @@ pub fn git_source_kind(
 ///|
 /// Same-directory mkstemp, complete write, fsync, close, then atomic rename.
 /// Failure before rename preserves old file; refuse existing nonregulars.
-pub fn write_atomic_text(path : String, content : String) -> Unit raise NativeError {
+pub fn write_atomic_text(
+  path : String,
+  content : String,
+) -> Unit raise NativeError {
   let _ = native_operation(
-    7, native_os_string(path, "atomic-write path"), @utf8.encode(content), 0,
+    7,
+    native_os_string(path, "atomic-write path"),
+    @utf8.encode(content),
+    0,
   )
 }
