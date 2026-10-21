@@ -4,36 +4,96 @@
       "id": "common/no-console-log",
       "severity": "warning",
       "message": "Avoid console.log in committed code",
-      "extensions": [".js", ".jsx", ".ts", ".tsx", ".mjs", ".cjs", ".vue", ".svelte"],
-      "match": { "contains": "console.log" }
+      "extensions": [
+        ".js",
+        ".jsx",
+        ".ts",
+        ".tsx",
+        ".mjs",
+        ".cjs",
+        ".vue",
+        ".svelte",
+        ".astro"
+      ],
+      "match": {
+        "contains": "console.log"
+      }
     },
     {
       "id": "common/no-debugger",
       "severity": "error",
       "message": "No debugger statements",
-      "extensions": [".js", ".jsx", ".ts", ".tsx", ".mjs", ".cjs", ".vue", ".svelte"],
-      "match": { "regex": "^[[:space:]]*debugger[[:space:]]*;?[[:space:]]*$" }
+      "extensions": [
+        ".js",
+        ".jsx",
+        ".ts",
+        ".tsx",
+        ".mjs",
+        ".cjs",
+        ".vue",
+        ".svelte",
+        ".astro"
+      ],
+      "match": {
+        "regex": "^[[:space:]]*debugger[[:space:]]*;?[[:space:]]*$"
+      }
     },
     {
       "id": "common/no-alert",
       "severity": "warning",
       "message": "Avoid alert(), confirm() and prompt() in production code",
-      "extensions": [".js", ".jsx", ".ts", ".tsx", ".mjs", ".cjs", ".vue", ".svelte"],
-      "match": { "regex": "\\b(alert|confirm|prompt)\\(" }
+      "extensions": [
+        ".js",
+        ".jsx",
+        ".ts",
+        ".tsx",
+        ".mjs",
+        ".cjs",
+        ".vue",
+        ".svelte",
+        ".astro"
+      ],
+      "match": {
+        "regex": "\\b(alert|confirm|prompt)\\("
+      }
     },
     {
       "id": "common/no-eval",
       "severity": "error",
       "message": "Avoid eval() and its implicit forms",
-      "extensions": [".js", ".jsx", ".ts", ".tsx", ".mjs", ".cjs", ".vue", ".svelte"],
-      "match": { "regex": "\\beval\\(" }
+      "extensions": [
+        ".js",
+        ".jsx",
+        ".ts",
+        ".tsx",
+        ".mjs",
+        ".cjs",
+        ".vue",
+        ".svelte",
+        ".astro"
+      ],
+      "match": {
+        "regex": "\\beval\\("
+      }
     },
     {
       "id": "common/no-var",
       "severity": "warning",
       "message": "Use let or const instead of var",
-      "extensions": [".js", ".jsx", ".ts", ".tsx", ".mjs", ".cjs", ".vue", ".svelte"],
-      "match": { "regex": "\\bvar[[:space:]]" }
+      "extensions": [
+        ".js",
+        ".jsx",
+        ".ts",
+        ".tsx",
+        ".mjs",
+        ".cjs",
+        ".vue",
+        ".svelte",
+        ".astro"
+      ],
+      "match": {
+        "regex": "\\bvar[[:space:]]"
+      }
     }
   ]
 }

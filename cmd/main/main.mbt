@@ -372,6 +372,31 @@ fn set_mode(opts : Options, mode : @lib.ScanMode) -> Unit raise {
 }
 
 ///|
+/// Parse a strictly positive decimal integer, or `None` when `value` is not
+/// one. Rejects signs, whitespace and overflow beyond `Int`.
+fn parse_positive_int(value : String) -> Int? {
+  if value == "" {
+    return None
+  }
+  let mut acc : Int = 0
+  for c in value {
+    if c < '0' || c > '9' {
+      return None
+    }
+    let digit = (c.to_int() - '0'.to_int())
+    // Guard against overflow: Int is at most 2^63-1.
+    if acc > (2147483647 - digit) / 10 {
+      return None
+    }
+    acc = acc * 10 + digit
+  }
+  if acc <= 0 {
+    return None
+  }
+  Some(acc)
+}
+
+///|
 /// Parse the `--format` value. Unknown formats are usage errors.
 fn parse_format(value : String) -> Format raise {
   match value {
@@ -441,12 +466,8 @@ fn parse_args(args : Array[String]) -> Options raise {
       "--fix-tab-width" => {
         i += 1
         let raw = option_value(args, i, arg)
-        match raw.to_int() {
-          Some(w) =>
-            if w <= 0 {
-              raise Failure("--fix-tab-width must be a positive integer")
-            }
-            opts.fix_tab_width = Some(w)
+        match parse_positive_int(raw) {
+          Some(w) => opts.fix_tab_width = Some(w)
           None => raise Failure("--fix-tab-width expects a positive integer")
         }
       }

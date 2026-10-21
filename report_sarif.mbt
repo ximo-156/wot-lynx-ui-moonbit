@@ -35,7 +35,7 @@ fn run_json(result : LintResult, scan : ScanInfo) -> Json {
   )
   // Collect unique rule ids
   let rule_ids : Array[String] = []
-  let seen : Set[String] = Set::new()
+  let seen : Set[String] = Set([])
   for f in result.findings {
     if !seen.contains(f.rule_id) {
       seen.add(f.rule_id)

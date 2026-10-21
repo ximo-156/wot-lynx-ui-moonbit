@@ -1,5 +1,8 @@
 ///|
 /// Apply declarative line rules to successfully read source content.
+///
+/// Each matcher is compiled once per rule (see `MatchKind::prepare`), then
+/// reused for every line — compiling per line dominates scan time otherwise.
 pub fn lint_lines(
   rel : String,
   lines : Array[(Int32, String)],
@@ -10,11 +13,16 @@ pub fn lint_lines(
     if !rule_applies(rule, rel) {
       continue
     }
+    let matcher = rule.match_.prepare()
+    let unless = match rule.unless {
+      None => None
+      Some(unless_) => Some(unless_.prepare())
+    }
     for (lineno, text) in lines {
-      if rule.match_.matches(text) {
-        let skip = match rule.unless {
+      if matcher.matches(text) {
+        let skip = match unless {
           None => false
-          Some(unless_) => unless_.matches(text)
+          Some(prepared) => prepared.matches(text)
         }
         if !skip {
           findings.push({
@@ -143,7 +151,12 @@ pub fn lint_selected(
         }
       }
       for finding in lint_file(rel, source, raw_lines, file_rules) {
-        if !disable_map.is_disabled(finding.rule_id, finding.line) {
+        // Whole-file checks (BOM, line ending, size, empty file, naming) are
+        // properties of the file, not of a line: a `// moonlint-disable` on
+        // line 1 must not be able to mask them. Only per-line file checks
+        // (trailing whitespace, tabs, max_line_length) are suppressible.
+        let per_line = is_per_line_check(finding.rule_id, file_rules)
+        if !per_line || !disable_map.is_disabled(finding.rule_id, finding.line) {
           findings.push(finding)
         }
       }
@@ -208,6 +221,22 @@ fn file_rule_applies(fr : FileRule, rel : String) -> Bool {
 /// same extension and include/exclude scope as the scan.
 pub fn FileRule::applies_to(self : FileRule, rel : String) -> Bool {
   file_rule_applies(self, rel)
+}
+
+///|
+/// Whether a file check reports per offending line (and so may be silenced by
+/// an inline `moonlint-disable` for that line), as opposed to describing a
+/// whole-file property.
+fn is_per_line_check(rule_id : String, file_rules : Array[FileRule]) -> Bool {
+  for fr in file_rules {
+    if fr.id == rule_id {
+      return match fr.check {
+        MaxLineLength(_) | NoTrailingWhitespace | NoTabs => true
+        _ => false
+      }
+    }
+  }
+  false
 }
 
 ///|
@@ -276,7 +305,7 @@ pub fn lint_file(
           )
         }
       NoDuplicateLines => {
-        let seen : Set[String] = Set::new()
+        let seen : Set[String] = Set([])
         for (lineno, text) in lines {
           let trimmed = text.trim().to_owned()
           if trimmed != "" {

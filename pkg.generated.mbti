@@ -4,6 +4,7 @@ package "ximo-156/moonlint"
 import {
   "moonbitlang/core/debug",
   "moonbitlang/core/set",
+  "moonbitlang/core/string",
 }
 
 // Values
@@ -100,6 +101,7 @@ pub struct Diagnostic {
   file : String
   message : String
 } derive(@debug.Debug)
+pub fn Diagnostic::to_repr(Self) -> @debug.Repr
 
 pub struct DisableMap {
   line_state : Map[Int32, @set.Set[String]]
@@ -120,6 +122,9 @@ pub enum FileCheck {
   LineEnding(LineEndingStyle)
   NoBom
 } derive(Eq, @debug.Debug)
+pub fn FileCheck::equal(Self, Self) -> Bool
+pub fn FileCheck::not_equal(Self, Self) -> Bool
+pub fn FileCheck::to_repr(Self) -> @debug.Repr
 
 pub struct FileRule {
   id : String
@@ -130,6 +135,7 @@ pub struct FileRule {
   scope : Scope
 } derive(@debug.Debug)
 pub fn FileRule::applies_to(Self, String) -> Bool
+pub fn FileRule::to_repr(Self) -> @debug.Repr
 
 pub struct Finding {
   rule_id : String
@@ -139,25 +145,33 @@ pub struct Finding {
   line : Int32
   snippet : String
 } derive(@debug.Debug)
+pub fn Finding::to_repr(Self) -> @debug.Repr
 
 pub struct GlobPattern {
   segments : Array[String]
 } derive(Eq, @debug.Debug)
+pub fn GlobPattern::equal(Self, Self) -> Bool
 pub fn GlobPattern::matches(Self, String) -> Bool
 pub fn GlobPattern::matches_path(Self, String) -> Bool
 pub fn GlobPattern::new(String) -> Self
+pub fn GlobPattern::not_equal(Self, Self) -> Bool
+pub fn GlobPattern::to_repr(Self) -> @debug.Repr
 
 pub enum LineEndingStyle {
   Lf
   Crlf
 } derive(Eq, @debug.Debug)
+pub fn LineEndingStyle::equal(Self, Self) -> Bool
+pub fn LineEndingStyle::not_equal(Self, Self) -> Bool
 pub fn LineEndingStyle::parse(String) -> Self?
+pub fn LineEndingStyle::to_repr(Self) -> @debug.Repr
 
 pub struct LintConfig {
   rules : Array[Rule]
   file_rules : Array[FileRule]
   scope : Scope
 } derive(@debug.Debug)
+pub fn LintConfig::to_repr(Self) -> @debug.Repr
 
 pub struct LintResult {
   findings : Array[Finding]
@@ -173,6 +187,7 @@ pub struct LintResult {
 pub fn LintResult::count_by(Self, Severity) -> Int32
 pub fn LintResult::has_errors(Self) -> Bool
 pub fn LintResult::new(Array[Finding], Int32, Int32) -> Self
+pub fn LintResult::to_repr(Self) -> @debug.Repr
 pub fn LintResult::with_findings(Self, Array[Finding], Int32) -> Self
 
 pub enum MatchKind {
@@ -183,7 +198,11 @@ pub enum MatchKind {
   Equals(String)
   Word(String)
 } derive(Eq, @debug.Debug)
+pub fn MatchKind::equal(Self, Self) -> Bool
 pub fn MatchKind::matches(Self, String) -> Bool
+pub fn MatchKind::not_equal(Self, Self) -> Bool
+pub fn MatchKind::prepare(Self) -> Prepared
+pub fn MatchKind::to_repr(Self) -> @debug.Repr
 pub fn MatchKind::validate(Self) -> String?
 
 pub enum NamingStyle {
@@ -192,7 +211,17 @@ pub enum NamingStyle {
   SnakeCase
   KebabCase
 } derive(Eq, @debug.Debug)
+pub fn NamingStyle::equal(Self, Self) -> Bool
+pub fn NamingStyle::not_equal(Self, Self) -> Bool
 pub fn NamingStyle::parse(String) -> Self?
+pub fn NamingStyle::to_repr(Self) -> @debug.Repr
+
+pub enum Prepared {
+  NeverMatch
+  Plain(MatchKind)
+  Compiled(@string.Regex)
+}
+pub fn Prepared::matches(Self, StringView) -> Bool
 
 pub struct Preset {
   name : String
@@ -210,6 +239,7 @@ pub struct Rule {
   unless : MatchKind?
   scope : Scope
 } derive(@debug.Debug)
+pub fn Rule::to_repr(Self) -> @debug.Repr
 
 pub struct ScanInfo {
   mode : String
@@ -217,6 +247,7 @@ pub struct ScanInfo {
   extensions : Array[String]
 } derive(@debug.Debug)
 pub fn ScanInfo::new(String, String, Array[String]) -> Self
+pub fn ScanInfo::to_repr(Self) -> @debug.Repr
 
 pub enum ScanMode {
   Tree
@@ -228,13 +259,16 @@ pub enum ScanMode {
   Incremental
 } derive(Eq, @debug.Debug)
 pub fn ScanMode::changed(String) -> Self
+pub fn ScanMode::equal(Self, Self) -> Bool
 pub fn ScanMode::glob(String) -> Self
 #deprecated
 pub fn ScanMode::incremental() -> Self
+pub fn ScanMode::not_equal(Self, Self) -> Bool
 pub fn ScanMode::staged() -> Self
 pub fn ScanMode::stdin() -> Self
 pub fn ScanMode::stdin0() -> Self
 pub fn ScanMode::tag(Self) -> String
+pub fn ScanMode::to_repr(Self) -> @debug.Repr
 pub fn ScanMode::tree() -> Self
 
 pub struct Scope {
@@ -243,22 +277,29 @@ pub struct Scope {
 } derive(Eq, @debug.Debug)
 pub fn Scope::allows(Self, String) -> Bool
 pub fn Scope::empty() -> Self
+pub fn Scope::equal(Self, Self) -> Bool
 pub fn Scope::is_empty(Self) -> Bool
 pub fn Scope::new(Array[String], Array[String]) -> Result[Self, String]
+pub fn Scope::not_equal(Self, Self) -> Bool
+pub fn Scope::to_repr(Self) -> @debug.Repr
 
 pub enum Severity {
   Error
   Warning
 } derive(Eq, @debug.Debug)
+pub fn Severity::equal(Self, Self) -> Bool
 pub fn Severity::error() -> Self
+pub fn Severity::not_equal(Self, Self) -> Bool
 pub fn Severity::parse(String) -> Self
 pub fn Severity::tag(Self) -> String
+pub fn Severity::to_repr(Self) -> @debug.Repr
 pub fn Severity::warning() -> Self
 
 pub struct SkippedFile {
   file : String
   reason : String
 } derive(@debug.Debug)
+pub fn SkippedFile::to_repr(Self) -> @debug.Repr
 
 // Type aliases
 

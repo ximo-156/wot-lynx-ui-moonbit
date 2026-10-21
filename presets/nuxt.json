@@ -1,0 +1,69 @@
+{
+  "rules": [
+    {
+      "id": "nuxt/no-env-in-runtime",
+      "severity": "error",
+      "message": "Avoid process.env in client-side code; use runtimeConfig",
+      "extensions": [
+        ".vue",
+        ".js",
+        ".ts"
+      ],
+      "match": {
+        "regex": "process\\.env\\."
+      }
+    },
+    {
+      "id": "nuxt/prefer-use-fetch",
+      "severity": "warning",
+      "message": "Use useFetch or useAsyncData instead of raw fetch in Nuxt",
+      "extensions": [
+        ".vue",
+        ".js",
+        ".ts"
+      ],
+      "match": {
+        "regex": "\\bfetch\\("
+      }
+    },
+    {
+      "id": "nuxt/no-window-in-ssr",
+      "severity": "error",
+      "message": "Avoid window/document in SSR code; use onMounted or process.client",
+      "extensions": [
+        ".vue",
+        ".js",
+        ".ts"
+      ],
+      "match": {
+        "regex": "\\b(window|document)\\."
+      }
+    },
+    {
+      "id": "nuxt/prefer-auto-imports",
+      "severity": "warning",
+      "message": "Use Nuxt auto-imports instead of explicit imports from 'vue'",
+      "extensions": [
+        ".vue",
+        ".js",
+        ".ts"
+      ],
+      "match": {
+        "regex": "import[[:space:]]*\\{[^}]*\\}[[:space:]]*from[[:space:]]+['\"]vue['\"]"
+      }
+    },
+    {
+      "id": "nuxt/no-v-html",
+      "severity": "warning",
+      "message": "Avoid v-html (XSS risk); use text interpolation or a sanitizer",
+      "extensions": [
+        ".vue",
+        ".js",
+        ".ts"
+      ],
+      "match": {
+        "contains": "v-html"
+      }
+    }
+  ]
+}

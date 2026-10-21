@@ -1479,7 +1479,8 @@ class PresetTests(FixtureCase):
         content = (self.root / "test.ts").read_text(encoding="utf-8")
         self.assertEqual(content, "const x = 1;\nconst y = 2;\n")
 
-    def test_fix_replaces_tabs(self):
+    def test_fix_leaves_tabs_by_default(self):
+        """Tab replacement changes indentation width, so it must be opt-in."""
         self.write_config(rules=[], file_rules=[{
             "id": "file/no-tabs",
             "severity": "error",
@@ -1489,9 +1490,23 @@ class PresetTests(FixtureCase):
         }])
         self.write_file("test.ts", "\tconst x = 1;\n")
         result = self.invoke("--fix")
+        self.assert_exit(result, 1)
+        content = (self.root / "test.ts").read_text(encoding="utf-8")
+        self.assertEqual(content, "\tconst x = 1;\n")
+
+    def test_fix_replaces_tabs_when_opted_in(self):
+        self.write_config(rules=[], file_rules=[{
+            "id": "file/no-tabs",
+            "severity": "error",
+            "message": "No tabs",
+            "extensions": [".ts"],
+            "check": {"no_tabs": True},
+        }])
+        self.write_file("test.ts", "\tconst x = 1;\n")
+        result = self.invoke("--fix", "--fix-tab-width", "4")
         self.assert_exit(result, 0)
         content = (self.root / "test.ts").read_text(encoding="utf-8")
-        self.assertEqual(content, "  const x = 1;\n")
+        self.assertEqual(content, "    const x = 1;\n")
 
     def test_fix_adds_final_newline(self):
         self.write_config(rules=[], file_rules=[{
@@ -1506,6 +1521,118 @@ class PresetTests(FixtureCase):
         self.assert_exit(result, 0)
         content = (self.root / "test.ts").read_text(encoding="utf-8")
         self.assertEqual(content, "const x = 1;\n")
+
+    # --- regression tests for audited defects ---
+
+    def test_cyclic_extends_reports_error_not_crash(self):
+        """A extends-cycle used to overflow the stack (exit 139)."""
+        (self.base / "a.json").write_text(
+            json.dumps({"extends": "b.json", "rules": []}), encoding="utf-8")
+        (self.base / "b.json").write_text(
+            json.dumps({"extends": "a.json", "rules": []}), encoding="utf-8")
+        self.write_file("test.ts", "const x = 1;\n")
+        result = self.invoke("--config", str(self.base / "a.json"))
+        self.assert_exit(result, 2)
+        self.assertIn("cyclic extends", result.stdout + result.stderr)
+
+    def test_nested_extends_resolves_relative_to_declaring_file(self):
+        """A grandchild config's relative path is relative to ITS directory."""
+        nested = self.base / "lvl1" / "lvl2"
+        nested.mkdir(parents=True, exist_ok=True)
+        (nested / "leaf.json").write_text(json.dumps({"rules": [{
+            "id": "leaf/no-foo", "severity": "error", "message": "leaf",
+            "extensions": [".ts"], "match": {"contains": "foo"},
+        }]}), encoding="utf-8")
+        (self.base / "lvl1" / "mid.json").write_text(
+            json.dumps({"extends": "lvl2/leaf.json", "rules": []}),
+            encoding="utf-8")
+        (self.base / "root.json").write_text(
+            json.dumps({"extends": "lvl1/mid.json", "rules": []}),
+            encoding="utf-8")
+        self.write_file("test.ts", "const foo = 1;\n")
+        result = self.invoke("--config", str(self.base / "root.json"))
+        self.assert_findings(result, 1, rule_id="leaf/no-foo")
+
+    def test_duplicate_rule_id_in_one_config_is_rejected(self):
+        """The shadowed duplicate used to be dropped silently."""
+        self.write_config([
+            {"id": "same/id", "severity": "error", "message": "first",
+             "extensions": [".ts"], "match": {"contains": "foo"}},
+            {"id": "same/id", "severity": "warning", "message": "second",
+             "extensions": [".ts"], "match": {"contains": "bar"}},
+        ])
+        self.write_file("test.ts", "foo\n")
+        result = self.invoke()
+        self.assert_exit(result, 2)
+        self.assertIn("duplicate rule id", result.stdout + result.stderr)
+
+    def test_fix_respects_rule_scope(self):
+        """--fix used to rewrite paths excluded by the rule's scope."""
+        self.write_config(rules=[], file_rules=[{
+            "id": "file/tws", "severity": "error", "message": "tws",
+            "extensions": [".ts"], "exclude": ["vendor/**"],
+            "check": {"no_trailing_whitespace": True},
+        }])
+        vendor = self.root / "vendor"
+        vendor.mkdir(exist_ok=True)
+        (vendor / "lib.ts").write_text("const v = 1;   \n", encoding="utf-8")
+        self.write_file("app.ts", "const a = 1;   \n")
+        self.invoke("--fix")
+        self.assertEqual((vendor / "lib.ts").read_text(encoding="utf-8"),
+                         "const v = 1;   \n",
+                         "excluded file must not be modified")
+        self.assertEqual((self.root / "app.ts").read_text(encoding="utf-8"),
+                         "const a = 1;\n")
+
+    def test_fix_preserves_crlf_line_endings(self):
+        """final_newline used to append a bare LF into a CRLF file."""
+        self.write_config(rules=[], file_rules=[{
+            "id": "file/final", "severity": "error", "message": "m",
+            "extensions": [".ts"], "check": {"final_newline": True},
+        }])
+        (self.root / "test.ts").write_bytes(b"const a = 1;\r\nconst b = 2;")
+        self.invoke("--fix")
+        self.assertEqual((self.root / "test.ts").read_bytes(),
+                         b"const a = 1;\r\nconst b = 2;\r\n")
+
+    def test_fix_json_output_stays_parseable(self):
+        """Progress messages used to corrupt --format json on stdout."""
+        self.write_config(rules=[], file_rules=[{
+            "id": "file/tws", "severity": "error", "message": "tws",
+            "extensions": [".ts"], "check": {"no_trailing_whitespace": True},
+        }])
+        self.write_file("test.ts", "const a = 1;   \n")
+        result = self.invoke("--fix", "--format", "json")
+        json.loads(result.stdout)  # must not raise
+
+    def test_fix_rejected_with_git_scan_modes(self):
+        """Blob-backed modes read Git, so working-tree fixes would not apply."""
+        self.write_config(rules=[], file_rules=[{
+            "id": "file/final", "severity": "error", "message": "m",
+            "extensions": [".ts"], "check": {"final_newline": True},
+        }])
+        self.write_file("test.ts", "const a = 1;")
+        result = self.invoke("--staged", "--fix")
+        self.assert_exit(result, 2)
+        self.assertIn("--fix cannot be combined", result.stdout + result.stderr)
+
+    def test_whole_file_check_not_suppressed_by_inline_disable(self):
+        """A line-1 comment must not mask a whole-file property like BOM."""
+        self.write_config(rules=[], file_rules=[{
+            "id": "file/bom", "severity": "error", "message": "bom",
+            "extensions": [".ts"], "check": {"no_bom": True},
+        }])
+        (self.root / "test.ts").write_bytes(
+            b"\xef\xbb\xbf// moonlint-disable file/bom\nconst x = 1;\n")
+        result = self.invoke()
+        self.assert_findings(result, 1, rule_id="file/bom")
+
+    def test_astro_files_are_covered_by_hygiene_presets(self):
+        """.astro was missing from the file/common preset extension lists."""
+        (self.root / "page.astro").write_text("<div>   \n</div>",
+                                              encoding="utf-8")
+        result = self.invoke("--preset", "file")
+        self.assert_findings(result, 2, rule_id="file/")
 
 
 PHASES = {

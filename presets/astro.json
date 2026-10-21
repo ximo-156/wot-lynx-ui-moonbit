@@ -1,0 +1,65 @@
+{
+  "rules": [
+    {
+      "id": "astro/no-set-html-directive",
+      "severity": "error",
+      "message": "Avoid set:html (XSS risk); use text interpolation",
+      "extensions": [
+        ".astro"
+      ],
+      "match": {
+        "contains": "set:html"
+      }
+    },
+    {
+      "id": "astro/no-unused-define-vars",
+      "severity": "warning",
+      "message": "Define vars in frontmatter, not in template",
+      "extensions": [
+        ".astro"
+      ],
+      "match": {
+        "regex": "const[[:space:]]+[[:alpha:]_$][[:alnum:]_$]*[[:space:]]*="
+      }
+    },
+    {
+      "id": "astro/prefer-class-list",
+      "severity": "warning",
+      "message": "Use class:list instead of template literals for conditional classes",
+      "extensions": [
+        ".astro"
+      ],
+      "match": {
+        "regex": "class=[{]"
+      }
+    },
+    {
+      "id": "astro/no-target-blank",
+      "severity": "warning",
+      "message": "target=\"_blank\" without rel=\"noopener\" is a security risk",
+      "extensions": [
+        ".astro"
+      ],
+      "match": {
+        "regex": "target=\"_blank\""
+      },
+      "unless": {
+        "regex": "noopener"
+      }
+    },
+    {
+      "id": "astro/valid-compile",
+      "severity": "error",
+      "message": "Avoid raw <script> without type=\"module\" in Astro",
+      "extensions": [
+        ".astro"
+      ],
+      "match": {
+        "regex": "<script"
+      },
+      "unless": {
+        "regex": "type="
+      }
+    }
+  ]
+}

@@ -91,42 +91,42 @@ pub struct Rule {
 ///|
 /// A single rule violation located in a file.
 pub struct Finding {
-  pub rule_id : String
-  pub severity : Severity
-  pub message : String
+  rule_id : String
+  severity : Severity
+  message : String
   /// Path relative to the scan root.
-  pub file : String
+  file : String
   /// 1-based line number.
-  pub line : Int32
+  line : Int32
   /// The offending source line (trimmed).
-  pub snippet : String
+  snippet : String
 } derive(Debug)
 
 ///|
 /// A scan failure. These are operational errors, not lint findings.
 pub struct Diagnostic {
-  pub file : String
-  pub message : String
+  file : String
+  message : String
 } derive(Debug)
 
 ///|
 /// A file that entered the scan but was not read.
 pub struct SkippedFile {
   /// Path relative to the scan root.
-  pub file : String
+  file : String
   /// Why the file was not read, e.g. `no-applicable-rule`.
-  pub reason : String
+  reason : String
 } derive(Debug)
 
 ///|
 /// Scan metadata attached to machine-readable reports.
 pub struct ScanInfo {
   /// Scan mode tag, e.g. `tree`, `staged`, `glob`.
-  pub mode : String
+  mode : String
   /// Absolute scan root.
-  pub root : String
+  root : String
   /// Effective extension filter; an empty list means "all files".
-  pub extensions : Array[String]
+  extensions : Array[String]
 } derive(Debug)
 
 ///|
@@ -143,11 +143,11 @@ pub fn ScanInfo::new(
 /// A parsed configuration: the rule set plus the global file scope.
 pub struct LintConfig {
   /// The configured rules, in declaration order.
-  pub rules : Array[Rule]
+  rules : Array[Rule]
   /// File-level rules evaluated once per file.
-  pub file_rules : Array[FileRule]
+  file_rules : Array[FileRule]
   /// The global scope applied to every scan.
-  pub scope : Scope
+  scope : Scope
 } derive(Debug)
 
 ///|
@@ -237,21 +237,21 @@ pub struct FileRule {
 /// Aggregate result. Selection is counted after path normalization, extension
 /// filtering and de-duplication; each selected file is scanned, skipped or failed.
 pub struct LintResult {
-  pub findings : Array[Finding]
+  findings : Array[Finding]
   /// Files that passed path, extension and scope filters.
-  pub files_selected : Int32
+  files_selected : Int32
   /// Files read successfully and linted.
-  pub files_scanned : Int32
+  files_scanned : Int32
   /// Selected files that were not read, with a reason for each.
-  pub files_skipped : Int32
+  files_skipped : Int32
   /// Files that could not be read, with a diagnostic for each.
-  pub files_failed : Int32
+  files_failed : Int32
   /// Candidate files removed by the global scope before scanning.
-  pub files_out_of_scope : Int32
+  files_out_of_scope : Int32
   /// Findings suppressed by the baseline.
-  pub baseline_hits : Int32
-  pub diagnostics : Array[Diagnostic]
-  pub skipped_files : Array[SkippedFile]
+  baseline_hits : Int32
+  diagnostics : Array[Diagnostic]
+  skipped_files : Array[SkippedFile]
 } derive(Debug)
 
 ///|
@@ -305,3 +305,43 @@ pub fn LintResult::has_errors(self : LintResult) -> Bool {
 pub fn LintResult::count_by(self : LintResult, sev : Severity) -> Int32 {
   self.findings.count_if(f => f.severity == sev)
 }
+
+///|
+/// Expose the derived impls as regular methods so callers outside this
+/// package can use them without relying on implicit impl promotion.
+///|
+pub extend Severity with @moonbitlang/core/debug.Debug::{to_repr}
+///|
+pub extend Severity with Eq::{equal, not_equal}
+///|
+pub extend MatchKind with @moonbitlang/core/debug.Debug::{to_repr}
+///|
+pub extend MatchKind with Eq::{equal, not_equal}
+///|
+pub extend Rule with @moonbitlang/core/debug.Debug::{to_repr}
+///|
+pub extend Finding with @moonbitlang/core/debug.Debug::{to_repr}
+///|
+pub extend Diagnostic with @moonbitlang/core/debug.Debug::{to_repr}
+///|
+pub extend SkippedFile with @moonbitlang/core/debug.Debug::{to_repr}
+///|
+pub extend ScanInfo with @moonbitlang/core/debug.Debug::{to_repr}
+///|
+pub extend LintConfig with @moonbitlang/core/debug.Debug::{to_repr}
+///|
+pub extend NamingStyle with @moonbitlang/core/debug.Debug::{to_repr}
+///|
+pub extend NamingStyle with Eq::{equal, not_equal}
+///|
+pub extend LineEndingStyle with @moonbitlang/core/debug.Debug::{to_repr}
+///|
+pub extend LineEndingStyle with Eq::{equal, not_equal}
+///|
+pub extend FileCheck with @moonbitlang/core/debug.Debug::{to_repr}
+///|
+pub extend FileCheck with Eq::{equal, not_equal}
+///|
+pub extend FileRule with @moonbitlang/core/debug.Debug::{to_repr}
+///|
+pub extend LintResult with @moonbitlang/core/debug.Debug::{to_repr}

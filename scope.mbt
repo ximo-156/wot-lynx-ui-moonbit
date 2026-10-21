@@ -86,3 +86,10 @@ pub fn Scope::allows(self : Scope, rel : String) -> Bool {
 pub fn Scope::is_empty(self : Scope) -> Bool {
   self.includes.is_empty() && self.excludes.is_empty()
 }
+
+///|
+/// Expose derived impls as regular methods for external callers.
+///|
+pub extend Scope with @moonbitlang/core/debug.Debug::{to_repr}
+///|
+pub extend Scope with Eq::{equal, not_equal}

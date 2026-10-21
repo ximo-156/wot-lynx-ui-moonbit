@@ -82,35 +82,35 @@ fn common_rules() -> Array[Rule] {
       "common/no-console-log",
       Severity::warning(),
       "Avoid console.log in committed code",
-      [".js", ".jsx", ".ts", ".tsx", ".mjs", ".cjs", ".vue", ".svelte"],
+      [".js", ".jsx", ".ts", ".tsx", ".mjs", ".cjs", ".vue", ".svelte", ".astro"],
       Contains("console.log"),
     ),
     rule(
       "common/no-debugger",
       Severity::error(),
       "No debugger statements",
-      [".js", ".jsx", ".ts", ".tsx", ".mjs", ".cjs", ".vue", ".svelte"],
+      [".js", ".jsx", ".ts", ".tsx", ".mjs", ".cjs", ".vue", ".svelte", ".astro"],
       Regex("^[[:space:]]*debugger[[:space:]]*;?[[:space:]]*$"),
     ),
     rule(
       "common/no-alert",
       Severity::warning(),
       "Avoid alert(), confirm() and prompt() in production code",
-      [".js", ".jsx", ".ts", ".tsx", ".mjs", ".cjs", ".vue", ".svelte"],
+      [".js", ".jsx", ".ts", ".tsx", ".mjs", ".cjs", ".vue", ".svelte", ".astro"],
       Regex("\\b(alert|confirm|prompt)\\("),
     ),
     rule(
       "common/no-eval",
       Severity::error(),
       "Avoid eval() and its implicit forms",
-      [".js", ".jsx", ".ts", ".tsx", ".mjs", ".cjs", ".vue", ".svelte"],
+      [".js", ".jsx", ".ts", ".tsx", ".mjs", ".cjs", ".vue", ".svelte", ".astro"],
       Regex("\\beval\\("),
     ),
     rule(
       "common/no-var",
       Severity::warning(),
       "Use let or const instead of var",
-      [".js", ".jsx", ".ts", ".tsx", ".mjs", ".cjs", ".vue", ".svelte"],
+      [".js", ".jsx", ".ts", ".tsx", ".mjs", ".cjs", ".vue", ".svelte", ".astro"],
       Regex("\\bvar[[:space:]]"),
     ),
   ]
@@ -731,7 +731,7 @@ fn nuxt_rules() -> Array[Rule] {
 ///|
 fn file_rules_preset() -> Array[FileRule] {
   let all_exts = [
-    ".js", ".jsx", ".ts", ".tsx", ".mjs", ".cjs", ".vue", ".svelte",
+    ".js", ".jsx", ".ts", ".tsx", ".mjs", ".cjs", ".vue", ".svelte", ".astro",
   ]
   [
     FileRule::{
@@ -912,7 +912,7 @@ pub fn preset_by_name(name : String) -> Preset? {
 pub fn merge_presets(names : Array[String]) -> Result[LintConfig, ConfigError] {
   let rules : Array[Rule] = []
   let file_rules : Array[FileRule] = []
-  let seen : Set[String] = Set::new()
+  let seen : Set[String] = Set([])
   for name in names {
     match preset_by_name(name) {
       None => return Err(ConfigError("unknown preset: \{name}"))

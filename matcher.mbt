@@ -7,6 +7,53 @@
 /// bad patterns up front — see `config.mbt`).
 
 ///|
+/// A matcher prepared for repeated evaluation against many lines.
+///
+/// `Regex` compiles its pattern once here instead of once per line: a single
+/// rule evaluated over an N-line file previously cost N regex compilations,
+/// which dominates scan time. A pattern that fails to compile becomes
+/// `Prep::NeverMatch`, so a bad pattern yields no findings rather than
+/// aborting (config validation reports bad patterns up front).
+pub enum Prepared {
+  NeverMatch
+  Plain(MatchKind)
+  Compiled(Regex)
+}
+
+///|
+/// Compile this matcher once for reuse across all lines of a file.
+pub fn MatchKind::prepare(self : MatchKind) -> Prepared {
+  match self {
+    Regex(pattern) =>
+      match compile_regex(pattern) {
+        Some(re) => Compiled(re)
+        None => NeverMatch
+      }
+    other => Plain(other)
+  }
+}
+
+///|
+/// Test a prepared matcher against one line.
+pub fn Prepared::matches(self : Prepared, line : StringView) -> Bool {
+  match self {
+    NeverMatch => false
+    Plain(kind) => kind.matches(line.to_owned())
+    Compiled(re) => re.find(line).next().is_some()
+  }
+}
+
+///|
+/// Compile a pattern, returning `None` instead of raising on a bad pattern.
+fn compile_regex(pattern : String) -> Regex? {
+  try Regex::Regex(pattern) catch {
+    _ => None
+  } noraise {
+    re => Some(re)
+  }
+}
+
+///|
 /// Test whether a single line matches this matcher.
 pub fn MatchKind::matches(self : MatchKind, line : String) -> Bool {
   match self {

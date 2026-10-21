@@ -75,7 +75,37 @@ pub fn parse_config(src : String) -> Result[LintConfig, ConfigError] {
     Ok(fr) => fr
     Err(ConfigError(msg)) => return Err(ConfigError(msg))
   }
+  // A duplicate id inside one file is a mistake: the later rule would be
+  // silently shadowed. Reuse across `extends` is legitimate overriding, so
+  // this check lives here rather than in the merge step.
+  match check_duplicate_ids(rules, file_rules) {
+    Some(message) => return Err(ConfigError(message))
+    None => ()
+  }
   Ok({ rules, file_rules, scope, })
+}
+
+///|
+/// Report the first duplicated rule or file-rule id, if any.
+fn check_duplicate_ids(
+  rules : Array[Rule],
+  file_rules : Array[FileRule],
+) -> String? {
+  let seen_rule : Set[String] = Set([])
+  for rule in rules {
+    if seen_rule.contains(rule.id) {
+      return Some("duplicate rule id: \{rule.id}")
+    }
+    seen_rule.add(rule.id)
+  }
+  let seen_file : Set[String] = Set([])
+  for fr in file_rules {
+    if seen_file.contains(fr.id) {
+      return Some("duplicate file_rule id: \{fr.id}")
+    }
+    seen_file.add(fr.id)
+  }
+  None
 }
 
 ///|
@@ -91,7 +121,7 @@ pub fn parse_config_with_extends(
   src : String,
   config_dir : String,
 ) -> Result[LintConfig, ConfigError] {
-  let visited : Set[String] = Set::new()
+  let visited : Set[String] = Set([])
   parse_config_with_extends_impl(src, config_dir, visited)
 }
 
@@ -206,8 +236,14 @@ fn parse_config_with_extends_impl(
     Ok(fr) => fr
     Err(ConfigError(msg)) => return Err(ConfigError(msg))
   }
+  // Duplicates within THIS file are mistakes. Cross-file collisions are the
+  // intended override mechanism, so only the local arrays are checked.
+  match check_duplicate_ids(current_rules, current_file_rules) {
+    Some(message) => return Err(ConfigError(message))
+    None => ()
+  }
   // Merge: base rules first, then current rules (dedup by id, current wins)
-  let seen : Set[String] = Set::new()
+  let seen : Set[String] = Set([])
   let merged_rules : Array[Rule] = []
   for r in current_rules {
     if !seen.contains(r.id) {
@@ -221,7 +257,7 @@ fn parse_config_with_extends_impl(
       merged_rules.push(r)
     }
   }
-  let seen_fr : Set[String] = Set::new()
+  let seen_fr : Set[String] = Set([])
   let merged_file_rules : Array[FileRule] = []
   for fr in current_file_rules {
     if !seen_fr.contains(fr.id) {
@@ -260,7 +296,7 @@ fn base_name(path : String) -> String {
 ///|
 /// Shallow copy of a string set.
 fn clone_set(s : Set[String]) -> Set[String] {
-  let out : Set[String] = Set::new()
+  let out : Set[String] = Set([])
   for item in s {
     out.add(item)
   }

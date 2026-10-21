@@ -4,43 +4,115 @@
       "id": "file/max-lines",
       "severity": "warning",
       "message": "File exceeds 500 lines",
-      "extensions": [".js", ".jsx", ".ts", ".tsx", ".mjs", ".cjs", ".vue", ".svelte"],
-      "check": { "max_lines": 500 }
+      "extensions": [
+        ".js",
+        ".jsx",
+        ".ts",
+        ".tsx",
+        ".mjs",
+        ".cjs",
+        ".vue",
+        ".svelte",
+        ".astro"
+      ],
+      "check": {
+        "max_lines": 500
+      }
     },
     {
       "id": "file/max-line-length",
       "severity": "warning",
       "message": "Line exceeds 120 characters",
-      "extensions": [".js", ".jsx", ".ts", ".tsx", ".mjs", ".cjs", ".vue", ".svelte"],
-      "check": { "max_line_length": 120 }
+      "extensions": [
+        ".js",
+        ".jsx",
+        ".ts",
+        ".tsx",
+        ".mjs",
+        ".cjs",
+        ".vue",
+        ".svelte",
+        ".astro"
+      ],
+      "check": {
+        "max_line_length": 120
+      }
     },
     {
       "id": "file/no-trailing-whitespace",
       "severity": "warning",
       "message": "Trailing whitespace found",
-      "extensions": [".js", ".jsx", ".ts", ".tsx", ".mjs", ".cjs", ".vue", ".svelte"],
-      "check": { "no_trailing_whitespace": true }
+      "extensions": [
+        ".js",
+        ".jsx",
+        ".ts",
+        ".tsx",
+        ".mjs",
+        ".cjs",
+        ".vue",
+        ".svelte",
+        ".astro"
+      ],
+      "check": {
+        "no_trailing_whitespace": true
+      }
     },
     {
       "id": "file/no-tabs",
       "severity": "warning",
       "message": "Tab character found; use spaces",
-      "extensions": [".js", ".jsx", ".ts", ".tsx", ".mjs", ".cjs", ".vue", ".svelte"],
-      "check": { "no_tabs": true }
+      "extensions": [
+        ".js",
+        ".jsx",
+        ".ts",
+        ".tsx",
+        ".mjs",
+        ".cjs",
+        ".vue",
+        ".svelte",
+        ".astro"
+      ],
+      "check": {
+        "no_tabs": true
+      }
     },
     {
       "id": "file/final-newline",
       "severity": "warning",
       "message": "File must end with a newline",
-      "extensions": [".js", ".jsx", ".ts", ".tsx", ".mjs", ".cjs", ".vue", ".svelte"],
-      "check": { "final_newline": true }
+      "extensions": [
+        ".js",
+        ".jsx",
+        ".ts",
+        ".tsx",
+        ".mjs",
+        ".cjs",
+        ".vue",
+        ".svelte",
+        ".astro"
+      ],
+      "check": {
+        "final_newline": true
+      }
     },
     {
       "id": "file/no-duplicate-lines",
       "severity": "warning",
       "message": "Duplicate line found",
-      "extensions": [".js", ".jsx", ".ts", ".tsx", ".mjs", ".cjs", ".vue", ".svelte"],
-      "check": { "no_duplicate_lines": true }
+      "extensions": [
+        ".js",
+        ".jsx",
+        ".ts",
+        ".tsx",
+        ".mjs",
+        ".cjs",
+        ".vue",
+        ".svelte",
+        ".astro"
+      ],
+      "check": {
+        "no_duplicate_lines": true
+      }
     }
   ]
 }

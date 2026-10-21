@@ -1,0 +1,76 @@
+{
+  "rules": [
+    {
+      "id": "solid/no-innerhtml",
+      "severity": "error",
+      "message": "Avoid innerHTML (XSS risk); use textContent or JSX",
+      "extensions": [
+        ".jsx",
+        ".tsx"
+      ],
+      "match": {
+        "contains": "innerHTML"
+      }
+    },
+    {
+      "id": "solid/no-dangerous-html",
+      "severity": "error",
+      "message": "Avoid dangerouslySetInnerHTML in Solid; use innerHTML with sanitized content",
+      "extensions": [
+        ".jsx",
+        ".tsx"
+      ],
+      "match": {
+        "contains": "dangerouslySetInnerHTML"
+      }
+    },
+    {
+      "id": "solid/prefer-for",
+      "severity": "warning",
+      "message": "Use <For> instead of .map() for list rendering in Solid",
+      "extensions": [
+        ".jsx",
+        ".tsx"
+      ],
+      "match": {
+        "regex": "\\.map\\("
+      }
+    },
+    {
+      "id": "solid/prefer-show",
+      "severity": "warning",
+      "message": "Use <Show> instead of ternary for conditional rendering in Solid",
+      "extensions": [
+        ".jsx",
+        ".tsx"
+      ],
+      "match": {
+        "regex": "\\?[[:space:]]*<"
+      }
+    },
+    {
+      "id": "solid/no-react-imports",
+      "severity": "error",
+      "message": "Do not import from 'react' in a Solid project",
+      "extensions": [
+        ".jsx",
+        ".tsx"
+      ],
+      "match": {
+        "regex": "from[[:space:]]+['\"]react['\"]"
+      }
+    },
+    {
+      "id": "solid/event-directives",
+      "severity": "warning",
+      "message": "Use on:click instead of onClick in Solid JSX",
+      "extensions": [
+        ".jsx",
+        ".tsx"
+      ],
+      "match": {
+        "regex": "onClick=|onChange=|onInput="
+      }
+    }
+  ]
+}

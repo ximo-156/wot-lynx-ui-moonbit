@@ -38,7 +38,7 @@ pub struct Baseline {
 /// an empty baseline (adopting the linter should never hard-fail on a stale
 /// baseline).
 pub fn Baseline::load(src : String) -> Baseline {
-  let hashes : Set[String] = Set::new()
+  let hashes : Set[String] = Set([])
   let json = @json.parse(src) catch { _ => return { hashes, } }
   let arr = match json.as_array() {
     Some(a) => a

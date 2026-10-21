@@ -30,14 +30,14 @@ pub fn parse_disable_comments(source : String) -> DisableMap {
   let disabled_on : Map[Int32, Set[String]] = Map::new()
   // Running state: which rules are currently disabled
   let mut all_disabled = false
-  let mut disabled_rules : Set[String] = Set::new()
+  let mut disabled_rules : Set[String] = Set([])
   let lines = source.split("\n")
   let mut lineno = 1
   for line_view in lines {
     let line = line_view.to_owned()
     let trimmed = line.trim().to_owned()
     // Record current state for this line
-    let state : Set[String] = Set::new()
+    let state : Set[String] = Set([])
     if all_disabled {
       state.add("*")
     }
@@ -59,7 +59,7 @@ pub fn parse_disable_comments(source : String) -> DisableMap {
         let ids = parse_rule_ids(rest)
         if ids.contains("*") {
           all_disabled = true
-          disabled_rules = Set::new()
+          disabled_rules = Set([])
         } else {
           for id in ids {
             disabled_rules.add(id)
@@ -70,7 +70,7 @@ pub fn parse_disable_comments(source : String) -> DisableMap {
         let ids = parse_rule_ids(rest)
         if ids.contains("*") {
           all_disabled = false
-          disabled_rules = Set::new()
+          disabled_rules = Set([])
         } else {
           for id in ids {
             disabled_rules.remove(id)
@@ -87,7 +87,7 @@ pub fn parse_disable_comments(source : String) -> DisableMap {
 /// Parse space-separated rule ids from a directive's remainder.
 /// An empty string means "all rules" (represented as "*").
 fn parse_rule_ids(rest : String) -> Set[String] {
-  let ids : Set[String] = Set::new()
+  let ids : Set[String] = Set([])
   let trimmed = rest.trim().to_owned()
   if trimmed == "" {
     ids.add("*")
