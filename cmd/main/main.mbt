@@ -15,6 +15,9 @@ struct Options {
   mut directory_set : Bool
   mut format : Format
   mut report : String?
+  presets : Array[String]
+  mut list_presets : Bool
+  mut config_set : Bool
 }
 
 ///|
@@ -35,6 +38,10 @@ fn main {
     print_help()
     return
   }
+  if opts.list_presets {
+    println(@lib.render_preset_list())
+    return
+  }
   run(opts) catch {
     error => die(@lib.error_message(error))
   }
@@ -43,12 +50,26 @@ fn main {
 ///|
 fn run(opts : Options) -> Unit raise {
   let root = @lib.canonical_root(opts.directory)
-  let config_src = @fs.read_file_to_string(opts.config) catch {
-    _ => raise Failure("cannot read config: \{opts.config}")
-  }
-  let config = match @lib.parse_config(config_src) {
-    Ok(config) => config
-    Err(@lib.ConfigError(message)) => raise Failure("config error: \{message}")
+  let config = if !opts.presets.is_empty() {
+    if opts.config_set {
+      raise Failure(
+        "--preset and --config are mutually exclusive; use one or the other",
+      )
+    }
+    match @lib.merge_presets(opts.presets) {
+      Ok(config) => config
+      Err(@lib.ConfigError(message)) =>
+        raise Failure("preset error: \{message}")
+    }
+  } else {
+    let config_src = @fs.read_file_to_string(opts.config) catch {
+      _ => raise Failure("cannot read config: \{opts.config}")
+    }
+    match @lib.parse_config(config_src) {
+      Ok(config) => config
+      Err(@lib.ConfigError(message)) =>
+        raise Failure("config error: \{message}")
+    }
   }
   let rules = config.rules
   match @lib.validate_rules(rules) {
@@ -230,6 +251,9 @@ fn parse_args(args : Array[String]) -> Options raise {
     directory_set: false,
     format: Format::Text,
     report: None,
+    presets: [],
+    list_presets: false,
+    config_set: false,
   }
   let mut i = 1
   let mut positional_only = false
@@ -250,7 +274,16 @@ fn parse_args(args : Array[String]) -> Options raise {
       "--config" => {
         i += 1
         opts.config = option_value(args, i, arg)
+        opts.config_set = true
       }
+      "--preset" => {
+        i += 1
+        let name = option_value(args, i, arg)
+        if !opts.presets.contains(name) {
+          opts.presets.push(name)
+        }
+      }
+      "--list-presets" => opts.list_presets = true
       "--baseline" => {
         i += 1
         opts.baseline = Some(option_value(args, i, arg))
@@ -320,7 +353,8 @@ fn print_help() -> Unit {
   println(
     [
       "moonlint — a config-driven convention linter", "Usage: moonlint [options] [directory]",
-      "", "  --config <file>    rules JSON (default: moonlint.json)", "  --baseline <file>  strict legacy finding-hash JSON array",
+      "", "  --config <file>    rules JSON (default: moonlint.json)", "  --preset <name>    built-in framework preset (repeatable; see --list-presets)",
+      "  --list-presets     show available presets and exit", "  --baseline <file>  strict legacy finding-hash JSON array",
       "  --update-baseline  atomically rewrite the full tree scan's findings", "  --summary          show rule totals and read/skip/failure counts",
       "  --errors-only      hide warning findings (including in --summary)", "  --ext <list>       comma-separated extension filter, in every mode",
       "  --format <fmt>     text (default), json, or github annotations", "  --report <file>    also write the JSON report to this file",

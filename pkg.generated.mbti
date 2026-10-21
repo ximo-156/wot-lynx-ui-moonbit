@@ -33,7 +33,13 @@ pub fn lint_selected(String, ScanMode, Array[String], Array[Rule], Scope) -> Lin
 
 pub fn lint_tree(String, Array[Rule], Array[String], Scope) -> Result[LintResult, Error]
 
+pub fn merge_presets(Array[String]) -> Result[LintConfig, ConfigError]
+
 pub fn parse_config(String) -> Result[LintConfig, ConfigError]
+
+pub fn preset_by_name(String) -> Preset?
+
+pub fn preset_names() -> Array[String]
 
 pub fn read_lines(String) -> Array[(Int32, String)] raise
 
@@ -44,6 +50,8 @@ pub fn render_detail(Array[Finding]) -> String
 pub fn render_github(LintResult) -> String
 
 pub fn render_json(LintResult, ScanInfo) -> String
+
+pub fn render_preset_list() -> String
 
 pub fn render_summary(LintResult) -> String
 
@@ -130,6 +138,12 @@ pub enum MatchKind {
 } derive(Eq, @debug.Debug)
 pub fn MatchKind::matches(Self, String) -> Bool
 pub fn MatchKind::validate(Self) -> String?
+
+pub struct Preset {
+  name : String
+  description : String
+  rules : Array[Rule]
+}
 
 pub struct Rule {
   id : String

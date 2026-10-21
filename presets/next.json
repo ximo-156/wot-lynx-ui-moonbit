@@ -1,0 +1,55 @@
+{
+  "rules": [
+    {
+      "id": "next/no-html-link-for-pages",
+      "severity": "warning",
+      "message": "Use <Link> instead of <a> for internal pages",
+      "extensions": [".jsx", ".tsx", ".js", ".ts"],
+      "match": { "regex": "<a[^>]*href=\"/" }
+    },
+    {
+      "id": "next/no-img-element",
+      "severity": "warning",
+      "message": "Use next/image instead of <img>",
+      "extensions": [".jsx", ".tsx", ".js", ".ts"],
+      "match": { "regex": "<img" }
+    },
+    {
+      "id": "next/no-head-element",
+      "severity": "warning",
+      "message": "Use next/head instead of <head>",
+      "extensions": [".jsx", ".tsx", ".js", ".ts"],
+      "match": { "regex": "<head" }
+    },
+    {
+      "id": "next/no-css-tags",
+      "severity": "warning",
+      "message": "Use CSS imports instead of <link rel=\"stylesheet\">",
+      "extensions": [".jsx", ".tsx", ".js", ".ts"],
+      "match": { "regex": "<link[^>]*rel=\"stylesheet\"" }
+    },
+    {
+      "id": "next/no-sync-scripts",
+      "severity": "warning",
+      "message": "Synchronous <script src> blocks rendering; add async or defer",
+      "extensions": [".jsx", ".tsx", ".js", ".ts"],
+      "match": { "regex": "<script[^>]*src=" },
+      "unless": { "regex": "async|defer" }
+    },
+    {
+      "id": "next/google-font-display",
+      "severity": "warning",
+      "message": "Google Fonts links must include &display=swap",
+      "extensions": [".jsx", ".tsx", ".js", ".ts"],
+      "match": { "regex": "fonts.googleapis.com" },
+      "unless": { "regex": "display=swap" }
+    },
+    {
+      "id": "next/no-unwanted-polyfillio",
+      "severity": "error",
+      "message": "polyfill.io is a security risk; remove it",
+      "extensions": [".jsx", ".tsx", ".js", ".ts"],
+      "match": { "contains": "polyfill.io" }
+    }
+  ]
+}

@@ -1,0 +1,85 @@
+{
+  "rules": [
+    {
+      "id": "vue/no-v-html",
+      "severity": "warning",
+      "message": "Avoid v-html (XSS risk); use text interpolation or a sanitizer",
+      "extensions": [".vue", ".js", ".ts"],
+      "match": { "contains": "v-html" }
+    },
+    {
+      "id": "vue/require-v-for-key",
+      "severity": "error",
+      "message": "v-for requires a :key binding",
+      "extensions": [".vue", ".js", ".ts"],
+      "match": { "regex": "v-for" },
+      "unless": { "regex": ":key|v-bind:key" }
+    },
+    {
+      "id": "vue/no-use-v-if-with-v-for",
+      "severity": "error",
+      "message": "Avoid using v-if and v-for on the same element",
+      "extensions": [".vue", ".js", ".ts"],
+      "match": { "regex": "v-for[^>]*v-if|v-if[^>]*v-for" }
+    },
+    {
+      "id": "vue/require-component-is",
+      "severity": "error",
+      "message": "<component> requires an :is binding",
+      "extensions": [".vue", ".js", ".ts"],
+      "match": { "regex": "<component" },
+      "unless": { "regex": ":is=|v-bind:is=" }
+    },
+    {
+      "id": "vue/this-in-template",
+      "severity": "error",
+      "message": "Avoid using this in templates; use setup bindings or computed",
+      "extensions": [".vue", ".js", ".ts"],
+      "match": { "regex": "\\{\\{[^}]*this\\." }
+    },
+    {
+      "id": "vue/require-scoped-style",
+      "severity": "warning",
+      "message": "Component <style> blocks should be scoped",
+      "extensions": [".vue"],
+      "match": { "regex": "<style" },
+      "unless": { "regex": "scoped" }
+    },
+    {
+      "id": "vue/no-static-inline-styles",
+      "severity": "warning",
+      "message": "Avoid static inline styles; use :style binding or classes",
+      "extensions": [".vue", ".js", ".ts"],
+      "match": { "regex": "(^|[[:space:]])style=\"" }
+    },
+    {
+      "id": "vue/prefer-true-attribute-shorthand",
+      "severity": "warning",
+      "message": "Use shorthand for true attributes (:disabled instead of :disabled=\"true\")",
+      "extensions": [".vue", ".js", ".ts"],
+      "match": { "regex": ":[[:alpha:]-]+=\"true\"" }
+    },
+    {
+      "id": "vue/no-useless-mustaches",
+      "severity": "warning",
+      "message": "Remove unnecessary mustaches around string literals",
+      "extensions": [".vue", ".js", ".ts"],
+      "match": { "regex": "\\{\\{[[:space:]]*\"[^\"]*\"[[:space:]]*\\}\\}" }
+    },
+    {
+      "id": "vue/no-v-text",
+      "severity": "warning",
+      "message": "Use mustache interpolation instead of v-text",
+      "extensions": [".vue", ".js", ".ts"],
+      "match": { "contains": "v-text" }
+    },
+    {
+      "id": "vue/no-target-blank",
+      "severity": "warning",
+      "message": "target=\"_blank\" without rel=\"noopener\" is a security risk",
+      "extensions": [".vue", ".js", ".ts"],
+      "match": { "regex": "target=\"_blank\"" },
+      "unless": { "regex": "noopener" }
+    }
+  ]
+}

@@ -1,0 +1,65 @@
+{
+  "rules": [
+    {
+      "id": "svelte/no-at-html-tags",
+      "severity": "warning",
+      "message": "Avoid {@html} (XSS risk); use text interpolation or a sanitizer",
+      "extensions": [".svelte"],
+      "match": { "regex": "\\{@html" }
+    },
+    {
+      "id": "svelte/no-target-blank",
+      "severity": "warning",
+      "message": "target=\"_blank\" without rel=\"noopener\" is a security risk",
+      "extensions": [".svelte"],
+      "match": { "regex": "target=\"_blank\"" },
+      "unless": { "regex": "noopener" }
+    },
+    {
+      "id": "svelte/require-each-key",
+      "severity": "error",
+      "message": "{#each} blocks require a key expression",
+      "extensions": [".svelte"],
+      "match": { "regex": "\\{#each" },
+      "unless": { "regex": "\\([^)]+\\)\\}" }
+    },
+    {
+      "id": "svelte/no-reactive-literals",
+      "severity": "warning",
+      "message": "Avoid reactive statements that assign a literal",
+      "extensions": [".svelte"],
+      "match": { "regex": "\\$:[[:space:]]*[[:alpha:]_$][[:alnum:]_$]*[[:space:]]*=[[:space:]]*[\"'[:digit:]]" }
+    },
+    {
+      "id": "svelte/prefer-style-directive",
+      "severity": "warning",
+      "message": "Use the style: directive instead of inline style with interpolation",
+      "extensions": [".svelte"],
+      "match": { "regex": "style=\"[^\"]*\\{" }
+    },
+    {
+      "id": "svelte/a11y-mouse-events-have-key-events",
+      "severity": "warning",
+      "message": "on:mouseover/on:mouseout must be paired with keyboard events",
+      "extensions": [".svelte"],
+      "match": { "regex": "on:mouseover|on:mouseout" },
+      "unless": { "regex": "on:keydown|on:keyup|on:focus|on:blur" }
+    },
+    {
+      "id": "svelte/a11y-missing-attribute",
+      "severity": "error",
+      "message": "<img> requires an alt attribute",
+      "extensions": [".svelte"],
+      "match": { "regex": "<img" },
+      "unless": { "regex": "alt=" }
+    },
+    {
+      "id": "svelte/no-goto-without-base",
+      "severity": "warning",
+      "message": "goto() with a relative URL requires a base option",
+      "extensions": [".svelte"],
+      "match": { "regex": "goto\\(" },
+      "unless": { "regex": "goto\\(['\"]/" }
+    }
+  ]
+}

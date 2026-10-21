@@ -1,0 +1,68 @@
+{
+  "rules": [
+    {
+      "id": "angular/no-input-rename",
+      "severity": "error",
+      "message": "Avoid renaming @Input() with an alias",
+      "extensions": [".ts"],
+      "match": { "regex": "@Input\\(['\"]" }
+    },
+    {
+      "id": "angular/no-output-rename",
+      "severity": "error",
+      "message": "Avoid renaming @Output() with an alias",
+      "extensions": [".ts"],
+      "match": { "regex": "@Output\\(['\"]" }
+    },
+    {
+      "id": "angular/no-output-native",
+      "severity": "error",
+      "message": "Avoid @Output() names that collide with native DOM events",
+      "extensions": [".ts"],
+      "match": { "regex": "@Output\\(\\)[[:space:]]*(click|change|focus|blur|submit|input|keydown|keyup|keypress|mousedown|mouseup|mouseenter|mouseleave|dblclick|contextmenu|wheel|scroll|select|load|error|abort|resize)" }
+    },
+    {
+      "id": "angular/no-output-on-prefix",
+      "severity": "warning",
+      "message": "Avoid the on prefix in @Output() names",
+      "extensions": [".ts"],
+      "match": { "regex": "@Output\\(\\)[[:space:]]*on" }
+    },
+    {
+      "id": "angular/no-input-prefix",
+      "severity": "warning",
+      "message": "Avoid the on prefix in @Input() names",
+      "extensions": [".ts"],
+      "match": { "regex": "@Input\\(\\)[[:space:]]*on" }
+    },
+    {
+      "id": "angular/no-forward-ref",
+      "severity": "warning",
+      "message": "Avoid forwardRef; restructure dependencies instead",
+      "extensions": [".ts"],
+      "match": { "contains": "forwardRef" }
+    },
+    {
+      "id": "angular/no-host-metadata-property",
+      "severity": "warning",
+      "message": "Use @HostListener instead of the host metadata property",
+      "extensions": [".ts"],
+      "match": { "regex": "^[[:space:]]*host:" }
+    },
+    {
+      "id": "angular/no-attribute-decorator",
+      "severity": "error",
+      "message": "Avoid @Attribute(); use @Inject() or a service instead",
+      "extensions": [".ts"],
+      "match": { "regex": "@Attribute\\(" }
+    },
+    {
+      "id": "angular/relative-url-prefix",
+      "severity": "error",
+      "message": "Relative templateUrl/styleUrls must start with ./",
+      "extensions": [".ts"],
+      "match": { "regex": "templateUrl:|styleUrls?:" },
+      "unless": { "regex": "(templateUrl|styleUrls?):[[:space:]]*\\[?[[:space:]]*['\"]\\./" }
+    }
+  ]
+}

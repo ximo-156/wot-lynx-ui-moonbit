@@ -1,0 +1,147 @@
+{
+  "rules": [
+    {
+      "id": "react/no-danger",
+      "severity": "error",
+      "message": "Avoid dangerouslySetInnerHTML (XSS risk)",
+      "extensions": [".jsx", ".tsx"],
+      "match": { "contains": "dangerouslySetInnerHTML" }
+    },
+    {
+      "id": "react/no-find-dom-node",
+      "severity": "error",
+      "message": "Avoid findDOMNode (breaks encapsulation)",
+      "extensions": [".jsx", ".tsx"],
+      "match": { "contains": "findDOMNode" }
+    },
+    {
+      "id": "react/no-string-refs",
+      "severity": "error",
+      "message": "Avoid string refs; use callback refs or createRef",
+      "extensions": [".jsx", ".tsx"],
+      "match": { "regex": "(^|[[:space:]])ref=\"" }
+    },
+    {
+      "id": "react/no-children-prop",
+      "severity": "error",
+      "message": "Avoid passing children as a prop; use nesting instead",
+      "extensions": [".jsx", ".tsx"],
+      "match": { "contains": "children=" }
+    },
+    {
+      "id": "react/no-array-index-key",
+      "severity": "warning",
+      "message": "Avoid using the array index as a key",
+      "extensions": [".jsx", ".tsx"],
+      "match": { "regex": "key=\\{(i|idx|[[:alpha:]_]*(?i:index)[[:alpha:]_]*)\\}" }
+    },
+    {
+      "id": "react/no-deprecated",
+      "severity": "error",
+      "message": "Avoid deprecated lifecycle methods (componentWillMount/ReceiveProps/Update)",
+      "extensions": [".jsx", ".tsx"],
+      "match": { "regex": "componentWillMount|componentWillReceiveProps|componentWillUpdate" }
+    },
+    {
+      "id": "react/no-is-mounted",
+      "severity": "error",
+      "message": "Avoid isMounted (anti-pattern)",
+      "extensions": [".jsx", ".tsx"],
+      "match": { "regex": "\\.isMounted\\(" }
+    },
+    {
+      "id": "react/prefer-es6-class",
+      "severity": "error",
+      "message": "Avoid React.createClass; use ES6 classes or function components",
+      "extensions": [".jsx", ".tsx"],
+      "match": { "regex": "React\\.createClass|createReactClass" }
+    },
+    {
+      "id": "react/self-closing-comp",
+      "severity": "warning",
+      "message": "Use self-closing tags for empty elements",
+      "extensions": [".jsx", ".tsx"],
+      "match": { "regex": "></[[:alpha:]][[:alnum:]]*>" }
+    },
+    {
+      "id": "react/jsx-no-target-blank",
+      "severity": "warning",
+      "message": "target=\"_blank\" without rel=\"noopener\" is a security risk",
+      "extensions": [".jsx", ".tsx"],
+      "match": { "regex": "target=\"_blank\"" },
+      "unless": { "regex": "noopener" }
+    },
+    {
+      "id": "react/jsx-no-script-url",
+      "severity": "error",
+      "message": "Avoid javascript: URLs in href",
+      "extensions": [".jsx", ".tsx"],
+      "match": { "regex": "href=\"javascript:" }
+    },
+    {
+      "id": "react/style-prop-object",
+      "severity": "error",
+      "message": "The style prop must be an object, not a string",
+      "extensions": [".jsx", ".tsx"],
+      "match": { "regex": "(^|[[:space:]])style=\"" }
+    },
+    {
+      "id": "react/jsx-props-no-spreading",
+      "severity": "warning",
+      "message": "Avoid spreading props ({...props}); pass them explicitly",
+      "extensions": [".jsx", ".tsx"],
+      "match": { "regex": "\\{\\.\\.\\." }
+    },
+    {
+      "id": "react/jsx-curly-brace-presence",
+      "severity": "warning",
+      "message": "Remove unnecessary curly braces around string literals",
+      "extensions": [".jsx", ".tsx"],
+      "match": { "regex": "=\\{\"[^\"]*\"\\}" }
+    },
+    {
+      "id": "react/jsx-boolean-value",
+      "severity": "warning",
+      "message": "Use shorthand for boolean props (disabled instead of disabled={true})",
+      "extensions": [".jsx", ".tsx"],
+      "match": { "regex": "=\\{true\\}" }
+    },
+    {
+      "id": "react/no-unknown-property",
+      "severity": "error",
+      "message": "Use className instead of class in JSX",
+      "extensions": [".jsx", ".tsx"],
+      "match": { "regex": "(^|[[:space:]])class=" }
+    },
+    {
+      "id": "react/button-has-type",
+      "severity": "warning",
+      "message": "Buttons must have an explicit type attribute",
+      "extensions": [".jsx", ".tsx"],
+      "match": { "regex": "<button" },
+      "unless": { "regex": "type=" }
+    },
+    {
+      "id": "react/iframe-missing-sandbox",
+      "severity": "warning",
+      "message": "iframes must have a sandbox attribute",
+      "extensions": [".jsx", ".tsx"],
+      "match": { "regex": "<iframe" },
+      "unless": { "regex": "sandbox=" }
+    },
+    {
+      "id": "react/jsx-fragments",
+      "severity": "warning",
+      "message": "Use <>...</> instead of <React.Fragment>",
+      "extensions": [".jsx", ".tsx"],
+      "match": { "regex": "<React\\.Fragment" }
+    },
+    {
+      "id": "react/jsx-no-bind",
+      "severity": "warning",
+      "message": "Avoid .bind(this) in JSX; use class properties or arrow functions",
+      "extensions": [".jsx", ".tsx"],
+      "match": { "regex": "\\.bind\\(this\\)" }
+    }
+  ]
+}

@@ -1094,11 +1094,177 @@ class GitSafetyTests(FixtureCase):
         self.assertTrue(self.output(result).strip(), "missing Git diagnostic")
 
 
+class PresetTests(FixtureCase):
+    """Built-in framework preset CLI behavior."""
+
+    def test_list_presets_shows_all_presets(self):
+        result = self.run_cli(["--list-presets"])
+        self.assert_exit(result, 0)
+        output = self.output(result)
+        for name in ("angular", "common", "next", "react", "svelte", "vue"):
+            self.assertIn(name, output)
+
+    def test_list_presets_is_sorted(self):
+        result = self.run_cli(["--list-presets"])
+        self.assert_exit(result, 0)
+        lines = [line for line in self.output(result).splitlines() if line.strip()]
+        self.assertEqual(len(lines), 6)
+        names = [line.split(" ")[0] for line in lines]
+        self.assertEqual(names, sorted(names))
+
+    def test_preset_react_finds_violations(self):
+        self.write_file("App.tsx",
+                        '<div className="app">\n'
+                        '  <img src="/logo.png" />\n'
+                        '  <span></span>\n'
+                        '</div>\n')
+        result = self.run_cli(["--preset", "react", self.root])
+        self.assert_exit(result, 0)
+        output = self.output(result)
+        self.assertIn("react/self-closing-comp", output)
+
+    def test_preset_common_finds_violations(self):
+        self.write_file("utils.ts",
+                        "var x = 1;\n"
+                        "console.log('debug');\n"
+                        "debugger;\n")
+        result = self.run_cli(["--preset", "common", self.root])
+        self.assert_exit(result, 1)
+        output = self.output(result)
+        self.assertIn("common/no-var", output)
+        self.assertIn("common/no-console-log", output)
+        self.assertIn("common/no-debugger", output)
+
+    def test_preset_vue_finds_violations(self):
+        self.write_file("App.vue",
+                        "<template>\n"
+                        '  <li v-for="item in items">{{ item.name }}</li>\n'
+                        '  <div v-html="raw"></div>\n'
+                        "</template>\n")
+        result = self.run_cli(["--preset", "vue", self.root])
+        self.assert_exit(result, 1)
+        output = self.output(result)
+        self.assertIn("vue/require-v-for-key", output)
+        self.assertIn("vue/no-v-html", output)
+
+    def test_preset_unknown_is_usage_error(self):
+        self.write_file("App.tsx", "<div />\n")
+        result = self.run_cli(["--preset", "nonexistent", self.root])
+        self.assert_exit(result, 2)
+        self.assertIn("unknown preset", self.output(result))
+
+    def test_preset_and_config_are_mutually_exclusive(self):
+        self.write_file("App.tsx", "<div />\n")
+        result = self.run_cli(
+            ["--preset", "react", "--config", self.config, self.root])
+        self.assert_exit(result, 2)
+        self.assertIn("mutually exclusive", self.output(result))
+
+    def test_preset_clean_code_exits_zero(self):
+        self.write_file("App.tsx",
+                        '<div className="app">\n'
+                        '  <img src="/logo.png" alt="logo" />\n'
+                        '</div>\n')
+        result = self.run_cli(["--preset", "react", self.root])
+        self.assert_exit(result, 0)
+
+    def test_preset_repeated_deduplicates(self):
+        self.write_file("App.tsx", "<span></span>\n")
+        result = self.run_cli(
+            ["--preset", "react", "--preset", "react", self.root])
+        self.assert_exit(result, 0)
+        output = self.output(result)
+        # Only one finding for self-closing-comp, not two
+        marker = "] react/self-closing-comp — "
+        reported = [line for line in output.splitlines() if marker in line]
+        self.assertEqual(len(reported), 1)
+
+    def test_preset_combined_react_and_common(self):
+        self.write_file("App.tsx",
+                        "console.log('debug');\n"
+                        "<span></span>\n")
+        result = self.run_cli(
+            ["--preset", "react", "--preset", "common", self.root])
+        self.assert_exit(result, 0)
+        output = self.output(result)
+        self.assertIn("common/no-console-log", output)
+        self.assertIn("react/self-closing-comp", output)
+
+    def test_preset_json_output(self):
+        self.write_file("App.tsx", "<span></span>\n")
+        result = self.run_cli(
+            ["--preset", "react", "--format", "json", self.root])
+        self.assert_exit(result, 0)
+        import json
+        payload = json.loads(self.output(result))
+        findings = payload["findings"]
+        self.assertTrue(len(findings) > 0)
+        self.assertEqual(findings[0]["rule_id"], "react/self-closing-comp")
+
+    def test_preset_github_output(self):
+        self.write_file("App.tsx", "<span></span>\n")
+        result = self.run_cli(
+            ["--preset", "react", "--format", "github", self.root])
+        self.assert_exit(result, 0)
+        output = self.output(result)
+        self.assertIn("::warning file=App.tsx", output)
+        self.assertIn("title=react/self-closing-comp", output)
+
+    def test_preset_summary_output(self):
+        self.write_file("App.tsx", "<span></span>\n")
+        result = self.run_cli(
+            ["--preset", "react", "--summary", self.root])
+        self.assert_exit(result, 0)
+        output = self.output(result)
+        self.assertIn("react/self-closing-comp | 1", output)
+
+    def test_preset_errors_only(self):
+        self.write_file("App.tsx", "<span></span>\n")
+        result = self.run_cli(
+            ["--preset", "react", "--errors-only", self.root])
+        # self-closing-comp is a warning, so --errors-only should exit 0
+        self.assert_exit(result, 0)
+
+    def test_preset_angular_finds_violations(self):
+        self.write_file("app.component.ts",
+                        "@Input('alias') name: string;\n"
+                        "@Output() click = new EventEmitter();\n")
+        result = self.run_cli(["--preset", "angular", self.root])
+        self.assert_exit(result, 1)
+        output = self.output(result)
+        self.assertIn("angular/no-input-rename", output)
+        self.assertIn("angular/no-output-native", output)
+
+    def test_preset_svelte_finds_violations(self):
+        self.write_file("App.svelte",
+                        "{#each items as item}\n"
+                        "  <li>{item}</li>\n"
+                        "{/each}\n")
+        result = self.run_cli(["--preset", "svelte", self.root])
+        self.assert_exit(result, 1)
+        output = self.output(result)
+        self.assertIn("svelte/require-each-key", output)
+
+    def test_preset_next_finds_violations(self):
+        self.write_file("index.tsx",
+                        "<head>\n"
+                        '  <a href="/about">About</a>\n'
+                        '  <img src="/hero.png" />\n'
+                        "</head>\n")
+        result = self.run_cli(["--preset", "next", self.root])
+        self.assert_exit(result, 0)
+        output = self.output(result)
+        self.assertIn("next/no-head-element", output)
+        self.assertIn("next/no-html-link-for-pages", output)
+        self.assertIn("next/no-img-element", output)
+
+
 PHASES = {
     "repairs": RepairsTests,
     "git": GitSafetyTests,
     "scope": ScopeTests,
     "output": OutputTests,
+    "presets": PresetTests,
 }
 
 

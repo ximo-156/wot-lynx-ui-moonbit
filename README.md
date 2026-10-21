@@ -11,6 +11,7 @@ Ported from `wot-lynx-ui`'s `scripts/review-lint.mjs` as an entry for the 2026 M
 ## Features
 
 - **Config-driven** — rules defined in JSON, no code changes needed
+- **Built-in framework presets** — ready-to-use rule sets for React, Vue, Angular, Svelte, Next.js and common JS/TS hygiene; activate with `--preset <name>`
 - **Regex + substring matching** — `contains`, `prefix`, `suffix`, and `regex` matchers
 - **Negative guards** — `unless` field to suppress false positives (e.g. "import from 'vue' but not 'vue-lynx'")
 - **Comment-aware** — `//` and `/* */` comments are blanked out before matching, preserving line numbers
@@ -61,6 +62,51 @@ moon run cmd/main -- --report moonlint-report.json /path/to/project
 # GitHub Actions annotations
 moon run cmd/main -- --format github /path/to/project
 ```
+
+## Framework Presets
+
+moonlint ships built-in rule sets for popular frontend frameworks. Activate
+one or more with `--preset <name>` (repeatable); rules from multiple presets
+are merged with de-duplication by rule id.
+
+```bash
+# List available presets
+moon run cmd/main -- --list-presets
+
+# Lint a React project
+moon run cmd/main -- --preset react /path/to/project
+
+# Lint a Vue project
+moon run cmd/main -- --preset vue /path/to/project
+
+# Combine presets (e.g. React + common hygiene)
+moon run cmd/main -- --preset react --preset common /path/to/project
+```
+
+`--preset` and `--config` are mutually exclusive. An unknown preset name is a
+usage error (exit code 2).
+
+### Available presets
+
+| Preset | Extensions | Rules | Focus |
+|--------|-----------|-------|-------|
+| `common` | `.js` `.jsx` `.ts` `.tsx` `.mjs` `.cjs` `.vue` `.svelte` | 5 | Framework-agnostic hygiene: no-console-log, no-debugger, no-alert, no-eval, no-var |
+| `react` | `.jsx` `.tsx` | 20 | React/JSX: no-danger, no-string-refs, jsx-key, self-closing, target-blank, button-type, ... |
+| `vue` | `.vue` `.js` `.ts` | 11 | Vue 3: no-v-html, require-v-for-key, no-v-if-with-v-for, require-scoped-style, ... |
+| `angular` | `.ts` | 9 | Angular: no-input-rename, no-output-native, no-forward-ref, relative-url-prefix, ... |
+| `svelte` | `.svelte` | 8 | Svelte: no-at-html, require-each-key, a11y-missing-attribute, no-goto-without-base, ... |
+| `next` | `.jsx` `.tsx` `.js` `.ts` | 7 | Next.js: no-img-element, no-head-element, no-html-link-for-pages, google-font-display, ... |
+
+The same rule sets are also available as standalone JSON files under
+`presets/` for users who prefer to copy and customize them:
+
+```bash
+moon run cmd/main -- --config presets/react.json /path/to/project
+```
+
+> **Note:** Preset rules are line-oriented — they match one source line at a
+> time, after comments have been blanked out. Rules that need an AST (unused
+> variables, hook dependencies, prop types) are intentionally absent.
 
 ## Scan Modes
 
@@ -279,6 +325,8 @@ moonlint/
 ├── git_native.c      — lstat, Git (merge-base/changed/staged/blob), atomic write
 ├── engine.mbt        — rule application, scope filtering, scan accounting
 ├── config.mbt        — JSON config parsing and validation
+├── presets.mbt       — built-in framework presets (react, vue, angular, svelte, next, common)
+├── presets/          — standalone JSON copies of each preset for customization
 ├── baseline.mbt      — hash-based finding exemption
 ├── report.mbt        — detail and summary rendering
 ├── report_json.mbt   — JSON report
