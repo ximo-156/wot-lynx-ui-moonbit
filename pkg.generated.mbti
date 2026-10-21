@@ -39,6 +39,10 @@ pub fn merge_presets(Array[String]) -> Result[LintConfig, ConfigError]
 
 pub fn parse_config(String) -> Result[LintConfig, ConfigError]
 
+pub fn parse_config_with_extends(String, String) -> Result[LintConfig, ConfigError]
+
+pub fn parse_disable_comments(String) -> DisableMap
+
 pub fn preset_by_name(String) -> Preset?
 
 pub fn preset_names() -> Array[String]
@@ -54,6 +58,8 @@ pub fn render_github(LintResult) -> String
 pub fn render_json(LintResult, ScanInfo) -> String
 
 pub fn render_preset_list() -> String
+
+pub fn render_sarif(LintResult, ScanInfo) -> String
 
 pub fn render_summary(LintResult) -> String
 
@@ -95,6 +101,12 @@ pub struct Diagnostic {
   message : String
 } derive(@debug.Debug)
 
+pub struct DisableMap {
+  line_state : Map[Int32, @set.Set[String]]
+  disabled_on : Map[Int32, @set.Set[String]]
+}
+pub fn DisableMap::is_disabled(Self, String, Int32) -> Bool
+
 pub enum FileCheck {
   MaxLines(Int32)
   MaxLineLength(Int32)
@@ -103,6 +115,10 @@ pub enum FileCheck {
   FinalNewline
   NoDuplicateLines
   FileNaming(NamingStyle)
+  MaxFileSize(Int32)
+  NoEmptyFiles
+  LineEnding(LineEndingStyle)
+  NoBom
 } derive(Eq, @debug.Debug)
 
 pub struct FileRule {
@@ -113,6 +129,7 @@ pub struct FileRule {
   check : FileCheck
   scope : Scope
 } derive(@debug.Debug)
+pub fn FileRule::applies_to(Self, String) -> Bool
 
 pub struct Finding {
   rule_id : String
@@ -129,6 +146,12 @@ pub struct GlobPattern {
 pub fn GlobPattern::matches(Self, String) -> Bool
 pub fn GlobPattern::matches_path(Self, String) -> Bool
 pub fn GlobPattern::new(String) -> Self
+
+pub enum LineEndingStyle {
+  Lf
+  Crlf
+} derive(Eq, @debug.Debug)
+pub fn LineEndingStyle::parse(String) -> Self?
 
 pub struct LintConfig {
   rules : Array[Rule]

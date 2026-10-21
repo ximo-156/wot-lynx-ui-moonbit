@@ -172,6 +172,25 @@ pub fn NamingStyle::parse(s : String) -> NamingStyle? {
 }
 
 ///|
+/// Line ending style for file-level checks.
+pub enum LineEndingStyle {
+  /// Unix line endings (LF only).
+  Lf
+  /// Windows line endings (CRLF only).
+  Crlf
+} derive(Debug, Eq)
+
+///|
+/// Parse a line ending style from its string tag.
+pub fn LineEndingStyle::parse(s : String) -> LineEndingStyle? {
+  match s {
+    "lf" => Some(Lf)
+    "crlf" => Some(Crlf)
+    _ => None
+  }
+}
+
+///|
 /// A file-level check evaluated once per file, not per line.
 pub enum FileCheck {
   /// File must not exceed N lines.
@@ -188,6 +207,14 @@ pub enum FileCheck {
   NoDuplicateLines
   /// File name (without extension) must follow a naming convention.
   FileNaming(NamingStyle)
+  /// File must not exceed N bytes.
+  MaxFileSize(Int32)
+  /// File must not be empty.
+  NoEmptyFiles
+  /// File must use consistent line endings.
+  LineEnding(LineEndingStyle)
+  /// File must not start with a UTF-8 BOM.
+  NoBom
 } derive(Debug, Eq)
 
 ///|

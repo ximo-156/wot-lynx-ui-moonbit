@@ -169,8 +169,80 @@ duplicates) rather than individual lines. They are declared in a separate
 | `final_newline` | `{ "final_newline": true }` | File must end with a newline |
 | `no_duplicate_lines` | `{ "no_duplicate_lines": true }` | No duplicate lines |
 | `file_naming` | `{ "file_naming": "kebab-case" }` | File name must follow a convention (camelCase, PascalCase, snake_case, kebab-case) |
+| `max_file_size` | `{ "max_file_size": 10000 }` | File must not exceed N bytes |
+| `no_empty_files` | `{ "no_empty_files": true }` | File must not be empty |
+| `line_ending` | `{ "line_ending": "lf" }` | File must use consistent line endings (lf or crlf) |
+| `no_bom` | `{ "no_bom": true }` | File must not start with a UTF-8 BOM |
 
 The `rules` array is optional when `file_rules` is present.
+
+## Inline Disable Comments
+
+Suppress findings without editing the config:
+
+```typescript
+// moonlint-disable-next-line
+const x = 1;  // this line is not linted
+
+// moonlint-disable-next-line no-console-log
+console.log('debug');  // only no-console-log is suppressed here
+
+// moonlint-disable
+// everything below is not linted
+const y = 2;
+
+// moonlint-enable
+// linting resumes here
+const z = 3;
+```
+
+- `// moonlint-disable [rule-id ...]` — disable from this line onward
+- `// moonlint-disable-next-line [rule-id ...]` — disable on the next line only
+- `// moonlint-enable [rule-id ...]` — re-enable from this line onward
+- Without rule ids, all rules are affected
+
+## Config Inheritance
+
+Configs can extend other configs with the `extends` field:
+
+```json
+{
+  "extends": "presets/react.json",
+  "rules": [
+    { "id": "custom/no-foo", "message": "...", "match": { "contains": "foo" } }
+  ]
+}
+```
+
+`extends` accepts a string or an array of strings. Paths are relative to the
+config file's directory. Rules from extended configs are merged with the
+current config's rules; the current config takes precedence on id conflicts.
+
+## Auto-Fix
+
+The `--fix` flag automatically repairs fixable file-level violations:
+
+```bash
+# Fix trailing whitespace, tabs, and missing final newlines
+moonlint --preset file --fix /path/to/project
+```
+
+Currently auto-fixable checks: `no_trailing_whitespace`, `no_tabs`,
+`final_newline`. After fixing, the linter re-scans and reports remaining
+findings.
+
+## Quick Start
+
+```bash
+# Create a starter config
+moonlint --init
+
+# Lint with a framework preset
+moonlint --preset react /path/to/project
+
+# Auto-fix and re-lint
+moonlint --preset file --fix /path/to/project
+```
 
 ## Scan Modes
 
@@ -388,13 +460,15 @@ moonlint/
 ├── git.mbt           — native filesystem/Git bridge (fixed argv, no shell)
 ├── git_native.c      — lstat, Git (merge-base/changed/staged/blob), atomic write
 ├── engine.mbt        — rule application, scope filtering, scan accounting
-├── config.mbt        — JSON config parsing and validation
-├── presets.mbt       — built-in framework presets (react, vue, angular, svelte, next, common)
+├── config.mbt        — JSON config parsing, validation, and extends
+├── presets.mbt       — built-in framework presets (react, vue, angular, svelte, next, solid, astro, nuxt, file, common)
 ├── presets/          — standalone JSON copies of each preset for customization
+├── disable.mbt       — inline disable comment parsing (// moonlint-disable)
 ├── baseline.mbt      — hash-based finding exemption
 ├── report.mbt        — detail and summary rendering
 ├── report_json.mbt   — JSON report
 ├── report_github.mbt — GitHub Actions annotations
+├── report_sarif.mbt  — SARIF 2.1.0 report
 ├── tests/            — dependency-free CLI integration tests
 └── cmd/main/         — CLI entry point
 ```

@@ -1362,6 +1362,151 @@ class PresetTests(FixtureCase):
         result = self.invoke()
         self.assert_findings(result, 1, rule_id="file/final-newline")
 
+    def test_inline_disable_next_line(self):
+        self.write_config(rules=[], file_rules=[{
+            "id": "file/no-trailing-whitespace",
+            "severity": "error",
+            "message": "No trailing whitespace",
+            "extensions": [".ts"],
+            "check": {"no_trailing_whitespace": True},
+        }])
+        self.write_file("test.ts",
+                        "// moonlint-disable-next-line\n"
+                        "const x = 1;   \n"
+                        "const y = 2;   \n")
+        result = self.invoke()
+        # Line 2 is disabled, only line 3 should be reported
+        self.assert_findings(result, 1, rule_id="file/no-trailing-whitespace")
+
+    def test_inline_disable_all(self):
+        self.write_config(rules=[], file_rules=[{
+            "id": "file/no-trailing-whitespace",
+            "severity": "error",
+            "message": "No trailing whitespace",
+            "extensions": [".ts"],
+            "check": {"no_trailing_whitespace": True},
+        }])
+        self.write_file("test.ts",
+                        "// moonlint-disable\n"
+                        "const x = 1;   \n"
+                        "const y = 2;   \n")
+        result = self.invoke()
+        self.assert_findings(result, 0, rule_id="file/no-trailing-whitespace")
+
+    def test_inline_disable_specific_rule(self):
+        self.write_config(rules=[], file_rules=[{
+            "id": "file/no-trailing-whitespace",
+            "severity": "error",
+            "message": "No trailing whitespace",
+            "extensions": [".ts"],
+            "check": {"no_trailing_whitespace": True},
+        }])
+        self.write_file("test.ts",
+                        "// moonlint-disable file/no-trailing-whitespace\n"
+                        "const x = 1;   \n")
+        result = self.invoke()
+        self.assert_findings(result, 0, rule_id="file/no-trailing-whitespace")
+
+    def test_config_extends(self):
+        # Write base config
+        base_path = self.base / "base.json"
+        base_path.write_text(json.dumps({
+            "rules": [{
+                "id": "base/no-foo",
+                "severity": "error",
+                "message": "No foo",
+                "extensions": [".ts"],
+                "match": {"contains": "foo"},
+            }],
+        }), encoding="utf-8")
+        # Write main config that extends base
+        self.config.write_text(json.dumps({
+            "extends": "base.json",
+            "rules": [{
+                "id": "custom/no-bar",
+                "severity": "error",
+                "message": "No bar",
+                "extensions": [".ts"],
+                "match": {"contains": "bar"},
+            }],
+        }), encoding="utf-8")
+        self.write_file("test.ts", "const foo = 1;\nconst bar = 2;\n")
+        result = self.invoke()
+        self.assert_findings(result, 1, rule_id="base/no-foo")
+        self.assert_findings(result, 1, rule_id="custom/no-bar")
+
+    def test_init_creates_config(self):
+        import os
+        init_dir = self.base / "init-test"
+        init_dir.mkdir()
+        result = subprocess.run(
+            [str(BINARY), "--init"],
+            cwd=init_dir, env=self.env,
+            stdout=subprocess.PIPE, stderr=subprocess.PIPE, timeout=15,
+        )
+        self.assert_exit(result, 0)
+        config_path = init_dir / "moonlint.json"
+        self.assertTrue(config_path.is_file(), "moonlint.json was not created")
+
+    def test_sarif_output_format(self):
+        self.write_config([{
+            "id": "test/rule",
+            "severity": "error",
+            "message": "test",
+            "extensions": [".ts"],
+            "match": {"contains": "FORBIDDEN"},
+        }])
+        self.write_file("test.ts", "FORBIDDEN\n")
+        result = self.invoke("--format", "sarif")
+        self.assert_exit(result, 1)
+        output = self.output(result)
+        self.assertIn('"version": "2.1.0"', output)
+        self.assertIn('"ruleId": "test/rule"', output)
+        self.assertIn('"level": "error"', output)
+
+    def test_fix_removes_trailing_whitespace(self):
+        self.write_config(rules=[], file_rules=[{
+            "id": "file/no-trailing-whitespace",
+            "severity": "error",
+            "message": "No trailing whitespace",
+            "extensions": [".ts"],
+            "check": {"no_trailing_whitespace": True},
+        }])
+        self.write_file("test.ts", "const x = 1;   \nconst y = 2;\n")
+        result = self.invoke("--fix")
+        self.assert_exit(result, 0)
+        # Verify the file was fixed
+        content = (self.root / "test.ts").read_text(encoding="utf-8")
+        self.assertEqual(content, "const x = 1;\nconst y = 2;\n")
+
+    def test_fix_replaces_tabs(self):
+        self.write_config(rules=[], file_rules=[{
+            "id": "file/no-tabs",
+            "severity": "error",
+            "message": "No tabs",
+            "extensions": [".ts"],
+            "check": {"no_tabs": True},
+        }])
+        self.write_file("test.ts", "\tconst x = 1;\n")
+        result = self.invoke("--fix")
+        self.assert_exit(result, 0)
+        content = (self.root / "test.ts").read_text(encoding="utf-8")
+        self.assertEqual(content, "  const x = 1;\n")
+
+    def test_fix_adds_final_newline(self):
+        self.write_config(rules=[], file_rules=[{
+            "id": "file/final-newline",
+            "severity": "error",
+            "message": "Must end with newline",
+            "extensions": [".ts"],
+            "check": {"final_newline": True},
+        }])
+        self.write_file("test.ts", "const x = 1;")
+        result = self.invoke("--fix")
+        self.assert_exit(result, 0)
+        content = (self.root / "test.ts").read_text(encoding="utf-8")
+        self.assertEqual(content, "const x = 1;\n")
+
 
 PHASES = {
     "repairs": RepairsTests,

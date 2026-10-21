@@ -134,12 +134,18 @@ pub fn lint_selected(
       if source.contains("\x00") {
         raise Failure("binary source contains NUL bytes")
       }
+      let disable_map = parse_disable_comments(source)
+      let raw_lines = split_lines(source)
       let lines = split_lines(strip_comments(source))
       for finding in lint_lines(rel, lines, rules) {
-        findings.push(finding)
+        if !disable_map.is_disabled(finding.rule_id, finding.line) {
+          findings.push(finding)
+        }
       }
-      for finding in lint_file(rel, source, lines, file_rules) {
-        findings.push(finding)
+      for finding in lint_file(rel, source, raw_lines, file_rules) {
+        if !disable_map.is_disabled(finding.rule_id, finding.line) {
+          findings.push(finding)
+        }
       }
       scanned += 1
     } catch {
@@ -195,6 +201,13 @@ fn file_rule_applies(fr : FileRule, rel : String) -> Bool {
     Set::from_iter(fr.extensions.iter().map(e => e.to_lower())),
   ) &&
   fr.scope.allows(rel)
+}
+
+///|
+/// Public view of `file_rule_applies`, so the CLI's `--fix` path honours the
+/// same extension and include/exclude scope as the scan.
+pub fn FileRule::applies_to(self : FileRule, rel : String) -> Bool {
+  file_rule_applies(self, rel)
 }
 
 ///|
@@ -290,6 +303,46 @@ pub fn lint_file(
           )
         }
       }
+      MaxFileSize(limit) => {
+        let size = source.length()
+        if size > limit {
+          findings.push(
+            file_finding(fr, rel, 1, "file is \{size} bytes (limit: \{limit})"),
+          )
+        }
+      }
+      NoEmptyFiles =>
+        if source.trim().to_owned() == "" {
+          findings.push(file_finding(fr, rel, 1, "file is empty"))
+        }
+      LineEnding(style) => {
+        let has_crlf = source.contains("\r\n")
+        let has_lf_only = source.contains("\n") && !source.contains("\r\n")
+        match style {
+          Lf =>
+            if has_crlf {
+              findings.push(
+                file_finding(
+                  fr, rel, 1, "file uses CRLF line endings; expected LF",
+                ),
+              )
+            }
+          Crlf =>
+            if has_lf_only {
+              findings.push(
+                file_finding(
+                  fr, rel, 1, "file uses LF line endings; expected CRLF",
+                ),
+              )
+            }
+        }
+      }
+      NoBom =>
+        if source.length() >= 3 && source[0] == '\u{FEFF}' {
+          findings.push(
+            file_finding(fr, rel, 1, "file starts with a UTF-8 BOM"),
+          )
+        }
     }
   }
   findings

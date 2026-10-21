@@ -275,3 +275,62 @@ test "lint_file with no file rules yields no findings" {
   let findings = lint_file("test.ts", "a\nb\n", lines, [])
   assert_eq(findings.length(), 0)
 }
+
+///|
+test "lint_file detects max_file_size violation" {
+  let source = "a\nb\nc\n"
+  let lines = [(1, "a"), (2, "b"), (3, "c")]
+  let frs = [test_file_rule("file/max-file-size", MaxFileSize(3))]
+  let findings = lint_file("test.ts", source, lines, frs)
+  assert_eq(findings.length(), 1)
+}
+
+///|
+test "lint_file detects empty file" {
+  let frs = [test_file_rule("file/no-empty-files", NoEmptyFiles)]
+  let findings = lint_file("test.ts", "", [(1, "")], frs)
+  assert_eq(findings.length(), 1)
+}
+
+///|
+test "lint_file accepts non-empty file" {
+  let frs = [test_file_rule("file/no-empty-files", NoEmptyFiles)]
+  let findings = lint_file("test.ts", "code\n", [(1, "code")], frs)
+  assert_eq(findings.length(), 0)
+}
+
+///|
+test "lint_file detects CRLF when LF expected" {
+  let source = "a\r\nb\r\n"
+  let lines = [(1, "a\r"), (2, "b\r")]
+  let frs = [test_file_rule("file/line-ending", LineEnding(Lf))]
+  let findings = lint_file("test.ts", source, lines, frs)
+  assert_eq(findings.length(), 1)
+}
+
+///|
+test "lint_file accepts LF when LF expected" {
+  let source = "a\nb\n"
+  let lines = [(1, "a"), (2, "b")]
+  let frs = [test_file_rule("file/line-ending", LineEnding(Lf))]
+  let findings = lint_file("test.ts", source, lines, frs)
+  assert_eq(findings.length(), 0)
+}
+
+///|
+test "lint_file detects BOM" {
+  let source = "\u{FEFF}code\n"
+  let lines = [(1, "\u{FEFF}code")]
+  let frs = [test_file_rule("file/no-bom", NoBom)]
+  let findings = lint_file("test.ts", source, lines, frs)
+  assert_eq(findings.length(), 1)
+}
+
+///|
+test "lint_file accepts no BOM" {
+  let source = "code\n"
+  let lines = [(1, "code")]
+  let frs = [test_file_rule("file/no-bom", NoBom)]
+  let findings = lint_file("test.ts", source, lines, frs)
+  assert_eq(findings.length(), 0)
+}

@@ -212,3 +212,37 @@ test "config with no file_rules yields empty array" {
   let config = parse_config(json).unwrap()
   assert_eq(config.file_rules.length(), 0)
 }
+
+///|
+test "config parses max_file_size check" {
+  let json = "{\"rules\":[],\"file_rules\":[{\"id\":\"file/size\",\"message\":\"too big\",\"extensions\":[\".ts\"],\"check\":{\"max_file_size\":1000}}]}"
+  let config = parse_config(json).unwrap()
+  assert_eq(config.file_rules[0].check, MaxFileSize(1000))
+}
+
+///|
+test "config parses no_empty_files check" {
+  let json = "{\"rules\":[],\"file_rules\":[{\"id\":\"file/empty\",\"message\":\"empty\",\"extensions\":[],\"check\":{\"no_empty_files\":true}}]}"
+  let config = parse_config(json).unwrap()
+  assert_eq(config.file_rules[0].check, NoEmptyFiles)
+}
+
+///|
+test "config parses line_ending check" {
+  let json = "{\"rules\":[],\"file_rules\":[{\"id\":\"file/le\",\"message\":\"le\",\"extensions\":[\".ts\"],\"check\":{\"line_ending\":\"lf\"}}]}"
+  let config = parse_config(json).unwrap()
+  assert_eq(config.file_rules[0].check, LineEnding(Lf))
+}
+
+///|
+test "config parses no_bom check" {
+  let json = "{\"rules\":[],\"file_rules\":[{\"id\":\"file/bom\",\"message\":\"bom\",\"extensions\":[\".ts\"],\"check\":{\"no_bom\":true}}]}"
+  let config = parse_config(json).unwrap()
+  assert_eq(config.file_rules[0].check, NoBom)
+}
+
+///|
+test "config rejects invalid line_ending style" {
+  let json = "{\"rules\":[],\"file_rules\":[{\"id\":\"file/le\",\"message\":\"le\",\"extensions\":[\".ts\"],\"check\":{\"line_ending\":\"invalid\"}}]}"
+  assert_true(parse_config(json) is Err(_))
+}

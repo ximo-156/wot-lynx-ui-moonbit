@@ -79,6 +79,219 @@ pub fn parse_config(src : String) -> Result[LintConfig, ConfigError] {
 }
 
 ///|
+/// Parse a config with `extends` support. The `extends` field can be a string
+/// or array of strings pointing to other config files (relative to the config
+/// file that declares them). Extended configs are loaded and merged: their
+/// rules and file_rules are appended after the current config's, so the
+/// current config takes precedence on id conflicts.
+///
+/// `config_dir` is the directory of the config file whose text is `src`; it is
+/// used to resolve that file's relative `extends` paths.
+pub fn parse_config_with_extends(
+  src : String,
+  config_dir : String,
+) -> Result[LintConfig, ConfigError] {
+  let visited : Set[String] = Set::new()
+  parse_config_with_extends_impl(src, config_dir, visited)
+}
+
+///|
+/// Directory containing `path`, or "." when it has no separator.
+fn parent_dir_of(path : String) -> String {
+  match path.rev_split_once("/") {
+    Some((dir, _)) => if dir == "" { "/" } else { dir.to_owned() }
+    None => "."
+  }
+}
+
+///|
+/// Join a directory and a relative path, normalizing `./` and collapsing
+/// redundant separators. Does not resolve `..` (the filesystem layer does).
+fn join_path_parts(dir : String, path : String) -> String {
+  if path.has_prefix("/") {
+    return path
+  }
+  if dir == "" || dir == "." {
+    return path
+  }
+  if dir.has_suffix("/") {
+    "\{dir}\{path}"
+  } else {
+    "\{dir}/\{path}"
+  }
+}
+
+///|
+/// Recursive worker for `parse_config_with_extends`. `visited` holds the
+/// canonical paths already loaded on the current chain, so a cyclic `extends`
+/// reports an error instead of overflowing the stack.
+fn parse_config_with_extends_impl(
+  src : String,
+  config_dir : String,
+  visited : Set[String],
+) -> Result[LintConfig, ConfigError] {
+  let json = @json.parse(src) catch {
+    _ => return Err(ConfigError("config is not valid JSON"))
+  }
+  let obj = match json.as_object() {
+    Some(o) => o
+    None => return Err(ConfigError("config root must be a JSON object"))
+  }
+  // Parse extends
+  let extends_paths = match parse_extends(obj) {
+    Ok(paths) => paths
+    Err(message) => return Err(ConfigError(message))
+  }
+  // Load and merge extended configs
+  let base_rules : Array[Rule] = []
+  let base_file_rules : Array[FileRule] = []
+  let mut base_scope = Scope::empty()
+  for path in extends_paths {
+    let full_path = join_path_parts(config_dir, path)
+    let canonical = canonical_config_path(full_path)
+    if visited.contains(canonical) {
+      return Err(ConfigError("cyclic extends: \{canonical}"))
+    }
+    let ext_src = @fs.read_file_to_string(full_path) catch {
+      _ => return Err(ConfigError("cannot read extended config: \{full_path}"))
+    }
+    // The extended config's own relative paths resolve against ITS directory,
+    // not the top-level config's directory.
+    let ext_dir = parent_dir_of(full_path)
+    let ext_visited = clone_set(visited)
+    ext_visited.add(canonical)
+    let ext_config = match
+      parse_config_with_extends_impl(ext_src, ext_dir, ext_visited) {
+      Ok(c) => c
+      Err(ConfigError(msg)) =>
+        return Err(ConfigError("extends \{path}: \{msg}"))
+    }
+    for r in ext_config.rules {
+      base_rules.push(r)
+    }
+    for fr in ext_config.file_rules {
+      base_file_rules.push(fr)
+    }
+    if !ext_config.scope.is_empty() {
+      base_scope = ext_config.scope
+    }
+  }
+  // Parse current config
+  let scope = match parse_scope(obj, "config") {
+    Ok(scope) => scope
+    Err(message) => return Err(ConfigError(message))
+  }
+  let current_rules : Array[Rule] = []
+  match obj.get("rules") {
+    Some(rules_json) => {
+      let arr = match rules_json.as_array() {
+        Some(a) => a
+        None => return Err(ConfigError("\"rules\" must be an array"))
+      }
+      for (idx, rj) in arr.iter2() {
+        let rule = match parse_rule(rj) {
+          Ok(r) => r
+          Err(ConfigError(msg)) =>
+            return Err(ConfigError("rule #\{idx}: \{msg}"))
+        }
+        current_rules.push(rule)
+      }
+    }
+    None =>
+      if !obj.contains("file_rules") && extends_paths.is_empty() {
+        return Err(ConfigError("config missing \"rules\" array"))
+      }
+  }
+  let current_file_rules = match parse_file_rules(obj) {
+    Ok(fr) => fr
+    Err(ConfigError(msg)) => return Err(ConfigError(msg))
+  }
+  // Merge: base rules first, then current rules (dedup by id, current wins)
+  let seen : Set[String] = Set::new()
+  let merged_rules : Array[Rule] = []
+  for r in current_rules {
+    if !seen.contains(r.id) {
+      seen.add(r.id)
+      merged_rules.push(r)
+    }
+  }
+  for r in base_rules {
+    if !seen.contains(r.id) {
+      seen.add(r.id)
+      merged_rules.push(r)
+    }
+  }
+  let seen_fr : Set[String] = Set::new()
+  let merged_file_rules : Array[FileRule] = []
+  for fr in current_file_rules {
+    if !seen_fr.contains(fr.id) {
+      seen_fr.add(fr.id)
+      merged_file_rules.push(fr)
+    }
+  }
+  for fr in base_file_rules {
+    if !seen_fr.contains(fr.id) {
+      seen_fr.add(fr.id)
+      merged_file_rules.push(fr)
+    }
+  }
+  // Use current scope if non-empty, otherwise base scope
+  let final_scope = if scope.is_empty() { base_scope } else { scope }
+  Ok({ rules: merged_rules, file_rules: merged_file_rules, scope: final_scope, })
+}
+
+///|
+/// Canonical form of a config path, used as the cycle-detection key. Resolves
+/// to an absolute path when possible so that `a.json` and `./a.json` collide.
+fn canonical_config_path(path : String) -> String {
+  let dir = canonical_root(parent_dir_of(path)) catch { _ => parent_dir_of(path) }
+  join_path_parts(dir, base_name(path))
+}
+
+///|
+/// Final path component of `path`.
+fn base_name(path : String) -> String {
+  match path.rev_split_once("/") {
+    Some((_, name)) => name.to_owned()
+    None => path
+  }
+}
+
+///|
+/// Shallow copy of a string set.
+fn clone_set(s : Set[String]) -> Set[String] {
+  let out : Set[String] = Set::new()
+  for item in s {
+    out.add(item)
+  }
+  out
+}
+
+///|
+/// Parse the `extends` field: a string or array of strings.
+fn parse_extends(obj : Map[String, Json]) -> Result[Array[String], String] {
+  match obj.get("extends") {
+    None => Ok([])
+    Some(v) =>
+      match v {
+        String(s) => Ok([s])
+        Array(arr) => {
+          let paths : Array[String] = []
+          for item in arr {
+            match item.as_string() {
+              Some(s) => paths.push(s)
+              None =>
+                return Err("\"extends\" must be a string or array of strings")
+            }
+          }
+          Ok(paths)
+        }
+        _ => Err("\"extends\" must be a string or array of strings")
+      }
+  }
+}
+
+///|
 /// Parse the global or rule-level `include` / `exclude` scope.
 fn parse_scope(
   obj : Map[String, Json],
@@ -265,9 +478,35 @@ fn parse_file_check(cj : Json) -> Result[FileCheck, ConfigError] {
       None => Err(ConfigError("\"file_naming\" must be a string"))
     }
   }
+  if obj.contains("max_file_size") {
+    return match obj.get("max_file_size") {
+      Some(v) =>
+        match v.as_number() {
+          Some(n) => Ok(MaxFileSize(n.to_int()))
+          None => Err(ConfigError("\"max_file_size\" must be a number"))
+        }
+      None => Err(ConfigError("\"max_file_size\" must be a number"))
+    }
+  }
+  if obj.contains("no_empty_files") {
+    return Ok(NoEmptyFiles)
+  }
+  if obj.contains("line_ending") {
+    return match get_str(obj, "line_ending") {
+      Some(s) =>
+        match LineEndingStyle::parse(s) {
+          Some(style) => Ok(LineEnding(style))
+          None => Err(ConfigError("\"line_ending\" must be one of: lf, crlf"))
+        }
+      None => Err(ConfigError("\"line_ending\" must be a string"))
+    }
+  }
+  if obj.contains("no_bom") {
+    return Ok(NoBom)
+  }
   Err(
     ConfigError(
-      "check needs one of: max_lines, max_line_length, no_trailing_whitespace, no_tabs, final_newline, no_duplicate_lines, file_naming",
+      "check needs one of: max_lines, max_line_length, no_trailing_whitespace, no_tabs, final_newline, no_duplicate_lines, file_naming, max_file_size, no_empty_files, line_ending, no_bom",
     ),
   )
 }
