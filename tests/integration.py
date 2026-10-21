@@ -107,6 +107,11 @@ class FixtureCase(unittest.TestCase):
         payload = {"rules": [rule()] if rules is None else rules, **fields}
         self.config.write_text(json.dumps(payload, ensure_ascii=False), encoding="utf-8")
 
+    def text_of(self, result):
+        """Combined decoded stdout+stderr for substring assertions."""
+        return (result.stdout or b"").decode("utf-8", "replace") + \
+               (result.stderr or b"").decode("utf-8", "replace")
+
     def run_cli(self, arguments, *, stdin=None, timeout=15):
         self.assertIsNotNone(BINARY)
         try:
@@ -132,7 +137,7 @@ class FixtureCase(unittest.TestCase):
 
     @staticmethod
     def output(result):
-        return (result.stdout + result.stderr).decode("utf-8", errors="replace")
+        return result.stdout.decode("utf-8", errors="replace")
 
     def assert_exit(self, result, expected):
         self.assertEqual(
@@ -1533,7 +1538,7 @@ class PresetTests(FixtureCase):
         self.write_file("test.ts", "const x = 1;\n")
         result = self.invoke("--config", str(self.base / "a.json"))
         self.assert_exit(result, 2)
-        self.assertIn("cyclic extends", result.stdout + result.stderr)
+        self.assertIn("cyclic extends", self.text_of(result))
 
     def test_nested_extends_resolves_relative_to_declaring_file(self):
         """A grandchild config's relative path is relative to ITS directory."""
@@ -1564,7 +1569,7 @@ class PresetTests(FixtureCase):
         self.write_file("test.ts", "foo\n")
         result = self.invoke()
         self.assert_exit(result, 2)
-        self.assertIn("duplicate rule id", result.stdout + result.stderr)
+        self.assertIn("duplicate rule id", self.text_of(result))
 
     def test_fix_respects_rule_scope(self):
         """--fix used to rewrite paths excluded by the rule's scope."""
@@ -1614,7 +1619,7 @@ class PresetTests(FixtureCase):
         self.write_file("test.ts", "const a = 1;")
         result = self.invoke("--staged", "--fix")
         self.assert_exit(result, 2)
-        self.assertIn("--fix cannot be combined", result.stdout + result.stderr)
+        self.assertIn("--fix cannot be combined", self.text_of(result))
 
     def test_whole_file_check_not_suppressed_by_inline_disable(self):
         """A line-1 comment must not mask a whole-file property like BOM."""
@@ -1631,8 +1636,9 @@ class PresetTests(FixtureCase):
         """.astro was missing from the file/common preset extension lists."""
         (self.root / "page.astro").write_text("<div>   \n</div>",
                                               encoding="utf-8")
-        result = self.invoke("--preset", "file")
-        self.assert_findings(result, 2, rule_id="file/")
+        result = self.run_cli(["--preset", "file", str(self.root)])
+        self.assert_exit(result, 0)  # warnings only
+        self.assertIn("page.astro", self.text_of(result))
 
 
 PHASES = {

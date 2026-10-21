@@ -89,7 +89,9 @@ pub fn Scope::is_empty(self : Scope) -> Bool {
 
 ///|
 /// Expose derived impls as regular methods for external callers.
+
 ///|
 pub extend Scope with @moonbitlang/core/debug.Debug::{to_repr}
+
 ///|
 pub extend Scope with Eq::{equal, not_equal}

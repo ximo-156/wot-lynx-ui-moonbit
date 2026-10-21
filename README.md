@@ -90,7 +90,7 @@ usage error (exit code 2).
 
 | Preset | Extensions | Rules | Focus |
 |--------|-----------|-------|-------|
-| `common` | `.js` `.jsx` `.ts` `.tsx` `.mjs` `.cjs` `.vue` `.svelte` | 5 | Framework-agnostic hygiene: no-console-log, no-debugger, no-alert, no-eval, no-var |
+| `common` | `.js` `.jsx` `.ts` `.tsx` `.mjs` `.cjs` `.vue` `.svelte` `.astro` | 5 | Framework-agnostic hygiene: no-console-log, no-debugger, no-alert, no-eval, no-var |
 | `react` | `.jsx` `.tsx` | 20 | React/JSX: no-danger, no-string-refs, jsx-key, self-closing, target-blank, button-type, ... |
 | `vue` | `.vue` `.js` `.ts` | 11 | Vue 3: no-v-html, require-v-for-key, no-v-if-with-v-for, require-scoped-style, ... |
 | `angular` | `.ts` | 9 | Angular: no-input-rename, no-output-native, no-forward-ref, relative-url-prefix, ... |
@@ -99,10 +99,11 @@ usage error (exit code 2).
 | `solid` | `.jsx` `.tsx` | 6 | SolidJS: no-innerhtml, prefer-for, no-react-imports, event-directives, ... |
 | `astro` | `.astro` | 5 | Astro: no-set-html-directive, prefer-class-list, no-unused-define-vars, ... |
 | `nuxt` | `.vue` `.js` `.ts` | 5 | Nuxt: no-env-in-runtime, prefer-use-fetch, no-window-in-ssr, ... |
-| `file` | `.js` `.jsx` `.ts` `.tsx` `.mjs` `.cjs` `.vue` `.svelte` | 6 file rules | File-level: max-lines, max-line-length, no-trailing-whitespace, no-tabs, final-newline, no-duplicate-lines |
+| `file` | `.js` `.jsx` `.ts` `.tsx` `.mjs` `.cjs` `.vue` `.svelte` `.astro` | 6 file rules | File-level: max-lines, max-line-length, no-trailing-whitespace, no-tabs, final-newline, no-duplicate-lines |
 
-The same rule sets are also available as standalone JSON files under
-`presets/` for users who prefer to copy and customize them:
+Every preset is also shipped as a standalone JSON file under `presets/`
+(`angular`, `astro`, `common`, `file`, `next`, `nuxt`, `react`, `solid`,
+`svelte`, `vue`) for users who prefer to copy and customize them:
 
 ```bash
 moon run cmd/main -- --config presets/react.json /path/to/project
@@ -214,22 +215,50 @@ Configs can extend other configs with the `extends` field:
 }
 ```
 
-`extends` accepts a string or an array of strings. Paths are relative to the
-config file's directory. Rules from extended configs are merged with the
-current config's rules; the current config takes precedence on id conflicts.
+`extends` accepts a string or an array of strings. Inheritance is recursive:
+each path resolves relative to **the config file that declares it**, so a
+`lvl1/mid.json` may itself extend `lvl2/leaf.json`. Rules from extended configs
+are merged with the current config's rules; the current config takes precedence
+on id conflicts, which is the intended overriding mechanism.
+
+Cyclic `extends` chains (`a.json` → `b.json` → `a.json`) are detected and
+reported as a config error (exit 2) rather than recursing indefinitely.
+Duplicate rule ids **within a single file** are rejected, since the later rule
+would otherwise be silently shadowed.
 
 ## Auto-Fix
 
-The `--fix` flag automatically repairs fixable file-level violations:
+The `--fix` flag repairs fixable file-level violations in place:
 
 ```bash
-# Fix trailing whitespace, tabs, and missing final newlines
+# Fix trailing whitespace and missing final newlines
 moonlint --preset file --fix /path/to/project
+
+# Additionally normalise tabs to 4 spaces (opt-in)
+moonlint --preset file --fix --fix-tab-width 4 /path/to/project
 ```
 
-Currently auto-fixable checks: `no_trailing_whitespace`, `no_tabs`,
-`final_newline`. After fixing, the linter re-scans and reports remaining
-findings.
+Auto-fixable checks: `no_trailing_whitespace`, `final_newline`, and `no_tabs`.
+Properties that make `--fix` safe to run on a real tree:
+
+| Behaviour | Detail |
+|-----------|--------|
+| Scope-aware | A rule's `include`/`exclude` and `extensions` are honoured, so excluded trees (e.g. `vendor/**`) are never written |
+| Line-ending preserving | `final_newline` appends `\r\n` to a CRLF file, never a bare `\n` |
+| Tab opt-in | Tabs change indentation width and can alter semantics (Python, YAML, Makefiles), so `no_tabs` is only fixed with an explicit `--fix-tab-width` |
+| Atomic writes | Files are replaced atomically; an interrupted fix cannot truncate source |
+| stderr messages | Progress goes to stderr, keeping `--format json`/`sarif` stdout parseable |
+| Working tree only | `--fix` is rejected together with `--changed`/`--staged`, which read Git blobs rather than the working tree |
+
+After fixing, the linter re-scans and reports remaining findings.
+
+## Inline Disable Scope
+
+Inline `moonlint-disable` comments suppress **line-level** findings only.
+Whole-file properties — `bom`, `line_ending`, `max_file_size`, `no_empty_files`,
+`file_naming`, `max_lines` — cannot be masked by a comment, because they
+describe the file rather than a line. Per-line file checks
+(`no_trailing_whitespace`, `no_tabs`, `max_line_length`) remain suppressible.
 
 ## Quick Start
 
@@ -441,19 +470,27 @@ Emits GitHub Actions workflow commands:
 Property values and messages are escaped as GitHub requires, so a newline in a
 rule message can never forge an extra command.
 
+### `--format sarif`
+
+Emits a SARIF 2.1.0 document (`$schema`, `runs[].tool.driver.rules` and
+`results[]` with `ruleId`, `level` and `physicalLocation`), suitable for GitHub
+code scanning, VS Code and most CI static-analysis integrations.
+
 ## Exit Codes
 
 - `0` — no error-severity findings
 - `1` — error-severity findings found
 - `2` — argument, configuration, Git, or I/O error (including any file that could
-  not be read, a reference that cannot be resolved, and an unmerged index)
+  not be read, a reference that cannot be resolved, an unmerged index, a cyclic
+  or unreadable `extends` chain, and `--fix` combined with `--changed`/`--staged`)
 
 ## Architecture
 
 ```
 moonlint/
 ├── types.mbt         — Severity, MatchKind, Rule, Finding, LintResult, ScanInfo
-├── matcher.mbt       — MatchKind evaluation (contains/prefix/suffix/regex)
+├── matcher.mbt       — MatchKind evaluation (contains/prefix/suffix/regex);
+│                       `prepare()` compiles each regex once per rule, not per line
 ├── scanner.mbt       — comment stripping, file walking, line splitting
 ├── scope.mbt         — include/exclude glob scopes
 ├── scan.mbt          — scan modes, glob matching, file selection

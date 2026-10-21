@@ -232,11 +232,15 @@ fn glob_segment_matches(pattern : String, value : String) -> Bool {
 
 ///|
 /// Expose derived impls as regular methods for external callers.
+
 ///|
 pub extend ScanMode with @moonbitlang/core/debug.Debug::{to_repr}
+
 ///|
 pub extend ScanMode with Eq::{equal, not_equal}
+
 ///|
 pub extend GlobPattern with @moonbitlang/core/debug.Debug::{to_repr}
+
 ///|
 pub extend GlobPattern with Eq::{equal, not_equal}

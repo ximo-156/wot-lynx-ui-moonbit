@@ -309,39 +309,57 @@ pub fn LintResult::count_by(self : LintResult, sev : Severity) -> Int32 {
 ///|
 /// Expose the derived impls as regular methods so callers outside this
 /// package can use them without relying on implicit impl promotion.
+
 ///|
 pub extend Severity with @moonbitlang/core/debug.Debug::{to_repr}
+
 ///|
 pub extend Severity with Eq::{equal, not_equal}
+
 ///|
 pub extend MatchKind with @moonbitlang/core/debug.Debug::{to_repr}
+
 ///|
 pub extend MatchKind with Eq::{equal, not_equal}
+
 ///|
 pub extend Rule with @moonbitlang/core/debug.Debug::{to_repr}
+
 ///|
 pub extend Finding with @moonbitlang/core/debug.Debug::{to_repr}
+
 ///|
 pub extend Diagnostic with @moonbitlang/core/debug.Debug::{to_repr}
+
 ///|
 pub extend SkippedFile with @moonbitlang/core/debug.Debug::{to_repr}
+
 ///|
 pub extend ScanInfo with @moonbitlang/core/debug.Debug::{to_repr}
+
 ///|
 pub extend LintConfig with @moonbitlang/core/debug.Debug::{to_repr}
+
 ///|
 pub extend NamingStyle with @moonbitlang/core/debug.Debug::{to_repr}
+
 ///|
 pub extend NamingStyle with Eq::{equal, not_equal}
+
 ///|
 pub extend LineEndingStyle with @moonbitlang/core/debug.Debug::{to_repr}
+
 ///|
 pub extend LineEndingStyle with Eq::{equal, not_equal}
+
 ///|
 pub extend FileCheck with @moonbitlang/core/debug.Debug::{to_repr}
+
 ///|
 pub extend FileCheck with Eq::{equal, not_equal}
+
 ///|
 pub extend FileRule with @moonbitlang/core/debug.Debug::{to_repr}
+
 ///|
 pub extend LintResult with @moonbitlang/core/debug.Debug::{to_repr}

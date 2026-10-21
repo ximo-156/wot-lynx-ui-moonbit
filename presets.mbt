@@ -82,35 +82,45 @@ fn common_rules() -> Array[Rule] {
       "common/no-console-log",
       Severity::warning(),
       "Avoid console.log in committed code",
-      [".js", ".jsx", ".ts", ".tsx", ".mjs", ".cjs", ".vue", ".svelte", ".astro"],
+      [
+        ".js", ".jsx", ".ts", ".tsx", ".mjs", ".cjs", ".vue", ".svelte", ".astro",
+      ],
       Contains("console.log"),
     ),
     rule(
       "common/no-debugger",
       Severity::error(),
       "No debugger statements",
-      [".js", ".jsx", ".ts", ".tsx", ".mjs", ".cjs", ".vue", ".svelte", ".astro"],
+      [
+        ".js", ".jsx", ".ts", ".tsx", ".mjs", ".cjs", ".vue", ".svelte", ".astro",
+      ],
       Regex("^[[:space:]]*debugger[[:space:]]*;?[[:space:]]*$"),
     ),
     rule(
       "common/no-alert",
       Severity::warning(),
       "Avoid alert(), confirm() and prompt() in production code",
-      [".js", ".jsx", ".ts", ".tsx", ".mjs", ".cjs", ".vue", ".svelte", ".astro"],
+      [
+        ".js", ".jsx", ".ts", ".tsx", ".mjs", ".cjs", ".vue", ".svelte", ".astro",
+      ],
       Regex("\\b(alert|confirm|prompt)\\("),
     ),
     rule(
       "common/no-eval",
       Severity::error(),
       "Avoid eval() and its implicit forms",
-      [".js", ".jsx", ".ts", ".tsx", ".mjs", ".cjs", ".vue", ".svelte", ".astro"],
+      [
+        ".js", ".jsx", ".ts", ".tsx", ".mjs", ".cjs", ".vue", ".svelte", ".astro",
+      ],
       Regex("\\beval\\("),
     ),
     rule(
       "common/no-var",
       Severity::warning(),
       "Use let or const instead of var",
-      [".js", ".jsx", ".ts", ".tsx", ".mjs", ".cjs", ".vue", ".svelte", ".astro"],
+      [
+        ".js", ".jsx", ".ts", ".tsx", ".mjs", ".cjs", ".vue", ".svelte", ".astro",
+      ],
       Regex("\\bvar[[:space:]]"),
     ),
   ]

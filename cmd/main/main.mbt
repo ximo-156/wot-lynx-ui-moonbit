@@ -20,7 +20,7 @@ struct Options {
   mut config_set : Bool
   mut init : Bool
   mut fix : Bool
-  mut fix_tab_width : Int?
+  mut fix_tab_width : Int32?
 }
 
 ///|
@@ -116,7 +116,8 @@ fn run(opts : Options) -> Unit raise {
   }
   // --fix writes the working tree; Git-backed modes read blobs, so fixes would
   // never be reflected in the re-scan and the report would contradict disk.
-  if opts.fix && (opts.scan_mode.tag() == "changed" || opts.scan_mode.tag() == "staged") {
+  if opts.fix &&
+    (opts.scan_mode.tag() == "changed" || opts.scan_mode.tag() == "staged") {
     raise Failure(
       "--fix cannot be combined with --changed or --staged; run it on the working tree",
     )
@@ -215,7 +216,7 @@ fn apply_fixes(
   root : String,
   files : Array[String],
   file_rules : Array[@lib.FileRule],
-  tab_width : Int?,
+  tab_width : Int32?,
 ) -> Unit raise {
   let mut fixed_count = 0
   for rel in files {
@@ -374,16 +375,16 @@ fn set_mode(opts : Options, mode : @lib.ScanMode) -> Unit raise {
 ///|
 /// Parse a strictly positive decimal integer, or `None` when `value` is not
 /// one. Rejects signs, whitespace and overflow beyond `Int`.
-fn parse_positive_int(value : String) -> Int? {
+fn parse_positive_int(value : String) -> Int32? {
   if value == "" {
     return None
   }
-  let mut acc : Int = 0
+  let mut acc : Int32 = 0
   for c in value {
     if c < '0' || c > '9' {
       return None
     }
-    let digit = (c.to_int() - '0'.to_int())
+    let digit = c.to_int() - '0'.to_int()
     // Guard against overflow: Int is at most 2^63-1.
     if acc > (2147483647 - digit) / 10 {
       return None

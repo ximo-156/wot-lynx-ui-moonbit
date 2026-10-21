@@ -280,7 +280,9 @@ fn parse_config_with_extends_impl(
 /// Canonical form of a config path, used as the cycle-detection key. Resolves
 /// to an absolute path when possible so that `a.json` and `./a.json` collide.
 fn canonical_config_path(path : String) -> String {
-  let dir = canonical_root(parent_dir_of(path)) catch { _ => parent_dir_of(path) }
+  let dir = canonical_root(parent_dir_of(path)) catch {
+    _ => parent_dir_of(path)
+  }
   join_path_parts(dir, base_name(path))
 }
 
