@@ -60,8 +60,7 @@ fn findings_json(findings : Array[Finding]) -> Json {
     obj.set("message", Json::string(f.message))
     obj.set("file", Json::string(f.file))
     obj.set("line", number_json(f.line))
-    // Rules match whole lines, so every finding starts at the first column.
-    obj.set("column", Json::number(1.0))
+    obj.set("column", number_json(f.column))
     obj.set("snippet", Json::string(f.snippet))
     items.push(Json::object(obj))
   }

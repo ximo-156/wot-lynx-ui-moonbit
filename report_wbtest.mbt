@@ -18,6 +18,7 @@ fn report_finding_in(
     message: "forbidden token",
     file,
     line,
+    column: 1,
     snippet: "FORBIDDEN",
   }
 }
@@ -129,6 +130,7 @@ test "json report escapes special characters" {
         message: "he said \"stop\"\nnow",
         file: "src/a b.ts",
         line: 1,
+        column: 1,
         snippet: "tab\there",
       },
     ],
@@ -174,6 +176,7 @@ test "github annotations escape property and message values" {
         message: "100% broken\r\nline",
         file: "src/a,b:c.ts",
         line: 7,
+        column: 1,
         snippet: "x",
       },
     ],

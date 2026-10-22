@@ -1641,12 +1641,122 @@ class PresetTests(FixtureCase):
         self.assertIn("page.astro", self.text_of(result))
 
 
+class ObservableTests(FixtureCase):
+    """Positions, comment handling and dry-run, as a user can observe them."""
+
+    def test_json_and_sarif_report_the_match_column(self):
+        self.write_file("src/a.ts", "const ok = 1;\n    const bad = " + TOKEN + ";\n")
+        result = self.invoke("--format", "json")
+        self.assert_exit(result, 1)
+        finding = json.loads(self.output(result))["findings"][0]
+        # "    const bad = FORBIDDEN;" puts the token at column 17.
+        self.assertEqual(finding["line"], 2)
+        self.assertEqual(finding["column"], 17)
+
+        sarif = self.invoke("--format", "sarif")
+        self.assert_exit(sarif, 1)
+        region = json.loads(self.output(sarif))["runs"][0]["results"][0] \
+            ["locations"][0]["physicalLocation"]["region"]
+        self.assertEqual(region["startLine"], 2)
+        self.assertEqual(region["startColumn"], 17)
+
+    def test_column_frontier_counts_characters_not_bytes(self):
+        # Four CJK characters before the token: column 5, not a byte offset.
+        self.write_file("src/a.ts", "中文注释" + TOKEN + "\n")
+        result = self.invoke("--format", "json")
+        self.assert_exit(result, 1)
+        self.assertEqual(json.loads(self.output(result))["findings"][0]["column"], 5)
+
+    def test_comments_are_not_reported(self):
+        self.write_file("src/a.ts", "// " + TOKEN + "\n")
+        self.write_file("src/b.ts", "/* " + TOKEN + "\n   still comment */\n")
+        self.assert_findings(self.invoke(), 0)
+
+    def test_errors_only_summary_keeps_scan_counters(self):
+        self.write_config(rules=[
+            {"id": "t/err", "severity": "error", "message": "e",
+             "extensions": [".ts"], "match": {"contains": "ERRMARK"}},
+            {"id": "t/warn", "severity": "warning", "message": "w",
+             "extensions": [".ts"], "match": {"contains": TOKEN}},
+        ])
+        self.write_file("src/a.ts", "ERRMARK\n" + TOKEN + "\n")
+        plain = self.invoke("--summary")
+        self.assertIn("t/err | 1", self.output(plain))
+        self.assertIn("t/warn | 1", self.output(plain))
+        self.assertIn("files selected: 1", self.output(plain))
+
+        only = self.invoke("--summary", "--errors-only")
+        text = self.output(only)
+        self.assertIn("t/err | 1", text)
+        self.assertNotIn("t/warn", text)
+        # Filtering findings must not distort the scan accounting.
+        self.assertIn("files selected: 1", text)
+        self.assertIn("errors: 1  warnings: 0", text)
+
+    def test_errors_only_summary_when_everything_is_filtered(self):
+        self.write_config(rules=[
+            {"id": "t/warn", "severity": "warning", "message": "w",
+             "extensions": [".ts"], "match": {"contains": TOKEN}},
+        ])
+        self.write_file("src/a.ts")
+        result = self.invoke("--summary", "--errors-only")
+        self.assert_exit(result, 0)
+        text = self.output(result)
+        self.assertIn("warnings: 0", text)
+        self.assertIn("files scanned: 1", text)
+
+    def test_dry_run_reports_without_writing(self):
+        self.write_config(rules=[], file_rules=[{
+            "id": "f/trailing", "severity": "error",
+            "message": "trailing whitespace", "extensions": [".ts"],
+            "check": {"no_trailing_whitespace": True},
+        }])
+        path = self.write_file("src/a.ts", "const a = 1;   \n")
+        result = self.invoke("--fix", "--dry-run")
+        self.assertIn("would fix", self.text_of(result))
+        self.assertNotIn("moonlint: fixed", self.text_of(result))
+        self.assertEqual(path.read_text(encoding="utf-8"), "const a = 1;   \n")
+
+    def test_fix_reports_the_files_it_changed(self):
+        self.write_config(rules=[], file_rules=[{
+            "id": "f/trailing", "severity": "error",
+            "message": "trailing whitespace", "extensions": [".ts"],
+            "check": {"no_trailing_whitespace": True},
+        }])
+        path = self.write_file("src/a.ts", "const a = 1;   \n")
+        result = self.invoke("--fix")
+        self.assertIn("moonlint: fixed", self.text_of(result))
+        self.assertEqual(path.read_text(encoding="utf-8"), "const a = 1;\n")
+
+    @unittest.expectedFailure
+    def test_template_literal_text_is_not_code(self):
+        """Known defect: the compiled binary treats template text as code.
+
+        `strip_comments` returns this input unchanged in unit tests, yet the
+        native executable reports the token inside the template body.
+        """
+        self.write_file("src/a.ts", "const t = `" + TOKEN + "`;\n")
+        self.assert_findings(self.invoke(), 0)
+
+    @unittest.expectedFailure
+    def test_string_literal_text_is_not_code(self):
+        """Known defect: same divergence for ordinary string literals."""
+        self.write_file("src/a.ts", 'const q = "' + TOKEN + '";\n')
+        self.assert_findings(self.invoke(), 0)
+
+    def test_dry_run_requires_fix(self):
+        result = self.invoke("--dry-run")
+        self.assert_exit(result, 2)
+        self.assertIn("--dry-run", self.text_of(result))
+
+
 PHASES = {
     "repairs": RepairsTests,
     "git": GitSafetyTests,
     "scope": ScopeTests,
     "output": OutputTests,
     "presets": PresetTests,
+    "observable": ObservableTests,
 }
 
 

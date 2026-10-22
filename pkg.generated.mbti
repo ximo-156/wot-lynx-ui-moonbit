@@ -12,6 +12,8 @@ pub fn canonical_root(String) -> String raise NativeError
 
 pub fn collect_extensions(Array[Rule], Array[FileRule]) -> Array[String]
 
+pub fn comment_mode_for(String) -> CommentMode
+
 pub fn error_message(Error) -> String
 
 pub fn finding_hash(Finding) -> String
@@ -97,6 +99,14 @@ pub fn Baseline::parse(String) -> Self raise
 pub fn Baseline::partition(Self, Array[Finding]) -> (Array[Finding], Array[Finding])
 pub fn Baseline::render(Array[Finding]) -> String
 
+pub enum CommentMode {
+  Js
+  Plain
+} derive(Eq, @debug.Debug)
+pub fn CommentMode::equal(Self, Self) -> Bool
+pub fn CommentMode::not_equal(Self, Self) -> Bool
+pub fn CommentMode::to_repr(Self) -> @debug.Repr
+
 pub struct Diagnostic {
   file : String
   message : String
@@ -143,6 +153,7 @@ pub struct Finding {
   message : String
   file : String
   line : Int32
+  column : Int32
   snippet : String
 } derive(@debug.Debug)
 pub fn Finding::to_repr(Self) -> @debug.Repr
@@ -156,6 +167,8 @@ pub fn GlobPattern::matches_path(Self, String) -> Bool
 pub fn GlobPattern::new(String) -> Self
 pub fn GlobPattern::not_equal(Self, Self) -> Bool
 pub fn GlobPattern::to_repr(Self) -> @debug.Repr
+
+type JsState
 
 pub enum LineEndingStyle {
   Lf
@@ -198,6 +211,7 @@ pub enum MatchKind {
   Equals(String)
   Word(String)
 } derive(Eq, @debug.Debug)
+pub fn MatchKind::column_of(Self, String) -> Int32
 pub fn MatchKind::equal(Self, Self) -> Bool
 pub fn MatchKind::matches(Self, String) -> Bool
 pub fn MatchKind::not_equal(Self, Self) -> Bool

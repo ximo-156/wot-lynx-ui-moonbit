@@ -14,7 +14,7 @@ Ported from `wot-lynx-ui`'s `scripts/review-lint.mjs` as an entry for the 2026 M
 - **Built-in framework presets** — ready-to-use rule sets for React, Vue, Angular, Svelte, Next.js and common JS/TS hygiene; activate with `--preset <name>`
 - **Regex + substring matching** — `contains`, `prefix`, `suffix`, and `regex` matchers
 - **Negative guards** — `unless` field to suppress false positives (e.g. "import from 'vue' but not 'vue-lynx'")
-- **Comment-aware** — `//` and `/* */` comments are blanked out before matching, preserving line numbers
+- **Comment-aware** — `//` and `/* */` comments are blanked out before matching, preserving line numbers and columns; in JS/TS/JSX files the scanner understands template literals, `${}` interpolations, strings and regex literals, so a `//` inside a template string is text, not a comment
 - **Baseline support** — hash-based exemption for existing violations, enabling incremental adoption; `--update-baseline` refreshes it atomically from a full scan
 - **Severity levels** — `error` and `warning`, with exit code 1 on any error-severity finding
 - **Scoped rules** — global and per-rule `include`/`exclude` glob patterns decide which files are read and which rules see them
@@ -236,6 +236,9 @@ moonlint --preset file --fix /path/to/project
 
 # Additionally normalise tabs to 4 spaces (opt-in)
 moonlint --preset file --fix --fix-tab-width 4 /path/to/project
+
+# Show what would change without writing anything
+moonlint --preset file --fix --dry-run /path/to/project
 ```
 
 Auto-fixable checks: `no_trailing_whitespace`, `final_newline`, and `no_tabs`.
@@ -249,8 +252,9 @@ Properties that make `--fix` safe to run on a real tree:
 | Atomic writes | Files are replaced atomically; an interrupted fix cannot truncate source |
 | stderr messages | Progress goes to stderr, keeping `--format json`/`sarif` stdout parseable |
 | Working tree only | `--fix` is rejected together with `--changed`/`--staged`, which read Git blobs rather than the working tree |
+| Dry run | `--dry-run` reports `would fix <file>` and writes nothing; findings are reported as they still are, since the tree is unchanged |
 
-After fixing, the linter re-scans and reports remaining findings.
+Every run reports a per-file line plus a total (`fixed N file(s)` / `would fix N file(s)`) on stderr. After fixing, the linter re-scans and reports remaining findings.
 
 ## Inline Disable Scope
 
@@ -440,13 +444,20 @@ A versioned document (`"version": 1`):
       "message": "Must import from 'vue-lynx', not 'vue'",
       "file": "src/app.ts",
       "line": 12,
-      "column": 1,
+      "column": 22,
       "snippet": "import { createApp } from 'vue'"
     }
   ],
   "diagnostics": [{ "file": "src/broken.ts", "message": "source is not valid UTF-8" }]
 }
 ```
+
+`line` and `column` are 1-based and count characters, not bytes, so a finding
+after multi-byte text points at the right place. `column` is the first character
+of the match: for `contains`, `prefix` and `whole-word` rules that is where the
+pattern text appears, for `suffix` rules the start of the trailing text, and for
+`regex` rules the first non-space character (the match offset is not recoverable
+from the pattern alone). SARIF `startColumn` uses the same value.
 
 `files_selected` is counted after path normalization, extension filtering and
 de-duplication. Every selected file is either scanned, skipped (with a reason in
@@ -491,7 +502,9 @@ moonlint/
 ├── types.mbt         — Severity, MatchKind, Rule, Finding, LintResult, ScanInfo
 ├── matcher.mbt       — MatchKind evaluation (contains/prefix/suffix/regex);
 │                       `prepare()` compiles each regex once per rule, not per line
-├── scanner.mbt       — comment stripping, file walking, line splitting
+├── comment.mbt       — comment blanking: JS/TS mode (template literals,
+│                       interpolations, strings, regex) and plain mode
+├── scanner.mbt       — file walking, line splitting, source reading
 ├── scope.mbt         — include/exclude glob scopes
 ├── scan.mbt          — scan modes, glob matching, file selection
 ├── git.mbt           — native filesystem/Git bridge (fixed argv, no shell)

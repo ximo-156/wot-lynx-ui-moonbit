@@ -20,6 +20,7 @@ struct Options {
   mut config_set : Bool
   mut init : Bool
   mut fix : Bool
+  mut dry_run : Bool
   mut fix_tab_width : Int32?
 }
 
@@ -145,8 +146,24 @@ fn run(opts : Options) -> Unit raise {
     config.scope,
   )
   let scan = @lib.ScanInfo::new(opts.scan_mode.tag(), root, exts)
+  if opts.dry_run && !opts.fix {
+    raise Failure("--dry-run only applies to --fix")
+  }
   if opts.fix {
-    apply_fixes(root, files, file_rules, opts.fix_tab_width)
+    apply_fixes(root, files, file_rules, opts.fix_tab_width, opts.dry_run)
+    // A dry run leaves the working tree untouched, so re-scanning would
+    // report the same findings again and suggest the fixes did nothing. The
+    // pre-fix result is the honest answer: it is what the user still has.
+    if opts.dry_run {
+      write_report(result, opts, scan)
+      emit(result, opts, scan)
+      if result.files_failed > 0 {
+        @sys.exit(2)
+      } else if result.has_errors() {
+        @sys.exit(1)
+      }
+      return
+    }
     // Re-scan after fixes. Fixes were written to the working tree, so a
     // Git-backed selection (--changed/--staged) is rejected above and cannot
     // re-read stale blobs here.
@@ -217,6 +234,7 @@ fn apply_fixes(
   files : Array[String],
   file_rules : Array[@lib.FileRule],
   tab_width : Int32?,
+  dry_run : Bool,
 ) -> Unit raise {
   let mut fixed_count = 0
   for rel in files {
@@ -266,14 +284,20 @@ fn apply_fixes(
       }
     }
     if changed {
-      // Atomic replace: a crash mid-write must not truncate user source.
-      @lib.write_atomic_text(path, fixed)
+      if !dry_run {
+        // Atomic replace: a crash mid-write must not truncate user source.
+        @lib.write_atomic_text(path, fixed)
+      }
       fixed_count += 1
-      eprintln("moonlint: fixed \{rel}")
+      eprintln(
+        "moonlint: \{if dry_run { "would fix" } else { "fixed" }} \{rel}",
+      )
     }
   }
   if fixed_count > 0 {
-    eprintln("moonlint: fixed \{fixed_count} file(s)")
+    eprintln(
+      "moonlint: \{if dry_run { "would fix" } else { "fixed" }} \{fixed_count} file(s)",
+    )
   }
 }
 
@@ -431,6 +455,7 @@ fn parse_args(args : Array[String]) -> Options raise {
     config_set: false,
     init: false,
     fix: false,
+    dry_run: false,
     fix_tab_width: None,
   }
   let mut i = 1
@@ -484,6 +509,7 @@ fn parse_args(args : Array[String]) -> Options raise {
         i += 1
         opts.format = parse_format(option_value(args, i, arg))
       }
+      "--dry-run" => opts.dry_run = true
       "--update-baseline" => opts.update_baseline = true
       "--summary" => opts.summary = true
       "--errors-only" => opts.errors_only = true
@@ -545,6 +571,7 @@ fn print_help() -> Unit {
       "  --list-presets     show available presets and exit", "  --init             create a starter moonlint.json config",
       "  --fix              auto-fix file rules: trailing ws, final newline (atomic, scope-aware)",
       "  --fix-tab-width <n> enable the no_tabs fix, replacing each tab with n spaces",
+      "  --dry-run          with --fix, report what would change without writing",
       "  --baseline <file>  strict legacy finding-hash JSON array", "  --update-baseline  atomically rewrite the full tree scan's findings",
       "  --summary          show rule totals and read/skip/failure counts", "  --errors-only      hide warning findings (including in --summary)",
       "  --ext <list>       comma-separated extension filter, in every mode", "  --format <fmt>     text (default), json, github, or sarif",

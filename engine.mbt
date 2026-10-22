@@ -31,6 +31,7 @@ pub fn lint_lines(
             message: rule.message,
             file: rel,
             line: lineno,
+            column: rule.match_.column_of(text),
             snippet: text.trim().to_owned(),
           })
         }
@@ -144,7 +145,7 @@ pub fn lint_selected(
       }
       let disable_map = parse_disable_comments(source)
       let raw_lines = split_lines(source)
-      let lines = split_lines(strip_comments(source))
+      let lines = split_lines(strip_comments(source, comment_mode_for(rel)))
       for finding in lint_lines(rel, lines, rules) {
         if !disable_map.is_disabled(finding.rule_id, finding.line) {
           findings.push(finding)
@@ -391,6 +392,9 @@ fn file_finding(
     message: "\{fr.message} (\{detail})",
     file,
     line,
+    // Whole-file checks describe a property of the file, not a position on
+    // one line, so they report the first column.
+    column: 1,
     snippet: detail,
   }
 }

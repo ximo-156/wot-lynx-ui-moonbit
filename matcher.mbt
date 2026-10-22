@@ -67,6 +67,91 @@ pub fn MatchKind::matches(self : MatchKind, line : String) -> Bool {
 }
 
 ///|
+/// 1-based column of the first match of this matcher on `line`.
+///
+/// A matcher only reports "this line matches", so the column is the position
+/// of the first occurrence of the pattern text the matcher was built from.
+/// `Regex` and `Word` fall back to the first non-space character, because
+/// their match position is not recoverable from the pattern alone.
+pub fn MatchKind::column_of(self : MatchKind, line : String) -> Int32 {
+  match self {
+    Contains(s) => first_column_of(line, s)
+    HasPrefix(s) => first_column_of(line, s)
+    HasSuffix(s) => trailing_column_of(line, s)
+    Equals(s) => {
+      ignore(s)
+      first_column_of(line, "")
+    }
+    Regex(_) => first_column_of(line, "")
+    Word(w) => first_column_of(line, w)
+  }
+}
+
+///|
+/// Convert a 0-based array index into a 1-based column number.
+fn col_after(index : Int32) -> Int32 {
+  let mut col : Int32 = 1
+  let mut k = 0
+  while k < index {
+    col += 1
+    k += 1
+  }
+  col
+}
+
+///|
+/// 1-based column where `needle` first appears in `line`, counting characters
+/// rather than bytes. An empty or absent needle reports the first non-space
+/// character, so a line-only matcher still points somewhere useful.
+fn first_column_of(line : String, needle : String) -> Int32 {
+  let chars = line.to_array()
+  let n = needle.to_array()
+  let hlen = chars.length()
+  let nlen = n.length()
+  if nlen > 0 && nlen <= hlen {
+    for start in 0..<=(hlen - nlen) {
+      let mut hit = true
+      for i in 0..<nlen {
+        if chars[start + i] != n[i] {
+          hit = false
+          break
+        }
+      }
+      if hit {
+        return col_after(start)
+      }
+    }
+  }
+  let mut col = 0
+  while col < hlen && (chars[col] == ' ' || chars[col] == '\u{9}') {
+    col += 1
+  }
+  col_after(col)
+}
+
+///|
+/// 1-based column where `suffix` starts in `line`, or the first non-space
+/// character when the suffix is not a strict ending of the line.
+fn trailing_column_of(line : String, suffix : String) -> Int32 {
+  let chars = line.to_array()
+  let n = suffix.to_array()
+  if n.length() > 0 && n.length() <= chars.length() {
+    let start = chars.length() - n.length()
+    let mut hit = true
+    for i in 0..<n.length() {
+      if chars[start + i] != n[i] {
+        hit = false
+        break
+      }
+    }
+    if hit {
+      return col_after(start)
+    }
+  }
+  first_column_of(line, "")
+}
+
+///|
 /// Test whether `line` contains `word` as a whole word — bounded by
 /// non-alphanumeric characters (or string boundaries) on both sides.
 fn word_matches(word : String, line : String) -> Bool {

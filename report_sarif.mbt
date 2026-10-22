@@ -75,7 +75,7 @@ fn results_json(result : LintResult) -> Json {
     physical.set("artifactLocation", Json::object(artifact))
     let region : Map[String, Json] = Map([])
     region.set("startLine", Json::number(f.line.to_double()))
-    region.set("startColumn", Json::number(1.0))
+    region.set("startColumn", Json::number(f.column.to_double()))
     physical.set("region", Json::object(region))
     location.set("physicalLocation", Json::object(physical))
     obj.set("locations", Json::array([Json::object(location)]))

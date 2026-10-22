@@ -98,6 +98,8 @@ pub struct Finding {
   file : String
   /// 1-based line number.
   line : Int32
+  /// 1-based column of the first match on that line.
+  column : Int32
   /// The offending source line (trimmed).
   snippet : String
 } derive(Debug)

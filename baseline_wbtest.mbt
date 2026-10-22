@@ -9,6 +9,7 @@ fn make_finding(rule_id : String, file : String, line : Int32) -> Finding {
     message: "test message",
     file,
     line,
+    column: 1,
     snippet: "some code",
   }
 }

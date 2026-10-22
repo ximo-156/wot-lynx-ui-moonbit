@@ -12,92 +12,6 @@ fn skip_dirs() -> Set[String] {
 }
 
 ///|
-/// Blank JS/SCSS and HTML comments without changing line or character positions.
-/// Quotes (including escaped quotes and template strings) are preserved. This is
-/// a conservative lexical view, not an AST: regex literals and template
-/// interpolation expressions are not parsed separately.
-fn strip_comments(src : String) -> String {
-  let chars = src.to_array()
-  let out : Array[Char] = []
-  let mut i = 0
-  let mut quote : Char? = None
-  let mut escaped = false
-  while i < chars.length() {
-    let c = chars[i]
-    if quote is Some(q) {
-      out.push(c)
-      if escaped {
-        escaped = false
-      } else if c == '\\' {
-        escaped = true
-      } else if c == q {
-        quote = None
-      }
-      i += 1
-      continue
-    }
-    if c == '\'' || c == '"' || c == '`' {
-      quote = Some(c)
-      out.push(c)
-      i += 1
-      continue
-    }
-    if c == '/' && i + 1 < chars.length() && chars[i + 1] == '/' {
-      while i < chars.length() && chars[i] != '\n' {
-        out.push(' ')
-        i += 1
-      }
-      continue
-    }
-    let block_comment = c == '/' &&
-      i + 1 < chars.length() &&
-      chars[i + 1] == '*'
-    let html_comment = c == '<' &&
-      i + 3 < chars.length() &&
-      chars[i + 1] == '!' &&
-      chars[i + 2] == '-' &&
-      chars[i + 3] == '-'
-    if block_comment || html_comment {
-      let opening = if html_comment { 4 } else { 2 }
-      for _ in 0..<opening {
-        out.push(' ')
-      }
-      i += opening
-      while i < chars.length() {
-        let closed = if html_comment {
-          i + 2 < chars.length() &&
-          chars[i] == '-' &&
-          chars[i + 1] == '-' &&
-          chars[i + 2] == '>'
-        } else {
-          i + 1 < chars.length() && chars[i] == '*' && chars[i + 1] == '/'
-        }
-        if closed {
-          let closing = if html_comment { 3 } else { 2 }
-          for _ in 0..<closing {
-            out.push(' ')
-          }
-          i += closing
-          break
-        }
-        out.push(
-          if chars[i] == '\n' || chars[i] == '\r' {
-            chars[i]
-          } else {
-            ' '
-          },
-        )
-        i += 1
-      }
-      continue
-    }
-    out.push(c)
-    i += 1
-  }
-  String::from_array(out)
-}
-
-///|
 fn split_lines(src : String) -> Array[(Int32, String)] {
   let result : Array[(Int32, String)] = []
   let mut lineno = 1
@@ -254,5 +168,14 @@ fn read_source(path : String) -> String raise {
 
 ///|
 pub fn read_lines(path : String) -> Array[(Int32, String)] raise {
-  split_lines(strip_comments(read_source(path)))
+  split_lines(strip_comments(read_source(path), comment_mode_for(path)))
 }
+
+///|
+/// Expose derived impls as regular methods for external callers.
+
+///|
+pub extend CommentMode with @moonbitlang/core/debug.Debug::{to_repr}
+
+///|
+pub extend CommentMode with Eq::{equal, not_equal}
