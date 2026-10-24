@@ -661,10 +661,16 @@ python3 tests/integration.py \
   --binary "$PWD/_build/native/debug/build/cmd/main/main.exe" --phase all
 ```
 
-On toolchains without a native C toolchain, the unit suite also runs on the
-wasm-gc target (`moon test --target wasm-gc`); the only expected failures there
-are the handful of tests that exercise the native filesystem/Git bridge, which
-wasm cannot provide. The CLI integration tests require a native binary.
+CI (`.github/workflows/ci.yml`) runs the full gate on every push:
+`moon check` → `moon test` (native) → `moon info` → native build → all
+integration phases. On toolchains without a native C toolchain, the unit suite
+also runs on the wasm-gc target (`moon test --target wasm-gc`); the only
+expected failures there are the handful of tests that exercise the native
+filesystem/Git bridge, which wasm cannot provide.
+
+Project management artifacts live in [`docs/`](docs/):
+[`PROJECT_PLAN.md`](docs/PROJECT_PLAN.md) (schedule, risks, review strategy)
+and [`SUBMISSION_CHECKLIST.md`](docs/SUBMISSION_CHECKLIST.md).
 
 ## License
 
