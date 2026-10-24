@@ -2033,6 +2033,40 @@ class DemoTests(FixtureCase):
             out,
         )
 
+    def test_demo_incremental_cache_round_trip(self):
+        self.stage_demo()
+        cache = self.base / "demo-cache.json"
+        first = self.invoke(
+            "--incremental", "--cache-file", cache, root=self.root / "src"
+        )
+        self.assert_exit(first, 1)
+        self.assertEqual(self.output(first), self.EXPECTED)
+        self.assertTrue(cache.is_file(), "incremental run wrote no cache")
+        payload = json.loads(cache.read_text(encoding="utf-8"))
+        files = payload["files"]
+        # Only per-file findings are cached: app.ts contributes its line and
+        # file findings (2 of 5), helpers.ts only its TODO comment (1 of 2).
+        # The four structural findings are project-pass results and are
+        # deliberately re-derived on every run.
+        self.assertEqual(sorted(files), ["app.ts", "helpers.ts"])
+        self.assertEqual(len(files["app.ts"]["findings"]), 2)
+        self.assertEqual(len(files["helpers.ts"]["findings"]), 1)
+        # A second run reuses the cache and repeats the report byte for byte.
+        second = self.invoke(
+            "--incremental", "--cache-file", cache, root=self.root / "src"
+        )
+        self.assert_exit(second, 1)
+        self.assertEqual(self.output(second), self.EXPECTED)
+        # Rewriting a file with identical bytes keeps the cache valid: entries
+        # are keyed by content hash, not by modification time.
+        target = self.root / "src" / "helpers.ts"
+        target.write_bytes(target.read_bytes())
+        third = self.invoke(
+            "--incremental", "--cache-file", cache, root=self.root / "src"
+        )
+        self.assert_exit(third, 1)
+        self.assertEqual(self.output(third), self.EXPECTED)
+
 
 PHASES = {
     "repairs": RepairsTests,

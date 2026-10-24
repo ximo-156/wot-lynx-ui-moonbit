@@ -22,12 +22,19 @@ All notable changes to this project are documented in this file.
   `unless`-suppressed TODO and an import that is resolved-but-unused). The
   demo runs as a CLI integration phase and asserts the exact report text.
   The repository's own config excludes `examples/demo` from its scope.
+- **Incremental cache walkthrough in `examples/README.md`** — documents the
+  fourth layer end to end: which findings the cache stores per file (the
+  line and file rules: 2 for `app.ts`, 1 for `helpers.ts`), why the four
+  structural findings are deliberately re-derived every run (a dead-export
+  answer can change when an unrelated file is edited), and how content-hash
+  keying keeps the cache valid across byte-identical rewrites.
 
 ### Tests
 
-- 163 CLI integration test methods across 10 phases (the new `demo` phase
-  pins the demo's full expected output, `--errors-only` filtering and
-  `--summary` tally; the `common` preset case now also asserts the TODO
+- 164 CLI integration test methods across 10 phases (the new `demo` phase
+  pins the demo's full expected output, `--errors-only` filtering,
+  `--summary` tally and the incremental cache round trip — cache file
+  contents included; the `common` preset case now also asserts the TODO
   rule fires on a comment).
 
 ## [0.2.0] — 2026-10-24

@@ -68,3 +68,33 @@ finding with `--update-baseline`.
 The repository's own `moonlint.json` excludes `examples/demo` from its
 scope, so these intentional violations never show up when moonlint lints
 itself.
+
+## The incremental cache layer
+
+The same scan with `--incremental` exercises the fourth layer (pick any
+cache path outside the scanned tree):
+
+```sh
+moonlint --config examples/demo/moonlint.json \
+  --incremental --cache-file /tmp/moonlint-demo-cache.json \
+  examples/demo/src
+```
+
+The report is identical — all seven findings, same order, same exit code —
+and a cache file now sits next to the command. What it contains:
+
+- One entry per file, keyed by a content hash of the source plus a
+  fingerprint of the effective rule set (matchers, `unless` guards, scope,
+  structural rules).
+- `app.ts` contributes 2 findings (the line and file rules);
+  `helpers.ts` contributes 1 (the TODO comment).
+- The four structural findings are **not** in the cache: whether
+  `renderDate` is a dead export depends on the whole project, so the
+  project pass re-derives them every run. Caching them per file would be
+  unsound — editing one file can change another file's answer.
+
+Run it a second time and the per-file matchers are skipped for unchanged
+files. Rewrite a file with identical bytes and the cache stays valid:
+entries are keyed by content hash, not modification time. Edit a file and
+only that file is re-linted; edit the config and the whole cache is
+invalidated, because the fingerprint changed.
