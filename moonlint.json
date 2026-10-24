@@ -1,4 +1,7 @@
 {
+  "scope": {
+    "exclude": ["examples/demo"]
+  },
   "rules": [
     {
       "id": "vue/import-from-vue",

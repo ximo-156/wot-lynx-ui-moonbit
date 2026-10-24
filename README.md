@@ -388,6 +388,9 @@ moonlint --preset imports /path/to/project
 
 # Auto-fix and re-lint
 moonlint --preset file --fix /path/to/project
+
+# See every layer fire at once on the shipped demo (see examples/README.md)
+moonlint --config examples/demo/moonlint.json examples/demo/src
 ```
 
 ## Scan Modes
@@ -665,6 +668,7 @@ moonlint/
 ├── report_github.mbt — GitHub Actions annotations
 ├── report_sarif.mbt  — SARIF 2.1.0 report
 ├── tests/            — dependency-free CLI integration tests
+├── examples/         — a demo project with a hand-verified expected report
 └── cmd/main/         — CLI entry point
 ```
 

@@ -1,0 +1,52 @@
+{
+  "rules": [
+    {
+      "id": "demo/no-todo-comment",
+      "severity": "warning",
+      "message": "TODO/FIXME comment left in code",
+      "extensions": [".ts"],
+      "match": { "any": [ { "word": "TODO" }, { "word": "FIXME" } ] },
+      "match_comments": true,
+      "unless": { "all": [ { "contains": "moonlint-ok" } ] }
+    },
+    {
+      "id": "demo/no-console-log",
+      "severity": "warning",
+      "message": "Avoid console.log in committed code",
+      "extensions": [".ts"],
+      "match": { "contains": "console.log" }
+    }
+  ],
+  "file_rules": [
+    {
+      "id": "demo/max-line-length",
+      "severity": "warning",
+      "message": "Line is too long",
+      "extensions": [".ts"],
+      "check": { "max_line_length": 60 }
+    }
+  ],
+  "structural_rules": [
+    {
+      "id": "demo/no-unused-imports",
+      "severity": "warning",
+      "message": "Imported binding is never used",
+      "extensions": [".ts"],
+      "check": { "no_unused_imports": true }
+    },
+    {
+      "id": "demo/no-unresolved-relative-imports",
+      "severity": "error",
+      "message": "Relative import cannot be resolved to a scanned file",
+      "extensions": [".ts"],
+      "check": { "no_unresolved_relative_imports": true }
+    },
+    {
+      "id": "demo/no-unused-exports",
+      "severity": "warning",
+      "message": "Exported name is never imported by another file",
+      "extensions": [".ts"],
+      "check": { "no_unused_exports": true }
+    }
+  ]
+}

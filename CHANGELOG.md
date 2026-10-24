@@ -12,6 +12,18 @@ All notable changes to this project are documented in this file.
   written by `--init` uses it for the no-TODO rule, which previously could
   never fire on a `// TODO` comment. The option takes part in the incremental
   cache fingerprint, so toggling it invalidates cached results.
+- **`examples/demo`** — a tiny TypeScript project whose report under the
+  shipped config is hand-verified finding by finding: seven findings across
+  the line, file and structural layers, plus two deliberate near-misses (an
+  `unless`-suppressed TODO and an import that is resolved-but-unused). The
+  demo runs as a CLI integration phase and asserts the exact report text.
+  The repository's own config excludes `examples/demo` from its scope.
+
+### Tests
+
+- 163 CLI integration test methods across 10 phases (the new `demo` phase
+  pins the demo's full expected output, `--errors-only` filtering and
+  `--summary` tally).
 
 ## [0.2.0] — 2026-10-24
 

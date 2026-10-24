@@ -1955,6 +1955,83 @@ class CombinatorTests(FixtureCase):
         self.assertIn("#1", self.output(result))
 
 
+REPO_ROOT = Path(__file__).resolve().parent.parent
+DEMO_DIR = REPO_ROOT / "examples" / "demo"
+
+
+class DemoTests(FixtureCase):
+    """examples/demo end to end: every layer fires, and the report is exact."""
+
+    EXPECTED = (
+        "app.ts:1: [warning] demo/no-unused-imports — Imported binding is "
+        "never used ('unusedHelper' is imported but never used)\n"
+        '    import { formatDate, unusedHelper } from "./helpers";\n'
+        "app.ts:2: [error] demo/no-unresolved-relative-imports — Relative "
+        "import cannot be resolved to a scanned file (cannot resolve "
+        "'./missing')\n"
+        '    import { broken } from "./missing";\n'
+        "app.ts:4: [warning] demo/no-unused-exports — Exported name is never "
+        "imported by another file (exported 'renderDate' is never imported "
+        "by another file)\n"
+        "    export function renderDate(date: Date): string {\n"
+        "app.ts:6: [warning] demo/max-line-length — Line is too long "
+        "(line has 76 characters (limit: 60))\n"
+        "    // this comment line is deliberately much longer than the "
+        "configured limit\n"
+        "app.ts:9: [warning] demo/no-console-log — Avoid console.log in "
+        "committed code\n"
+        "    console.log(formatted, tag);\n"
+        "helpers.ts:2: [warning] demo/no-todo-comment — TODO/FIXME comment "
+        "left in code\n"
+        "    // TODO: honour the caller's locale\n"
+        "helpers.ts:10: [warning] demo/no-unused-exports — Exported name is "
+        "never imported by another file (exported 'alsoUnused' is never "
+        "imported by another file)\n"
+        "    export const alsoUnused = 42;\n"
+    )
+
+    def stage_demo(self):
+        """Copy the shipped demo into the fixture root, byte for byte."""
+        self.assertTrue(DEMO_DIR.is_dir(), f"missing demo directory: {DEMO_DIR}")
+        target = self.root / "src"
+        target.mkdir(parents=True)
+        self.config.write_bytes((DEMO_DIR / "moonlint.json").read_bytes())
+        for name in ("app.ts", "helpers.ts"):
+            (target / name).write_bytes((DEMO_DIR / "src" / name).read_bytes())
+        self.assert_owned(target)
+
+    def test_demo_reports_exactly_the_documented_findings(self):
+        self.stage_demo()
+        result = self.invoke(root=self.root / "src")
+        self.assert_exit(result, 1)
+        self.assertEqual(self.output(result), self.EXPECTED)
+
+    def test_demo_errors_only_narrows_to_the_resolution_failure(self):
+        self.stage_demo()
+        result = self.invoke("--errors-only", root=self.root / "src")
+        self.assert_exit(result, 1)
+        self.assert_findings(
+            result, 1, rule_id="demo/no-unresolved-relative-imports"
+        )
+        self.assertNotIn("no-console-log", self.output(result))
+
+    def test_demo_summary_tallies_each_rule_once(self):
+        self.stage_demo()
+        result = self.invoke("--summary", root=self.root / "src")
+        self.assert_exit(result, 1)
+        out = self.output(result)
+        self.assertIn("rule | count", out)
+        self.assertIn("demo/no-unused-imports | 1", out)
+        self.assertIn("demo/no-unused-exports | 2", out)
+        self.assertIn("demo/max-line-length | 1", out)
+        self.assertIn("demo/no-todo-comment | 1", out)
+        self.assertIn(
+            "files selected: 2  files scanned: 2  skipped: 0  failed: 0  "
+            "errors: 1  warnings: 6  baseline-suppressed: 0",
+            out,
+        )
+
+
 PHASES = {
     "repairs": RepairsTests,
     "git": GitSafetyTests,
@@ -1965,6 +2042,7 @@ PHASES = {
     "incremental": IncrementalTests,
     "structural": StructuralRuleTests,
     "combinator": CombinatorTests,
+    "demo": DemoTests,
 }
 
 
