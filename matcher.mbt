@@ -14,10 +14,17 @@
 /// which dominates scan time. A pattern that fails to compile becomes
 /// `Prep::NeverMatch`, so a bad pattern yields no findings rather than
 /// aborting (config validation reports bad patterns up front).
+///
+/// The combinator variants (`AllOf` / `AnyOf` / `NotOf`) hold their
+/// sub-matchers in prepared form too, so a nested `Regex` is likewise
+/// compiled once and shared across every line.
 pub enum Prepared {
   NeverMatch
   Plain(MatchKind)
   Compiled(Regex)
+  AllOf(Array[Prepared])
+  AnyOf(Array[Prepared])
+  NotOf(Prepared)
 }
 
 ///|
@@ -29,6 +36,23 @@ pub fn MatchKind::prepare(self : MatchKind) -> Prepared {
         Some(re) => Compiled(re)
         None => NeverMatch
       }
+    All(subs) => {
+      let prepared = subs.map(s => s.prepare())
+      // An `all` with any never-matching child can never fire.
+      if prepared.any(p => p is NeverMatch) {
+        NeverMatch
+      } else {
+        AllOf(prepared)
+      }
+    }
+    Any(subs) =>
+      // An empty `any` matches nothing; keep the prepared children otherwise.
+      if subs.is_empty() {
+        NeverMatch
+      } else {
+        AnyOf(subs.map(s => s.prepare()))
+      }
+    Not(sub) => NotOf(sub.prepare())
     other => Plain(other)
   }
 }
@@ -40,6 +64,9 @@ pub fn Prepared::matches(self : Prepared, line : StringView) -> Bool {
     NeverMatch => false
     Plain(kind) => kind.matches(line.to_owned())
     Compiled(re) => re.find(line).next().is_some()
+    AllOf(subs) => subs.all(p => p.matches(line))
+    AnyOf(subs) => subs.any(p => p.matches(line))
+    NotOf(p) => not(p.matches(line))
   }
 }
 
@@ -54,7 +81,8 @@ fn compile_regex(pattern : String) -> Regex? {
 }
 
 ///|
-/// Test whether a single line matches this matcher.
+/// Test whether a single line matches this matcher. Combinators evaluate
+/// recursively: `All` is conjunction, `Any` disjunction, `Not` negation.
 pub fn MatchKind::matches(self : MatchKind, line : String) -> Bool {
   match self {
     Contains(s) => line.contains(s)
@@ -63,6 +91,9 @@ pub fn MatchKind::matches(self : MatchKind, line : String) -> Bool {
     Regex(pattern) => regex_matches(pattern, line)
     Equals(s) => line.trim().to_owned() == s
     Word(w) => word_matches(w, line)
+    All(subs) => subs.all(m => m.matches(line))
+    Any(subs) => subs.any(m => m.matches(line))
+    Not(sub) => not(sub.matches(line))
   }
 }
 
@@ -72,7 +103,10 @@ pub fn MatchKind::matches(self : MatchKind, line : String) -> Bool {
 /// A matcher only reports "this line matches", so the column is the position
 /// of the first occurrence of the pattern text the matcher was built from.
 /// `Regex` and `Word` fall back to the first non-space character, because
-/// their match position is not recoverable from the pattern alone.
+/// their match position is not recoverable from the pattern alone. The
+/// combinators report the column of the first sub-matcher that actually
+/// matches on the line (`Not` has no positive pattern, so it always falls
+/// back to the first non-space character).
 pub fn MatchKind::column_of(self : MatchKind, line : String) -> Int32 {
   match self {
     Contains(s) => first_column_of(line, s)
@@ -84,6 +118,15 @@ pub fn MatchKind::column_of(self : MatchKind, line : String) -> Int32 {
     }
     Regex(_) => first_column_of(line, "")
     Word(w) => first_column_of(line, w)
+    All(subs) | Any(subs) => {
+      for sub in subs {
+        if sub.matches(line) {
+          return sub.column_of(line)
+        }
+      }
+      first_column_of(line, "")
+    }
+    Not(_) => first_column_of(line, "")
   }
 }
 
@@ -210,6 +253,8 @@ fn regex_matches(pattern : String, line : String) -> Bool {
 ///|
 /// Validate that a matcher's regex (if any) compiles. Returns an error
 /// message string on failure, or `None` when the matcher is well-formed.
+/// Combinators are validated depth-first, so a bad pattern nested inside
+/// `all` / `any` / `not` is still reported before scanning begins.
 pub fn MatchKind::validate(self : MatchKind) -> String? {
   match self {
     Regex(pattern) =>
@@ -218,6 +263,20 @@ pub fn MatchKind::validate(self : MatchKind) -> String? {
       } noraise {
         _ => None
       }
+    All(subs) | Any(subs) => first_invalid(subs)
+    Not(sub) => sub.validate()
     _ => None
   }
+}
+
+///|
+/// First validation error among `subs`, or `None` when all are well-formed.
+fn first_invalid(subs : Array[MatchKind]) -> String? {
+  for sub in subs {
+    match sub.validate() {
+      Some(err) => return Some(err)
+      None => ()
+    }
+  }
+  None
 }

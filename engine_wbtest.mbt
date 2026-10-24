@@ -107,7 +107,7 @@ test "lint_tree on real directory" {
     _ => ()
   }
   let rules = [test_rule("no-foo", Contains("foo"), None)]
-  let result = lint_tree(dir, rules, [], [".ts"], Scope::empty())
+  let result = lint_tree(dir, rules, [], [], [".ts"], Scope::empty())
   assert_true(result is Ok(_))
   let r = result.unwrap()
   assert_eq(r.findings.length(), 1)
@@ -128,6 +128,7 @@ test "lint_tree on nonexistent directory returns error" {
     "nonexistent_dir_xyz",
     rules,
     [],
+    [],
     [".ts"],
     Scope::empty(),
   )
@@ -138,7 +139,7 @@ test "lint_tree on nonexistent directory returns error" {
 test "lint_selected counts files removed by the global scope" {
   let rules = [test_rule("no-foo", Contains("foo"), None)]
   let scope = Scope::new(["src/**"], []).unwrap()
-  let result = lint_files(".", ["src/a.ts", "lib/b.ts"], rules, [], scope)
+  let result = lint_files(".", ["src/a.ts", "lib/b.ts"], rules, [], [], scope)
   assert_eq(result.files_selected, 1)
   assert_eq(result.files_out_of_scope, 1)
 }
@@ -146,7 +147,7 @@ test "lint_selected counts files removed by the global scope" {
 ///|
 test "lint_selected records why a file was skipped" {
   let rules = [test_rule("no-foo", Contains("foo"), None)]
-  let result = lint_files(".", ["README.md"], rules, [], Scope::empty())
+  let result = lint_files(".", ["README.md"], rules, [], [], Scope::empty())
   assert_eq(result.files_selected, 1)
   assert_eq(result.files_scanned, 0)
   assert_eq(result.files_skipped, 1)

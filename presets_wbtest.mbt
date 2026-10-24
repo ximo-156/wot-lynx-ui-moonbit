@@ -4,17 +4,18 @@
 ///|
 test "preset_names lists all presets sorted" {
   let names = preset_names()
-  assert_eq(names.length(), 10)
+  assert_eq(names.length(), 11)
   assert_eq(names[0], "angular")
   assert_eq(names[1], "astro")
   assert_eq(names[2], "common")
   assert_eq(names[3], "file")
-  assert_eq(names[4], "next")
-  assert_eq(names[5], "nuxt")
-  assert_eq(names[6], "react")
-  assert_eq(names[7], "solid")
-  assert_eq(names[8], "svelte")
-  assert_eq(names[9], "vue")
+  assert_eq(names[4], "imports")
+  assert_eq(names[5], "next")
+  assert_eq(names[6], "nuxt")
+  assert_eq(names[7], "react")
+  assert_eq(names[8], "solid")
+  assert_eq(names[9], "svelte")
+  assert_eq(names[10], "vue")
 }
 
 ///|
@@ -123,17 +124,18 @@ test "render_preset_list contains all preset names" {
 test "render_preset_list is sorted alphabetically" {
   let text = render_preset_list()
   let lines = text.split("\n").to_array()
-  assert_eq(lines.length(), 10)
+  assert_eq(lines.length(), 11)
   assert_true(lines[0].has_prefix("angular"))
   assert_true(lines[1].has_prefix("astro"))
   assert_true(lines[2].has_prefix("common"))
   assert_true(lines[3].has_prefix("file"))
-  assert_true(lines[4].has_prefix("next"))
-  assert_true(lines[5].has_prefix("nuxt"))
-  assert_true(lines[6].has_prefix("react"))
-  assert_true(lines[7].has_prefix("solid"))
-  assert_true(lines[8].has_prefix("svelte"))
-  assert_true(lines[9].has_prefix("vue"))
+  assert_true(lines[4].has_prefix("imports"))
+  assert_true(lines[5].has_prefix("next"))
+  assert_true(lines[6].has_prefix("nuxt"))
+  assert_true(lines[7].has_prefix("react"))
+  assert_true(lines[8].has_prefix("solid"))
+  assert_true(lines[9].has_prefix("svelte"))
+  assert_true(lines[10].has_prefix("vue"))
 }
 
 ///|
@@ -256,4 +258,29 @@ test "all preset file rules have valid checks" {
       assert_true(fr.extensions.length() > 0)
     }
   }
+}
+
+///|
+test "imports preset has expected structural rule count" {
+  let config = merge_presets(["imports"]).unwrap()
+  assert_eq(config.structural_rules.length(), 7)
+  assert_eq(config.rules.length(), 0)
+}
+
+///|
+test "all preset structural rules have valid checks" {
+  for name in preset_names() {
+    let config = merge_presets([name]).unwrap()
+    for sr in config.structural_rules {
+      assert_true(sr.id.length() > 0)
+      assert_true(sr.message.length() > 0)
+      assert_true(sr.extensions.length() > 0)
+    }
+  }
+}
+
+///|
+test "merged presets deduplicate structural rule ids" {
+  let config = merge_presets(["imports", "imports"]).unwrap()
+  assert_eq(config.structural_rules.length(), 7)
 }

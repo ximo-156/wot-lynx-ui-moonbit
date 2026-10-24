@@ -11,14 +11,17 @@ Ported from `wot-lynx-ui`'s `scripts/review-lint.mjs` as an entry for the 2026 M
 ## Features
 
 - **Config-driven** — rules defined in JSON, no code changes needed
-- **Built-in framework presets** — ready-to-use rule sets for React, Vue, Angular, Svelte, Next.js and common JS/TS hygiene; activate with `--preset <name>`
-- **Regex + substring matching** — `contains`, `prefix`, `suffix`, and `regex` matchers
+- **Built-in framework presets** — ready-to-use rule sets for React, Vue, Angular, Svelte, Next.js, SolidJS, Astro, Nuxt, common JS/TS hygiene, file-level checks and cross-file import checks; activate with `--preset <name>`
+- **Regex + substring matching** — `contains`, `prefix`, `suffix`, `regex`, `equals` and `word` matchers
+- **Matcher combinators** — `all` / `any` / `not` nest arbitrarily deep, so `match` expresses any boolean formula over the leaf matchers
 - **Negative guards** — `unless` field to suppress false positives (e.g. "import from 'vue' but not 'vue-lynx'")
 - **Comment-aware** — `//` and `/* */` comments are blanked out before matching, preserving line numbers and columns; in JS/TS/JSX files the scanner understands template literals, `${}` interpolations, strings and regex literals, so a `//` inside a template string is text, not a comment
+- **Cross-file structural rules** — a JS/TS tokenizer + parser builds a project-wide import graph, powering unused imports, duplicate imports, unresolved relative imports, import cycles, deep relative imports, `require()` usage, `export default` and dead exports (`--preset imports`)
 - **Baseline support** — hash-based exemption for existing violations, enabling incremental adoption; `--update-baseline` refreshes it atomically from a full scan
+- **Incremental caching** — `--incremental` re-lints only files whose content hash changed, invalidated automatically when the effective config changes
 - **Severity levels** — `error` and `warning`, with exit code 1 on any error-severity finding
 - **Scoped rules** — global and per-rule `include`/`exclude` glob patterns decide which files are read and which rules see them
-- **CI output** — machine-readable JSON reports and GitHub Actions annotations, with read / failure / skip metadata
+- **CI output** — machine-readable JSON reports, GitHub Actions annotations and SARIF 2.1.0, with read / failure / skip metadata
 - **Honest counters** — every selected file is reported as scanned, skipped (with a reason) or failed; a scan never silently degrades to "clean"
 - **Summary mode** — per-rule tally plus read/skip/failure counts
 
@@ -61,6 +64,12 @@ moon run cmd/main -- --report moonlint-report.json /path/to/project
 
 # GitHub Actions annotations
 moon run cmd/main -- --format github /path/to/project
+
+# Cross-file import checks (unused imports, cycles, unresolved paths, ...)
+moon run cmd/main -- --preset imports /path/to/project
+
+# Fast repeated scans: only changed files are re-linted
+moon run cmd/main -- --incremental /path/to/project
 ```
 
 ## Framework Presets
@@ -100,18 +109,21 @@ usage error (exit code 2).
 | `astro` | `.astro` | 5 | Astro: no-set-html-directive, prefer-class-list, no-unused-define-vars, ... |
 | `nuxt` | `.vue` `.js` `.ts` | 5 | Nuxt: no-env-in-runtime, prefer-use-fetch, no-window-in-ssr, ... |
 | `file` | `.js` `.jsx` `.ts` `.tsx` `.mjs` `.cjs` `.vue` `.svelte` `.astro` | 6 file rules | File-level: max-lines, max-line-length, no-trailing-whitespace, no-tabs, final-newline, no-duplicate-lines |
+| `imports` | `.js` `.jsx` `.ts` `.tsx` `.mjs` `.cjs` `.mts` `.cts` `.vue` `.svelte` `.astro` | 7 structural rules | Cross-file: no-unused-imports, no-duplicate-imports, no-unresolved-relative-imports, no-import-cycles, no-deep-relative-imports, no-require-imports, no-unused-exports |
 
 Every preset is also shipped as a standalone JSON file under `presets/`
-(`angular`, `astro`, `common`, `file`, `next`, `nuxt`, `react`, `solid`,
-`svelte`, `vue`) for users who prefer to copy and customize them:
+(`angular`, `astro`, `common`, `file`, `imports`, `next`, `nuxt`, `react`,
+`solid`, `svelte`, `vue`) for users who prefer to copy and customize them:
 
 ```bash
 moon run cmd/main -- --config presets/react.json /path/to/project
 ```
 
-> **Note:** Preset rules are line-oriented — they match one source line at a
-> time, after comments have been blanked out. Rules that need an AST (unused
-> variables, hook dependencies, prop types) are intentionally absent.
+> **Note:** The framework presets are line-oriented — they match one source line
+> at a time, after comments have been blanked out. Rules that need an AST
+> (unused variables, hook dependencies, prop types) are intentionally absent
+> from those presets; the `imports` preset instead runs real cross-file program
+> analysis (see [Cross-File Structural Rules](#cross-file-structural-rules)).
 
 ## Matcher Types
 
@@ -123,6 +135,34 @@ A matcher object has exactly one of:
 - `{ "regex": "pattern" }` — line matches the regex
 - `{ "equals": "text" }` — trimmed line equals the text exactly
 - `{ "word": "text" }` — line contains the text as a whole word
+
+### Matcher combinators
+
+Any matcher — including `unless` — may instead be a boolean combination of
+matchers, nested arbitrarily deep:
+
+- `{ "all": [ … ] }` — every sub-matcher must match (an empty list matches every line)
+- `{ "any": [ … ] }` — at least one sub-matcher must match (an empty list matches no line)
+- `{ "not": { … } }` — the sub-matcher must not match
+
+```json
+{
+  "id": "common/no-unguarded-console",
+  "severity": "warning",
+  "message": "console.log without a lint exemption",
+  "extensions": [".ts"],
+  "match": {
+    "all": [
+      { "contains": "console.log" },
+      { "not": { "any": [ { "word": "allow" }, { "contains": "moonlint-ok" } ] } }
+    ]
+  }
+}
+```
+
+This fires on `console.log(x)` but not on `console.log(x) // moonlint-ok`.
+A bad regex nested inside a combinator is a config error (exit 2), reported
+with the path to the offending sub-matcher.
 
 ## File-Level Rules
 
@@ -176,6 +216,53 @@ duplicates) rather than individual lines. They are declared in a separate
 | `no_bom` | `{ "no_bom": true }` | File must not start with a UTF-8 BOM |
 
 The `rules` array is optional when `file_rules` is present.
+
+## Cross-File Structural Rules
+
+Line and file rules see one file at a time. Structural rules see the whole
+project at once: moonlint tokenizes and parses every JS/TS file into an import
+graph, then evaluates checks that are impossible per-line.
+
+```json
+{
+  "rules": [],
+  "structural_rules": [
+    {
+      "id": "imports/no-unused-imports",
+      "severity": "error",
+      "message": "Imported binding is never used",
+      "extensions": [".ts", ".tsx"],
+      "check": { "no_unused_imports": true }
+    },
+    {
+      "id": "imports/no-import-cycles",
+      "severity": "error",
+      "message": "Import cycle detected",
+      "extensions": [],
+      "check": { "no_import_cycles": true }
+    }
+  ]
+}
+```
+
+Or activate the whole set with `--preset imports`.
+
+### Structural check types
+
+| Check | JSON | Description |
+|-------|------|-------------|
+| `no_unused_imports` | `{ "no_unused_imports": true }` | An imported binding is never referenced in the importing file |
+| `no_duplicate_imports` | `{ "no_duplicate_imports": true }` | The same module is imported by more than one import statement |
+| `no_unresolved_relative_imports` | `{ "no_unresolved_relative_imports": true }` | A relative import cannot be resolved to any scanned file |
+| `no_import_cycles` | `{ "no_import_cycles": true }` | The file takes part in a cycle of relative imports (reported per file) |
+| `no_default_export` | `{ "no_default_export": true }` | `export default` is used |
+| `no_deep_relative_imports` | `{ "no_deep_relative_imports": 2 }` | A relative import climbs more than N directories with `../` |
+| `no_require_imports` | `{ "no_require_imports": true }` | `require()` is used in an ES module codebase |
+| `no_unused_exports` | `{ "no_unused_exports": true }` | An exported name is never imported by any other scanned file |
+
+The `rules` array is optional when `structural_rules` is present. Structural
+findings respect inline `// moonlint-disable <rule-id>` comments and rule
+scopes, exactly like line findings.
 
 ## Inline Disable Comments
 
@@ -273,6 +360,9 @@ moonlint --init
 # Lint with a framework preset
 moonlint --preset react /path/to/project
 
+# Run cross-file import analysis
+moonlint --preset imports /path/to/project
+
 # Auto-fix and re-lint
 moonlint --preset file --fix /path/to/project
 ```
@@ -296,9 +386,9 @@ git diff --name-only | moon run cmd/main -- --stdin /path/to/project
 
 ```
 
-`--incremental` (cached re-scans) and `--watch` are **not implemented**. They are
-rejected with exit code 2 and an `unsupported` message rather than being accepted
-and silently ignored.
+`--watch` is **not implemented**; it is rejected with exit code 2 and an
+`unsupported` message rather than being accepted and silently ignored. For fast
+repeated scans use `--incremental` (see below).
 
 Scan modes are mutually exclusive. Every mode shares one selection contract:
 paths are root-relative, de-duplicated, sorted, extension-filtered and
@@ -311,6 +401,29 @@ scope-filtered. `--glob` may be repeated; the patterns form a union.
   mask a dirty staged file (or vice versa).
 - Git failures (not a repository, unknown ref, unmerged index) exit 2 instead of
   producing an empty, apparently clean scan.
+
+### Incremental caching
+
+`--incremental` keeps a content-hash cache of per-file results, so a repeated
+scan only re-lints files whose source changed:
+
+```bash
+# First run populates .moonlint-cache.json; later runs reuse unchanged files
+moon run cmd/main -- --incremental /path/to/project
+
+# Custom cache location
+moon run cmd/main -- --incremental --cache-file /tmp/moonlint.cache.json /path/to/project
+```
+
+Properties that make the cache safe:
+
+| Behaviour | Detail |
+|-----------|--------|
+| Content-keyed | Each entry is keyed by a hash of the file's exact bytes; an edit, even whitespace, re-lints that file |
+| Config-aware | The cache stores a fingerprint of the effective rules, file rules, structural rules and scopes; any change invalidates every entry |
+| Self-healing | A missing, corrupt or version-mismatched cache file degrades to a full scan with a warning, never a wrong result |
+| Structural-safe | Cached runs still collect project sources for cross-file checks, so structural findings stay correct |
+| Opt-in | Without `--incremental` no cache file is read or written |
 
 ### Glob syntax
 
@@ -394,12 +507,8 @@ annotations) resolve correctly.
 
 ### Matcher types
 
-A matcher object has exactly one of:
-
-- `{ "contains": "substring" }` — line contains the substring
-- `{ "prefix": "text" }` — line starts with the text
-- `{ "suffix": "text" }` — line ends with the text
-- `{ "regex": "pattern" }` — line matches the regex
+See [Matcher Types](#matcher-types) above for the leaf matchers and the
+`all` / `any` / `not` combinators. Both `match` and `unless` accept any of them.
 
 > **Note:** MoonBit's regex engine supports POSIX character classes (`[[:space:]]`, `[[:digit:]]`, `[[:alpha:]]`) but not Perl-style escapes (`\d`, `\w`, `\s`).
 
@@ -499,19 +608,32 @@ code scanning, VS Code and most CI static-analysis integrations.
 
 ```
 moonlint/
-├── types.mbt         — Severity, MatchKind, Rule, Finding, LintResult, ScanInfo
-├── matcher.mbt       — MatchKind evaluation (contains/prefix/suffix/regex);
-│                       `prepare()` compiles each regex once per rule, not per line
+├── types.mbt         — Severity, MatchKind (leaves + all/any/not), Rule,
+│                       Finding, FileRule, StructuralRule, LintResult, ScanInfo
+├── matcher.mbt       — MatchKind evaluation; `prepare()` compiles each regex
+│                       once per rule, not per line, and pre-compiles nested
+│                       combinators depth-first
 ├── comment.mbt       — comment blanking: JS/TS mode (template literals,
 │                       interpolations, strings, regex) and plain mode
+├── lex.mbt           — JS/TS tokenizer: strings, template literals with ${}
+│                       interpolation, regex literals, comments, identifiers
+├── parse.mbt         — structured parser: import/export statements, bindings,
+│                       usage positions, relative specifiers
+├── analysis.mbt      — cross-file engine: project index, import resolution,
+│                       import graph, and the 8 structural checks
 ├── scanner.mbt       — file walking, line splitting, source reading
 ├── scope.mbt         — include/exclude glob scopes
 ├── scan.mbt          — scan modes, glob matching, file selection
 ├── git.mbt           — native filesystem/Git bridge (fixed argv, no shell)
 ├── git_native.c      — lstat, Git (merge-base/changed/staged/blob), atomic write
-├── engine.mbt        — rule application, scope filtering, scan accounting
+├── engine.mbt        — rule application, scope filtering, scan accounting,
+│                       structural pass and incremental-cache plumbing
+├── cache.mbt         — incremental cache: content hashes, config fingerprint,
+│                       JSON render/parse (strict; corrupt input degrades to
+│                       a full scan)
 ├── config.mbt        — JSON config parsing, validation, and extends
-├── presets.mbt       — built-in framework presets (react, vue, angular, svelte, next, solid, astro, nuxt, file, common)
+├── presets.mbt       — built-in presets (common, react, vue, angular, svelte,
+│                       next, solid, astro, nuxt, file, imports)
 ├── presets/          — standalone JSON copies of each preset for customization
 ├── disable.mbt       — inline disable comment parsing (// moonlint-disable)
 ├── baseline.mbt      — hash-based finding exemption
@@ -523,6 +645,11 @@ moonlint/
 └── cmd/main/         — CLI entry point
 ```
 
+The engine is layered: **tokenizer → parser → project index/import graph** for
+cross-file checks, on top of the line and file layers. Each layer is pure
+MoonBit with no native dependency (the native bridge is limited to filesystem
+and Git access), and each is unit-tested in isolation.
+
 ## Development
 
 ```bash
@@ -533,6 +660,11 @@ moon build --target native
 python3 tests/integration.py \
   --binary "$PWD/_build/native/debug/build/cmd/main/main.exe" --phase all
 ```
+
+On toolchains without a native C toolchain, the unit suite also runs on the
+wasm-gc target (`moon test --target wasm-gc`); the only expected failures there
+are the handful of tests that exercise the native filesystem/Git bridge, which
+wasm cannot provide. The CLI integration tests require a native binary.
 
 ## License
 

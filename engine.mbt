@@ -55,13 +55,24 @@ pub fn lint_tree(
   root : String,
   rules : Array[Rule],
   file_rules : Array[FileRule],
+  structural_rules : Array[StructuralRule],
   exts : Array[String],
   scope : Scope,
 ) -> Result[LintResult, Error] {
   try {
     let absolute = canonical_root(root)
     let files = select_files(Tree, absolute, exts)
-    Ok(lint_selected(absolute, Tree, files, rules, file_rules, scope))
+    Ok(
+      lint_selected(
+        absolute,
+        Tree,
+        files,
+        rules,
+        file_rules,
+        structural_rules,
+        scope,
+      ),
+    )
   } catch {
     error => Err(error)
   }
@@ -75,9 +86,18 @@ pub fn lint_files(
   files : Array[String],
   rules : Array[Rule],
   file_rules : Array[FileRule],
+  structural_rules : Array[StructuralRule],
   scope : Scope,
 ) -> LintResult raise {
-  lint_selected(canonical_root(root), Tree, files, rules, file_rules, scope)
+  lint_selected(
+    canonical_root(root),
+    Tree,
+    files,
+    rules,
+    file_rules,
+    structural_rules,
+    scope,
+  )
 }
 
 ///|
@@ -87,14 +107,66 @@ pub fn lint_files(
 /// The global `scope` is applied to the candidate list first: candidates it
 /// rejects are counted in `files_out_of_scope` and never read. Rule-level
 /// scope then decides which rules see each selected file.
+///
+/// The scan runs in two stages: the per-file stage applies line rules and
+/// file rules, then — when structural rules are configured — the sources of
+/// every scanned file are parsed and analysed as one project, which is what
+/// cross-file checks (unused imports, import cycles, dead exports) need.
 pub fn lint_selected(
   root : String,
   mode : ScanMode,
   files : Array[String],
   rules : Array[Rule],
   file_rules : Array[FileRule],
+  structural_rules : Array[StructuralRule],
   scope : Scope,
 ) -> LintResult raise {
+  lint_selected_impl(
+    root,
+    mode,
+    files,
+    rules,
+    file_rules,
+    structural_rules,
+    scope,
+    None,
+  ).0
+}
+
+///|
+/// Cache-aware variant of `lint_selected`. Returns the lint result together
+/// with the refreshed cache, which the caller persists. Passing a cache whose
+/// fingerprint does not match the effective rule set (or a stale format
+/// version) degrades to a full scan — correctness first, speed second.
+pub fn lint_selected_cached(
+  root : String,
+  mode : ScanMode,
+  files : Array[String],
+  rules : Array[Rule],
+  file_rules : Array[FileRule],
+  structural_rules : Array[StructuralRule],
+  scope : Scope,
+  cache : Cache?,
+) -> (LintResult, Cache) raise {
+  lint_selected_impl(
+    root, mode, files, rules, file_rules, structural_rules, scope, cache,
+  )
+}
+
+///|
+/// The scan core, shared by the plain and cache-aware entry points. `cache`
+/// is the previous run's cache (or `None`); the returned cache always carries
+/// the current fingerprint and one entry per successfully scanned file.
+fn lint_selected_impl(
+  root : String,
+  mode : ScanMode,
+  files : Array[String],
+  rules : Array[Rule],
+  file_rules : Array[FileRule],
+  structural_rules : Array[StructuralRule],
+  scope : Scope,
+  cache : Cache?,
+) -> (LintResult, Cache) raise {
   let candidates : Array[String] = []
   let seen : Set[String] = Set::from_iter([].iter())
   for file in files {
@@ -110,13 +182,31 @@ pub fn lint_selected(
   let findings : Array[Finding] = []
   let diagnostics : Array[Diagnostic] = []
   let skipped_files : Array[SkippedFile] = []
+  // Sources of successfully scanned files, kept for the project pass.
+  let project_sources : Array[(String, String)] = []
+  let disable_maps : Array[(String, DisableMap)] = []
+  // The cache is only reusable when the effective rule set is unchanged.
+  let fingerprint = config_fingerprint(
+    rules, file_rules, structural_rules, scope,
+  )
+  let reusable : Cache? = match cache {
+    Some(previous) =>
+      if previous.is_current(fingerprint) {
+        Some(previous)
+      } else {
+        None
+      }
+    None => None
+  }
+  let updated = Cache::new(fingerprint)
   let mut scanned = 0
   let mut skipped = 0
   let mut failed = 0
   for rel in selected {
     // No applicable rule is intentionally skipped; it is not a successful read.
     if !rules.any(rule => rule_applies(rule, rel)) &&
-      !file_rules.any(fr => file_rule_applies(fr, rel)) {
+      !file_rules.any(fr => file_rule_applies(fr, rel)) &&
+      !structural_rules.any(sr => sr.applies_to(rel)) {
       skipped += 1
       skipped_files.push({ file: rel, reason: "no-applicable-rule", })
       continue
@@ -143,12 +233,43 @@ pub fn lint_selected(
       if source.contains("\x00") {
         raise Failure("binary source contains NUL bytes")
       }
+      let hash = content_hash(source)
+      // A cache hit means identical content under an identical rule set, so
+      // the previous findings are still exactly right: reuse them instead of
+      // re-running the matchers. The source is still needed for the project
+      // pass when structural rules are configured.
+      let cached : CacheEntry? = match reusable {
+        Some(previous) =>
+          match previous.get(rel) {
+            Some(entry) => if entry.hash == hash { Some(entry) } else { None }
+            None => None
+          }
+        None => None
+      }
+      match cached {
+        Some(entry) => {
+          for finding in entry.findings {
+            findings.push(finding)
+          }
+          if !structural_rules.is_empty() {
+            project_sources.push((rel, source))
+            disable_maps.push((rel, parse_disable_comments(source)))
+          }
+          updated.put(rel, hash, entry.findings)
+          scanned += 1
+          continue
+        }
+        None => ()
+      }
       let disable_map = parse_disable_comments(source)
       let raw_lines = split_lines(source)
       let lines = split_lines(strip_comments(source, comment_mode_for(rel)))
+      // Per-file findings are collected separately so they can be stored in
+      // the cache; the project pass appends its own afterwards.
+      let file_findings : Array[Finding] = []
       for finding in lint_lines(rel, lines, rules) {
         if !disable_map.is_disabled(finding.rule_id, finding.line) {
-          findings.push(finding)
+          file_findings.push(finding)
         }
       }
       for finding in lint_file(rel, source, raw_lines, file_rules) {
@@ -158,14 +279,36 @@ pub fn lint_selected(
         // (trailing whitespace, tabs, max_line_length) are suppressible.
         let per_line = is_per_line_check(finding.rule_id, file_rules)
         if !per_line || !disable_map.is_disabled(finding.rule_id, finding.line) {
-          findings.push(finding)
+          file_findings.push(finding)
         }
+      }
+      for finding in file_findings {
+        findings.push(finding)
+      }
+      updated.put(rel, hash, file_findings)
+      if !structural_rules.is_empty() {
+        project_sources.push((rel, source))
+        disable_maps.push((rel, disable_map))
       }
       scanned += 1
     } catch {
       error => {
         failed += 1
         diagnostics.push({ file: rel, message: error_message(error), })
+      }
+    }
+  }
+  // Project pass: one index over every scanned file, then every structural
+  // rule. Findings honour inline disables like per-file findings do.
+  if !structural_rules.is_empty() {
+    let index = build_index(project_sources)
+    for finding in analyze(index, structural_rules) {
+      let suppressed = disable_maps.any(pair => {
+        let (rel, map) = pair
+        rel == finding.file && map.is_disabled(finding.rule_id, finding.line)
+      })
+      if !suppressed {
+        findings.push(finding)
       }
     }
   }
@@ -182,7 +325,7 @@ pub fn lint_selected(
       }
     }
   })
-  {
+  let result : LintResult = {
     findings,
     files_selected: selected.length(),
     files_scanned: scanned,
@@ -193,6 +336,7 @@ pub fn lint_selected(
     diagnostics,
     skipped_files,
   }
+  (result, updated)
 }
 
 ///|
@@ -222,6 +366,22 @@ fn file_rule_applies(fr : FileRule, rel : String) -> Bool {
 /// same extension and include/exclude scope as the scan.
 pub fn FileRule::applies_to(self : FileRule, rel : String) -> Bool {
   file_rule_applies(self, rel)
+}
+
+///|
+/// Whether a structural (project-level) rule applies to a given path.
+pub fn StructuralRule::applies_to(self : StructuralRule, rel : String) -> Bool {
+  file_rule_applies(
+    {
+      id: self.id,
+      severity: self.severity,
+      message: self.message,
+      extensions: self.extensions,
+      check: NoEmptyFiles,
+      scope: self.scope,
+    },
+    rel,
+  )
 }
 
 ///|

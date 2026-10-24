@@ -384,12 +384,13 @@ class RepairsTests(FixtureCase):
                 self.assert_exit(result, 2)
                 self.assertTrue(self.output(result).strip(), "missing usage diagnostic")
 
-    def test_incremental_and_watch_explicitly_report_unsupported(self):
-        for option in ("--incremental", "--watch"):
+    def test_watch_still_explicitly_reports_unsupported(self):
+        for option in ("--watch", "--watch-interval"):
             with self.subTest(option=option):
                 result = self.invoke(option)
                 self.assert_exit(result, 2)
                 self.assertIn("unsupported", self.output(result).lower())
+                self.assertIn("--incremental", self.output(result))
 
     def test_symlink_file_and_directory_loop_are_skipped(self):
         outside = self.write_file("outside.ts", root=self.base)
@@ -1750,6 +1751,210 @@ class ObservableTests(FixtureCase):
         self.assertIn("--dry-run", self.text_of(result))
 
 
+class IncrementalTests(FixtureCase):
+    """--incremental caches per-file results keyed by content hash."""
+
+    CACHE = ".moonlint-cache.json"
+
+    def cache_path(self):
+        return self.base / self.CACHE
+
+    def test_incremental_writes_a_cache_and_repeats_the_result(self):
+        self.write_file("src/a.ts", "const a = FORBIDDEN;\n")
+        first = self.invoke("--incremental")
+        self.assert_findings(first, 1)
+        self.assertTrue(self.cache_path().is_file(), "cache file was not written")
+        second = self.invoke("--incremental")
+        self.assert_findings(second, 1)
+
+    def test_unchanged_file_reuses_cached_findings(self):
+        self.write_file("src/a.ts", "const a = FORBIDDEN;\n")
+        self.invoke("--incremental")
+        # The cache holds the entry; removing it must not change the report.
+        second = self.invoke("--incremental")
+        self.assert_findings(second, 1)
+        self.assertTrue(self.cache_path().is_file())
+
+    def test_changed_file_is_re_linted(self):
+        self.write_file("src/a.ts", "const a = 1;\n")
+        self.assert_findings(self.invoke("--incremental"), 0)
+        self.write_file("src/a.ts", "const a = FORBIDDEN;\n")
+        self.assert_findings(self.invoke("--incremental"), 1)
+
+    def test_deleted_file_leaves_no_stale_findings(self):
+        self.write_file("src/a.ts", "const a = FORBIDDEN;\n")
+        self.write_file("src/b.ts", "const b = FORBIDDEN;\n")
+        self.assert_findings(self.invoke("--incremental"), 2)
+        self.write_file("src/b.ts", "const b = 1;\n")
+        self.assert_findings(self.invoke("--incremental"), 1)
+
+    def test_rule_change_invalidates_the_whole_cache(self):
+        self.write_file("src/a.ts", "const a = FORBIDDEN;\n")
+        self.assert_findings(self.invoke("--incremental"), 1)
+        # Silence the rule: same content, different config, new answer.
+        self.write_config(rules=[rule(severity="warning")])
+        self.assert_findings(self.invoke("--incremental"), 1)
+        self.write_config(rules=[rule(token="ABSENT")])
+        self.assert_findings(self.invoke("--incremental"), 0)
+
+    def test_corrupt_cache_degrades_to_a_full_scan(self):
+        self.write_file("src/a.ts", "const a = FORBIDDEN;\n")
+        self.assert_owned(self.cache_path())
+        self.cache_path().write_text("{ not json", encoding="utf-8")
+        self.assert_findings(self.invoke("--incremental"), 1)
+
+    def test_without_incremental_no_cache_is_written(self):
+        self.write_file("src/a.ts", "const a = FORBIDDEN;\n")
+        self.assert_findings(self.invoke(), 1)
+        self.assertFalse(self.cache_path().exists())
+
+    def test_custom_cache_file_location(self):
+        self.write_file("src/a.ts", "const a = FORBIDDEN;\n")
+        custom = self.base / "nested" / "cache.json"
+        result = self.invoke("--incremental", "--cache-file", custom)
+        self.assert_findings(result, 1)
+        self.assertTrue(custom.is_file(), "custom cache location was not written")
+
+
+class StructuralRuleTests(FixtureCase):
+    """Cross-file rules run over the parsed project index."""
+
+    def structural_config(self, checks):
+        self.write_config(rules=[], structural_rules=[
+            {"id": name, "severity": "error", "message": name,
+             "extensions": [".ts"], "check": check}
+            for name, check in checks
+        ])
+
+    def test_unused_import_is_reported(self):
+        self.structural_config([("imports/no-unused-imports", {"no_unused_imports": True})])
+        self.write_file("src/a.ts", "import { used, gone } from './b';\nexport const a = used;\n")
+        self.write_file("src/b.ts", "export const used = 1;\nexport const gone = 2;\n")
+        result = self.invoke()
+        self.assert_findings(result, 1, rule_id="imports/no-unused-imports")
+        self.assertIn("gone", self.output(result))
+
+    def test_unresolved_relative_import_is_reported(self):
+        self.structural_config([
+            ("imports/no-unresolved-relative-imports", {"no_unresolved_relative_imports": True}),
+        ])
+        self.write_file("src/a.ts", "import { x } from './missing';\n")
+        result = self.invoke()
+        self.assert_findings(result, 1, rule_id="imports/no-unresolved-relative-imports")
+
+    def test_import_cycle_is_reported_for_each_file(self):
+        self.structural_config([("imports/no-import-cycles", {"no_import_cycles": True})])
+        self.write_file("src/a.ts", "import { b } from './b';\nexport const a = 1;\n")
+        self.write_file("src/b.ts", "import { a } from './a';\nexport const b = 2;\n")
+        result = self.invoke()
+        self.assert_findings(result, 2, rule_id="imports/no-import-cycles")
+
+    def test_unused_export_is_reported(self):
+        self.structural_config([("imports/no-unused-exports", {"no_unused_exports": True})])
+        self.write_file("src/a.ts", "export const live = 1;\nexport const dead = 2;\n")
+        # b.ts consumes `live`; its own binding is a local, not an export.
+        self.write_file("src/b.ts", "import { live } from './a';\nconst b = live;\n")
+        result = self.invoke()
+        self.assert_findings(result, 1, rule_id="imports/no-unused-exports")
+        self.assertIn("dead", self.output(result))
+
+    def test_imports_preset_runs_the_structural_checks(self):
+        self.write_config(rules=[])
+        self.write_file("src/a.ts", "import { x } from './missing';\n")
+        result = self.invoke("--preset", "imports")
+        self.assert_findings(result, 1, rule_id="imports/no-unresolved-relative-imports")
+
+    def test_structural_rules_survive_extends(self):
+        base = self.base / "base.json"
+        base.write_text(json.dumps({"structural_rules": [
+            {"id": "imports/no-import-cycles", "severity": "error",
+             "message": "cycle", "extensions": [".ts"],
+             "check": {"no_import_cycles": True}},
+        ]}), encoding="utf-8")
+        self.config.write_text(json.dumps({"extends": "base.json", "rules": []}), encoding="utf-8")
+        self.write_file("src/a.ts", "import { b } from './b';\nexport const a = 1;\n")
+        self.write_file("src/b.ts", "import { a } from './a';\nexport const b = 2;\n")
+        result = self.invoke()
+        self.assert_findings(result, 2, rule_id="imports/no-import-cycles")
+
+    def test_inline_disable_suppresses_a_structural_finding(self):
+        self.structural_config([("imports/no-unused-imports", {"no_unused_imports": True})])
+        self.write_file("src/a.ts", "// moonlint-disable imports/no-unused-imports\nimport { gone } from './b';\nexport const a = 1;\n")
+        self.write_file("src/b.ts", "export const gone = 2;\n")
+        result = self.invoke()
+        self.assert_findings(result, 0, rule_id="imports/no-unused-imports")
+
+
+class CombinatorTests(FixtureCase):
+    """The all/any/not matcher DSL, as the CLI applies it."""
+
+    def combinator_config(self, match, unless=None):
+        rule = {"id": "combo", "severity": "error", "message": "combo hit",
+                "extensions": [".ts"], "match": match}
+        if unless is not None:
+            rule["unless"] = unless
+        self.write_config(rules=[rule])
+
+    def test_all_requires_every_child(self):
+        self.combinator_config({"all": [{"contains": "console."}, {"regex": "log"}]})
+        self.write_file("a.ts", "console.log(x);\n")
+        self.write_file("b.ts", "console.warn(x);\n")
+        self.write_file("c.ts", "logger.info(x);\n")
+        result = self.invoke()
+        self.assert_findings(result, 1, rule_id="combo")
+        self.assertIn("a.ts", self.output(result))
+
+    def test_any_requires_one_child(self):
+        self.combinator_config({"any": [{"contains": "TODO"}, {"contains": "FIXME"}]})
+        self.write_file("a.ts", "// TODO: later\n")
+        self.write_file("b.ts", "// FIXME: soon\n")
+        self.write_file("c.ts", "// nothing\n")
+        result = self.invoke()
+        self.assert_findings(result, 2, rule_id="combo")
+
+    def test_not_negates_its_child(self):
+        self.combinator_config({"not": {"contains": "allow"}})
+        self.write_file("a.ts", "console.log(x);\n")
+        self.write_file("b.ts", "console.log(x); // allow\n")
+        result = self.invoke()
+        self.assert_findings(result, 1, rule_id="combo")
+        self.assertIn("a.ts", self.output(result))
+
+    def test_nested_combinators_express_a_full_formula(self):
+        # "contains console. and neither allow nor a comment marker"
+        self.combinator_config({
+            "all": [
+                {"contains": "console."},
+                {"not": {"any": [{"word": "allow"}, {"contains": "//"}]}},
+            ]
+        })
+        self.write_file("hit.ts", "console.log(x);\n")
+        self.write_file("allowed.ts", "console.log(x); // allow\n")
+        self.write_file("comment.ts", "console.log(x); // note\n")
+        self.write_file("clean.ts", "logger.info(x);\n")
+        result = self.invoke()
+        self.assert_findings(result, 1, rule_id="combo")
+        self.assertIn("hit.ts", self.output(result))
+
+    def test_combinator_inside_unless(self):
+        self.combinator_config(
+            {"contains": "console."},
+            unless={"all": [{"contains": "allow"}, {"contains": "debug"}]},
+        )
+        self.write_file("a.ts", "console.log(x); // allow debug\n")
+        self.write_file("b.ts", "console.log(x); // allow\n")
+        result = self.invoke()
+        self.assert_findings(result, 1, rule_id="combo")
+        self.assertIn("b.ts", self.output(result))
+
+    def test_malformed_combinator_is_a_config_error(self):
+        self.combinator_config({"all": [{"contains": "ok"}, {"nonsense": 1}]})
+        self.write_file("a.ts", "console.log(x);\n")
+        result = self.invoke()
+        self.assert_exit(result, 2)
+        self.assertIn("#1", self.output(result))
+
+
 PHASES = {
     "repairs": RepairsTests,
     "git": GitSafetyTests,
@@ -1757,6 +1962,9 @@ PHASES = {
     "output": OutputTests,
     "presets": PresetTests,
     "observable": ObservableTests,
+    "incremental": IncrementalTests,
+    "structural": StructuralRuleTests,
+    "combinator": CombinatorTests,
 }
 
 

@@ -52,8 +52,10 @@ pub fn Severity::parse(self : String) -> Severity {
 }
 
 ///|
-/// A single line-matching primitive. Rules combine one `match` kind with an
-/// optional `unless` kind (a negative guard) to express "match X but not Y".
+/// A single line-matching primitive, or a boolean combination of matchers.
+/// A rule pairs one `match` kind with an optional `unless` kind (a negative
+/// guard) to express "match X but not Y"; the combinators below express the
+/// rest — `all` / `any` / `not` nest arbitrarily deep.
 pub enum MatchKind {
   /// Line contains the substring.
   Contains(String)
@@ -67,6 +69,12 @@ pub enum MatchKind {
   Equals(String)
   /// Line contains the string as a whole word (bounded by non-word chars).
   Word(String)
+  /// Every sub-matcher must match; an empty list matches every line.
+  All(Array[MatchKind])
+  /// At least one sub-matcher must match; an empty list matches no line.
+  Any(Array[MatchKind])
+  /// The sub-matcher must not match.
+  Not(MatchKind)
 } derive(Debug, Eq)
 
 ///|
@@ -148,6 +156,8 @@ pub struct LintConfig {
   rules : Array[Rule]
   /// File-level rules evaluated once per file.
   file_rules : Array[FileRule]
+  /// Project-level structural rules evaluated across all files at once.
+  structural_rules : Array[StructuralRule]
   /// The global scope applied to every scan.
   scope : Scope
 } derive(Debug)
@@ -231,6 +241,45 @@ pub struct FileRule {
   extensions : Array[String]
   /// The file-level check to perform.
   check : FileCheck
+  /// Paths this rule applies to. An empty scope means "every file".
+  scope : Scope
+} derive(Debug)
+
+///|
+/// A cross-file structural check evaluated over the whole parsed project
+/// index. Unlike line and file checks these require a second pass that sees
+/// every file at once, so they are expressed as project-level checks.
+pub enum StructuralCheck {
+  /// An imported binding is never referenced in the importing file.
+  NoUnusedImports
+  /// The same module is imported by more than one import statement.
+  NoDuplicateImports
+  /// A relative import cannot be resolved to any scanned file.
+  NoUnresolvedRelativeImports
+  /// The file takes part in a cycle of relative imports.
+  NoImportCycles
+  /// `export default` is used.
+  NoDefaultExport
+  /// A relative import climbs more than N directories with `../`.
+  NoDeepRelativeImports(Int32)
+  /// `require()` is used in an ES module codebase.
+  NoRequireImports
+  /// An exported name is never imported by any other scanned file.
+  NoUnusedExports
+} derive(Debug, Eq)
+
+///|
+/// A project-level lint rule.
+pub struct StructuralRule {
+  /// Stable identifier, e.g. `imports/no-unresolved-relative-imports`.
+  id : String
+  severity : Severity
+  /// Human-readable explanation shown when the rule fires.
+  message : String
+  /// File extensions this rule applies to. Empty means "all scanned files".
+  extensions : Array[String]
+  /// The structural check to perform.
+  check : StructuralCheck
   /// Paths this rule applies to. An empty scope means "every file".
   scope : Scope
 } derive(Debug)
@@ -362,6 +411,15 @@ pub extend FileCheck with Eq::{equal, not_equal}
 
 ///|
 pub extend FileRule with @moonbitlang/core/debug.Debug::{to_repr}
+
+///|
+pub extend StructuralCheck with @moonbitlang/core/debug.Debug::{to_repr}
+
+///|
+pub extend StructuralCheck with Eq::{equal, not_equal}
+
+///|
+pub extend StructuralRule with @moonbitlang/core/debug.Debug::{to_repr}
 
 ///|
 pub extend LintResult with @moonbitlang/core/debug.Debug::{to_repr}

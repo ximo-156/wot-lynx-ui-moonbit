@@ -58,7 +58,7 @@ test "validate_rules rejects invalid regex" {
 test "collect_extensions unions all rule extensions" {
   let json = "{\"rules\":[{\"id\":\"r1\",\"message\":\"m\",\"extensions\":[\".vue\",\".ts\"],\"match\":{\"contains\":\"x\"}},{\"id\":\"r2\",\"message\":\"m\",\"extensions\":[\".ts\",\".js\"],\"match\":{\"contains\":\"y\"}}]}"
   let rules = parse_config(json).unwrap().rules
-  let exts = collect_extensions(rules, [])
+  let exts = collect_extensions(rules, [], [])
   assert_eq(exts.length(), 3)
   assert_true(exts.contains(".vue"))
   assert_true(exts.contains(".ts"))
@@ -141,19 +141,21 @@ test "config: a malformed rule scope list is rejected" {
 
 ///|
 test "collect_extensions keeps the scan set empty for no rules" {
-  assert_eq(collect_extensions([], []), [])
+  assert_eq(collect_extensions([], [], []), [])
 }
 
 ///|
 test "collect_extensions returns all files when any rule has no extension filter" {
   let json = "{\"rules\":[{\"id\":\"r1\",\"message\":\"m\",\"extensions\":[\".ts\"],\"match\":{\"contains\":\"x\"}},{\"id\":\"r2\",\"message\":\"m\",\"match\":{\"contains\":\"y\"}}]}"
-  assert_eq(collect_extensions(parse_config(json).unwrap().rules, []), [])
+  assert_eq(collect_extensions(parse_config(json).unwrap().rules, [], []), [])
 }
 
 ///|
 test "collect_extensions deduplicates the union" {
   let json = "{\"rules\":[{\"id\":\"r1\",\"message\":\"m\",\"extensions\":[\".ts\",\".ts\"],\"match\":{\"contains\":\"x\"}},{\"id\":\"r2\",\"message\":\"m\",\"extensions\":[\".ts\"],\"match\":{\"contains\":\"y\"}}]}"
-  assert_eq(collect_extensions(parse_config(json).unwrap().rules, []), [".ts"])
+  assert_eq(collect_extensions(parse_config(json).unwrap().rules, [], []), [
+    ".ts",
+  ])
 }
 
 ///|
@@ -168,6 +170,78 @@ test "config parses word matcher" {
   let json = "{\"rules\":[{\"id\":\"r1\",\"message\":\"m\",\"match\":{\"word\":\"foo\"}}]}"
   let rules = parse_config(json).unwrap().rules
   assert_eq(rules[0].match_, Word("foo"))
+}
+
+///|
+test "config parses all matcher" {
+  let json = "{\"rules\":[{\"id\":\"r1\",\"message\":\"m\",\"match\":{\"all\":[{\"contains\":\"a\"},{\"contains\":\"b\"}]}}]}"
+  let rules = parse_config(json).unwrap().rules
+  assert_eq(rules[0].match_, All([Contains("a"), Contains("b")]))
+}
+
+///|
+test "config parses any matcher" {
+  let json = "{\"rules\":[{\"id\":\"r1\",\"message\":\"m\",\"match\":{\"any\":[{\"regex\":\"TODO\"},{\"regex\":\"FIXME\"}]}}]}"
+  let rules = parse_config(json).unwrap().rules
+  assert_eq(rules[0].match_, Any([Regex("TODO"), Regex("FIXME")]))
+}
+
+///|
+test "config parses not matcher" {
+  let json = "{\"rules\":[{\"id\":\"r1\",\"message\":\"m\",\"match\":{\"not\":{\"word\":\"allow\"}}}]}"
+  let rules = parse_config(json).unwrap().rules
+  assert_eq(rules[0].match_, Not(Word("allow")))
+}
+
+///|
+test "config parses nested combinators" {
+  let json = "{\"rules\":[{\"id\":\"r1\",\"message\":\"m\",\"match\":{\"all\":[{\"contains\":\"console.\"},{\"not\":{\"any\":[{\"word\":\"allow\"},{\"contains\":\"//\"}]}}]}}]}"
+  let rules = parse_config(json).unwrap().rules
+  assert_eq(
+    rules[0].match_,
+    All([Contains("console."), Not(Any([Word("allow"), Contains("//")]))]),
+  )
+}
+
+///|
+test "config parses a combinator inside unless" {
+  let json = "{\"rules\":[{\"id\":\"r1\",\"message\":\"m\",\"match\":{\"contains\":\"x\"},\"unless\":{\"all\":[{\"contains\":\"a\"},{\"contains\":\"b\"}]}}]}"
+  let rules = parse_config(json).unwrap().rules
+  assert_eq(rules[0].unless, Some(All([Contains("a"), Contains("b")])))
+}
+
+///|
+test "config: all must be an array of matchers" {
+  let json = "{\"rules\":[{\"id\":\"r1\",\"message\":\"m\",\"match\":{\"all\":\"nope\"}}]}"
+  let message = match parse_config(json) {
+    Ok(_) => "accepted"
+    Err(ConfigError(message)) => message
+  }
+  assert_true(message.contains("\"all\""))
+}
+
+///|
+test "config: a malformed sub-matcher reports its index" {
+  let json = "{\"rules\":[{\"id\":\"r1\",\"message\":\"m\",\"match\":{\"any\":[{\"contains\":\"ok\"},{\"nonsense\":1}]}}]}"
+  let message = match parse_config(json) {
+    Ok(_) => "accepted"
+    Err(ConfigError(message)) => message
+  }
+  assert_true(message.contains("\"any\": #1"))
+  assert_true(message.contains("matcher needs one of"))
+}
+
+///|
+test "config: not must wrap a matcher object" {
+  let json = "{\"rules\":[{\"id\":\"r1\",\"message\":\"m\",\"match\":{\"not\":42}}]}"
+  assert_true(parse_config(json) is Err(_))
+}
+
+///|
+test "validate_rules catches a bad regex nested in a combinator" {
+  let json = "{\"rules\":[{\"id\":\"r1\",\"message\":\"m\",\"match\":{\"all\":[{\"contains\":\"a\"},{\"regex\":\"[bad\"}]}}]}"
+  let rules = parse_config(json).unwrap().rules
+  assert_true(validate_rules(rules) is Err(_))
 }
 
 ///|
@@ -245,4 +319,50 @@ test "config parses no_bom check" {
 test "config rejects invalid line_ending style" {
   let json = "{\"rules\":[],\"file_rules\":[{\"id\":\"file/le\",\"message\":\"le\",\"extensions\":[\".ts\"],\"check\":{\"line_ending\":\"invalid\"}}]}"
   assert_true(parse_config(json) is Err(_))
+}
+
+///|
+test "config parses structural_rules" {
+  let json = "{\"structural_rules\":[{\"id\":\"imports/no-unused-imports\",\"severity\":\"error\",\"message\":\"m\",\"extensions\":[\".ts\"],\"check\":{\"no_unused_imports\":true}},{\"id\":\"imports/no-deep\",\"message\":\"m\",\"extensions\":[\".ts\"],\"check\":{\"no_deep_relative_imports\":2}}]}"
+  let config = parse_config(json).unwrap()
+  assert_eq(config.structural_rules.length(), 2)
+  assert_eq(config.structural_rules[0].check, NoUnusedImports)
+  assert_eq(config.structural_rules[0].severity, Error)
+  assert_eq(config.structural_rules[1].check, NoDeepRelativeImports(2))
+  assert_eq(config.structural_rules[1].severity, Warning)
+}
+
+///|
+test "config: structural_rules alone satisfy the rules requirement" {
+  let json = "{\"structural_rules\":[{\"id\":\"imports/no-import-cycles\",\"message\":\"m\",\"check\":{\"no_import_cycles\":true}}]}"
+  assert_true(parse_config(json) is Ok(_))
+}
+
+///|
+test "config: a duplicate structural rule id is rejected" {
+  let json = "{\"structural_rules\":[{\"id\":\"imports/x\",\"message\":\"m\",\"check\":{\"no_import_cycles\":true}},{\"id\":\"imports/x\",\"message\":\"m\",\"check\":{\"no_default_export\":true}}]}"
+  let message = match parse_config(json) {
+    Ok(_) => "accepted"
+    Err(ConfigError(m)) => m
+  }
+  assert_true(message.contains("duplicate structural_rule id"))
+}
+
+///|
+test "config: an unknown structural check is rejected" {
+  let json = "{\"structural_rules\":[{\"id\":\"imports/x\",\"message\":\"m\",\"check\":{\"no_such_check\":true}}]}"
+  let message = match parse_config(json) {
+    Ok(_) => "accepted"
+    Err(ConfigError(m)) => m
+  }
+  assert_true(message.contains("check needs one of"))
+}
+
+///|
+test "collect_extensions unions structural rule extensions" {
+  let json = "{\"structural_rules\":[{\"id\":\"imports/x\",\"message\":\"m\",\"extensions\":[\".ts\",\".vue\"],\"check\":{\"no_import_cycles\":true}}]}"
+  assert_eq(
+    collect_extensions([], [], parse_config(json).unwrap().structural_rules),
+    [".ts", ".vue"],
+  )
 }

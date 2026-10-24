@@ -12,10 +12,11 @@
 /// (the first occurrence wins). Rule-level `include` / `exclude` scopes are
 /// preserved as declared.
 ///
-/// Every rule is line-oriented: it matches one source line at a time, after
-/// comments have been blanked out. Rules that need an AST (unused variables,
-/// hook dependencies, prop types) are intentionally absent — moonlint is a
-/// convention linter, not a type checker.
+/// Most rules are line-oriented: they match one source line at a time, after
+/// comments have been blanked out. The `imports` preset goes further and
+/// uses the project-level structural rules, which parse every scanned file
+/// and reason across them (unused imports, unresolved specifiers, import
+/// cycles, dead exports).
 
 ///|
 /// A built-in preset: a name, a one-line description, and its rules.
@@ -28,6 +29,27 @@ pub struct Preset {
   rules : Array[Rule]
   /// The preset's file-level rules.
   file_rules : Array[FileRule]
+  /// The preset's project-level structural rules.
+  structural_rules : Array[StructuralRule]
+}
+
+///|
+/// Shorthand constructor for a structural rule with no scope.
+fn structural(
+  id : String,
+  severity : Severity,
+  message : String,
+  extensions : Array[String],
+  check : StructuralCheck,
+) -> StructuralRule {
+  StructuralRule::{
+    id,
+    severity,
+    message,
+    extensions,
+    check,
+    scope: Scope::empty(),
+  }
 }
 
 ///|
@@ -796,6 +818,72 @@ fn file_rules_preset() -> Array[FileRule] {
 }
 
 // ---------------------------------------------------------------------------
+// imports — project-level module hygiene (needs the structural parser)
+// ---------------------------------------------------------------------------
+
+///|
+/// Structural rules for module hygiene. These are the checks that made the
+/// scanner worth building: each one needs the token stream, the structural
+/// model, or the whole project index — none can be written as a line match.
+fn imports_structural_rules() -> Array[StructuralRule] {
+  let exts = [
+    ".js", ".jsx", ".ts", ".tsx", ".mjs", ".cjs", ".mts", ".cts", ".vue", ".svelte",
+    ".astro",
+  ]
+  [
+    structural(
+      "imports/no-unused-imports",
+      Severity::warning(),
+      "Imported binding is never used",
+      exts,
+      NoUnusedImports,
+    ),
+    structural(
+      "imports/no-duplicate-imports",
+      Severity::warning(),
+      "Module is imported more than once",
+      exts,
+      NoDuplicateImports,
+    ),
+    structural(
+      "imports/no-unresolved-relative-imports",
+      Severity::error(),
+      "Relative import cannot be resolved to a scanned file",
+      exts,
+      NoUnresolvedRelativeImports,
+    ),
+    structural(
+      "imports/no-import-cycles",
+      Severity::error(),
+      "File takes part in an import cycle",
+      exts,
+      NoImportCycles,
+    ),
+    structural(
+      "imports/no-deep-relative-imports",
+      Severity::warning(),
+      "Relative import climbs too many directories",
+      exts,
+      NoDeepRelativeImports(2),
+    ),
+    structural(
+      "imports/no-require-imports",
+      Severity::warning(),
+      "require() in an ES module codebase",
+      exts,
+      NoRequireImports,
+    ),
+    structural(
+      "imports/no-unused-exports",
+      Severity::warning(),
+      "Exported name is never imported by another file",
+      exts,
+      NoUnusedExports,
+    ),
+  ]
+}
+
+// ---------------------------------------------------------------------------
 // Preset registry
 // ---------------------------------------------------------------------------
 
@@ -808,60 +896,77 @@ fn all_presets() -> Array[Preset] {
       description: "Framework-agnostic JS/TS hygiene (no-console, no-debugger, no-eval, ...)",
       rules: common_rules(),
       file_rules: [],
+      structural_rules: [],
     },
     {
       name: "react",
       description: "React and JSX conventions (no-danger, jsx-key, self-closing, ...)",
       rules: react_rules(),
       file_rules: [],
+      structural_rules: [],
     },
     {
       name: "vue",
       description: "Vue 3 template and SFC conventions (no-v-html, require-v-for-key, ...)",
       rules: vue_rules(),
       file_rules: [],
+      structural_rules: [],
     },
     {
       name: "angular",
       description: "Angular component conventions (no-input-rename, no-output-native, ...)",
       rules: angular_rules(),
       file_rules: [],
+      structural_rules: [],
     },
     {
       name: "svelte",
       description: "Svelte component conventions (no-at-html, require-each-key, a11y, ...)",
       rules: svelte_rules(),
       file_rules: [],
+      structural_rules: [],
     },
     {
       name: "next",
       description: "Next.js conventions (no-img-element, no-head-element, ...)",
       rules: next_rules(),
       file_rules: [],
+      structural_rules: [],
     },
     {
       name: "file",
       description: "File-level checks (max-lines, no-trailing-whitespace, no-tabs, ...)",
       rules: [],
       file_rules: file_rules_preset(),
+      structural_rules: [],
+    },
+    {
+      name: "imports",
+      description: "Cross-file module hygiene (unused imports, import cycles, dead exports, ...)",
+      rules: [],
+      file_rules: [],
+      structural_rules: imports_structural_rules(),
     },
     {
       name: "solid",
       description: "SolidJS conventions (no-innerhtml, prefer-for, no-react-imports, ...)",
       rules: solid_rules(),
       file_rules: [],
+      structural_rules: [],
     },
     {
       name: "astro",
       description: "Astro conventions (no-set-html-directive, prefer-class-list, ...)",
       rules: astro_rules(),
       file_rules: [],
+      structural_rules: [],
     },
     {
       name: "nuxt",
       description: "Nuxt conventions (no-env-in-runtime, prefer-use-fetch, no-window-in-ssr, ...)",
       rules: nuxt_rules(),
       file_rules: [],
+      structural_rules: [],
     },
   ]
 }
@@ -917,11 +1022,12 @@ pub fn preset_by_name(name : String) -> Preset? {
 ///|
 /// Merge several presets into one rule set. Rules are concatenated in preset
 /// order; a rule whose id already appeared is dropped (first occurrence wins).
-/// File rules are merged the same way. The merged config carries no global
-/// scope.
+/// File rules and structural rules are merged the same way. The merged config
+/// carries no global scope.
 pub fn merge_presets(names : Array[String]) -> Result[LintConfig, ConfigError] {
   let rules : Array[Rule] = []
   let file_rules : Array[FileRule] = []
+  let structural_rules : Array[StructuralRule] = []
   let seen : Set[String] = Set([])
   for name in names {
     match preset_by_name(name) {
@@ -939,10 +1045,16 @@ pub fn merge_presets(names : Array[String]) -> Result[LintConfig, ConfigError] {
             file_rules.push(fr)
           }
         }
+        for sr in preset.structural_rules {
+          if !seen.contains(sr.id) {
+            seen.add(sr.id)
+            structural_rules.push(sr)
+          }
+        }
       }
     }
   }
-  Ok({ rules, file_rules, scope: Scope::empty(), })
+  Ok({ rules, file_rules, structural_rules, scope: Scope::empty(), })
 }
 
 ///|

@@ -84,3 +84,100 @@ test "column_of falls back to the first non-space column" {
   assert_eq(MatchKind::Regex("^\\s*debugger").column_of("   debugger"), 4)
   assert_eq(MatchKind::Contains("absent").column_of("    x"), 5)
 }
+
+///|
+test "all requires every sub-matcher" {
+  let m = All([Contains("console."), Contains("log")])
+  assert_eq(m.matches("console.log(x)"), true)
+  assert_eq(m.matches("console.warn(x)"), false)
+  assert_eq(m.matches("logger.info(x)"), false)
+}
+
+///|
+test "all with an empty list matches every line" {
+  // Vacuous truth: there is no sub-matcher that could fail.
+  assert_eq(All([]).matches("anything"), true)
+  assert_eq(All([]).matches(""), true)
+}
+
+///|
+test "any requires at least one sub-matcher" {
+  let m = Any([Contains("TODO"), Contains("FIXME")])
+  assert_eq(m.matches("// TODO: fix"), true)
+  assert_eq(m.matches("// FIXME: fix"), true)
+  assert_eq(m.matches("// nothing here"), false)
+}
+
+///|
+test "any with an empty list matches no line" {
+  assert_eq(Any([]).matches("anything"), false)
+}
+
+///|
+test "not negates its sub-matcher" {
+  let m = Not(Contains("allow"))
+  assert_eq(m.matches("console.log(x)"), true)
+  assert_eq(m.matches("console.log(x) // allow"), false)
+}
+
+///|
+test "combinators nest arbitrarily deep" {
+  // "contains console. but not on a line that mentions allow"
+  let m = All([Contains("console."), Not(Contains("allow"))])
+  assert_eq(m.matches("console.log(x)"), true)
+  assert_eq(m.matches("console.log(x) // allow"), false)
+  assert_eq(m.matches("logger.info(x)"), false)
+  // Triple nesting: any of two all-groups, negated as a whole.
+  let deep = Not(Any([All([Contains("a"), Contains("b")]), Word("skip")]))
+  assert_eq(deep.matches("just a line"), true)
+  assert_eq(deep.matches("a and b"), false)
+  assert_eq(deep.matches("please skip"), false)
+}
+
+///|
+test "prepared matchers evaluate combinators" {
+  // Exercises the Prepared::AllOf / AnyOf / NotOf paths, not just the
+  // direct MatchKind::matches recursion.
+  let all = All([Contains("a"), Regex("b")]).prepare()
+  assert_eq(all.matches("xxaxxb"), true)
+  assert_eq(all.matches("xxaxx"), false)
+  let any = Any([Regex("[invalid"), Contains("z")]).prepare()
+  assert_eq(any.matches("no match"), false)
+  assert_eq(any.matches("has z"), true)
+  let not = Not(Regex("[bad")).prepare()
+  assert_eq(not.matches("anything"), true)
+}
+
+///|
+test "prepare collapses an all containing a never-match child" {
+  // A bad regex child makes the whole All unable to fire.
+  assert_true(All([Contains("a"), Regex("[bad")]).prepare() is NeverMatch)
+  assert_true(All([Contains("a"), Any([])]).prepare() is NeverMatch)
+}
+
+///|
+test "column_of reports the first matching sub-matcher column" {
+  // All: both children match; the first child's column wins.
+  let all = All([Contains("TODO"), Contains("log")])
+  assert_eq(all.column_of("  // TODO log"), 6)
+  // Any: only the second child matches; its column is used.
+  let any = Any([Contains("absent"), Contains("b")])
+  assert_eq(any.column_of("a b c"), 3)
+  // Not has no positive pattern, so it falls back to the first non-space.
+  let not = Not(Contains("absent"))
+  assert_eq(not.column_of("   x"), 4)
+}
+
+///|
+test "validate reports a bad regex nested in a combinator" {
+  assert_eq(
+    All([Contains("a"), Regex("[bad")]).validate(),
+    Some("invalid regex: [bad"),
+  )
+  assert_eq(Any([Regex("ok")]).validate(), None)
+  assert_eq(
+    Not(All([Any([Regex("[bad")])])).validate(),
+    Some("invalid regex: [bad"),
+  )
+  assert_eq(All([Not(Regex("ok"))]).validate(), None)
+}

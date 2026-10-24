@@ -8,11 +8,19 @@ import {
 }
 
 // Values
+pub fn analyze(ProjectIndex, Array[StructuralRule]) -> Array[Finding]
+
+pub fn build_index(Array[(String, String)]) -> ProjectIndex
+
 pub fn canonical_root(String) -> String raise NativeError
 
-pub fn collect_extensions(Array[Rule], Array[FileRule]) -> Array[String]
+pub fn collect_extensions(Array[Rule], Array[FileRule], Array[StructuralRule]) -> Array[String]
 
 pub fn comment_mode_for(String) -> CommentMode
+
+pub fn config_fingerprint(Array[Rule], Array[FileRule], Array[StructuralRule], Scope) -> String
+
+pub fn content_hash(String) -> String
 
 pub fn error_message(Error) -> String
 
@@ -28,15 +36,19 @@ pub fn git_staged_files(String) -> Array[String] raise NativeError
 
 pub fn glob_pattern_error(String) -> String?
 
+pub fn is_relative(String) -> Bool
+
 pub fn lint_file(String, String, Array[(Int32, String)], Array[FileRule]) -> Array[Finding]
 
-pub fn lint_files(String, Array[String], Array[Rule], Array[FileRule], Scope) -> LintResult raise
+pub fn lint_files(String, Array[String], Array[Rule], Array[FileRule], Array[StructuralRule], Scope) -> LintResult raise
 
 pub fn lint_lines(String, Array[(Int32, String)], Array[Rule]) -> Array[Finding]
 
-pub fn lint_selected(String, ScanMode, Array[String], Array[Rule], Array[FileRule], Scope) -> LintResult raise
+pub fn lint_selected(String, ScanMode, Array[String], Array[Rule], Array[FileRule], Array[StructuralRule], Scope) -> LintResult raise
 
-pub fn lint_tree(String, Array[Rule], Array[FileRule], Array[String], Scope) -> Result[LintResult, Error]
+pub fn lint_selected_cached(String, ScanMode, Array[String], Array[Rule], Array[FileRule], Array[StructuralRule], Scope, Cache?) -> (LintResult, Cache) raise
+
+pub fn lint_tree(String, Array[Rule], Array[FileRule], Array[StructuralRule], Array[String], Scope) -> Result[LintResult, Error]
 
 pub fn merge_presets(Array[String]) -> Result[LintConfig, ConfigError]
 
@@ -45,6 +57,10 @@ pub fn parse_config(String) -> Result[LintConfig, ConfigError]
 pub fn parse_config_with_extends(String, String) -> Result[LintConfig, ConfigError]
 
 pub fn parse_disable_comments(String) -> DisableMap
+
+pub fn parse_source(String) -> FileModel
+
+pub fn parse_tokens(Array[Token]) -> FileModel
 
 pub fn preset_by_name(String) -> Preset?
 
@@ -69,6 +85,10 @@ pub fn render_summary(LintResult) -> String
 pub fn select_files(ScanMode, String, Array[String]) -> Array[String] raise
 
 pub fn source_path_kind(String) -> Int32 raise NativeError
+
+pub fn spec_source(ImportSpec) -> String
+
+pub fn tokenize(String) -> Array[Token]
 
 pub fn validate_glob(String) -> Unit raise
 
@@ -99,6 +119,25 @@ pub fn Baseline::parse(String) -> Self raise
 pub fn Baseline::partition(Self, Array[Finding]) -> (Array[Finding], Array[Finding])
 pub fn Baseline::render(Array[Finding]) -> String
 
+pub struct Cache {
+  version : Int32
+  fingerprint : String
+  files : Map[String, CacheEntry]
+} derive(@debug.Debug)
+pub fn Cache::get(Self, String) -> CacheEntry?
+pub fn Cache::is_current(Self, String) -> Bool
+pub fn Cache::new(String) -> Self
+pub fn Cache::parse(String) -> Self?
+pub fn Cache::put(Self, String, String, Array[Finding]) -> Unit
+pub fn Cache::render(Self) -> String
+pub fn Cache::to_repr(Self) -> @debug.Repr
+
+pub struct CacheEntry {
+  hash : String
+  findings : Array[Finding]
+} derive(@debug.Debug)
+pub fn CacheEntry::to_repr(Self) -> @debug.Repr
+
 pub enum CommentMode {
   Js
   Plain
@@ -106,6 +145,23 @@ pub enum CommentMode {
 pub fn CommentMode::equal(Self, Self) -> Bool
 pub fn CommentMode::not_equal(Self, Self) -> Bool
 pub fn CommentMode::to_repr(Self) -> @debug.Repr
+
+pub struct Decl {
+  name : String
+  kind : DeclKind
+  line : Int32
+  column : Int32
+} derive(@debug.Debug)
+pub fn Decl::to_repr(Self) -> @debug.Repr
+
+pub enum DeclKind {
+  Var
+  Function
+  Class
+} derive(Eq, @debug.Debug)
+pub fn DeclKind::equal(Self, Self) -> Bool
+pub fn DeclKind::not_equal(Self, Self) -> Bool
+pub fn DeclKind::to_repr(Self) -> @debug.Repr
 
 pub struct Diagnostic {
   file : String
@@ -118,6 +174,14 @@ pub struct DisableMap {
   disabled_on : Map[Int32, @set.Set[String]]
 }
 pub fn DisableMap::is_disabled(Self, String, Int32) -> Bool
+
+pub struct ExportSpec {
+  names : Array[String]
+  source : String?
+  line : Int32
+  column : Int32
+} derive(@debug.Debug)
+pub fn ExportSpec::to_repr(Self) -> @debug.Repr
 
 pub enum FileCheck {
   MaxLines(Int32)
@@ -135,6 +199,14 @@ pub enum FileCheck {
 pub fn FileCheck::equal(Self, Self) -> Bool
 pub fn FileCheck::not_equal(Self, Self) -> Bool
 pub fn FileCheck::to_repr(Self) -> @debug.Repr
+
+pub struct FileModel {
+  imports : Array[ImportSpec]
+  exports : Array[ExportSpec]
+  decls : Array[Decl]
+  used : Array[UsedIdent]
+} derive(@debug.Debug)
+pub fn FileModel::to_repr(Self) -> @debug.Repr
 
 pub struct FileRule {
   id : String
@@ -168,6 +240,32 @@ pub fn GlobPattern::new(String) -> Self
 pub fn GlobPattern::not_equal(Self, Self) -> Bool
 pub fn GlobPattern::to_repr(Self) -> @debug.Repr
 
+pub enum ImportKind {
+  Static
+  Dynamic
+  Require
+  ReExport
+} derive(Eq, @debug.Debug)
+pub fn ImportKind::equal(Self, Self) -> Bool
+pub fn ImportKind::not_equal(Self, Self) -> Bool
+pub fn ImportKind::to_repr(Self) -> @debug.Repr
+
+pub struct ImportName {
+  local : String
+  imported : String
+} derive(@debug.Debug)
+pub fn ImportName::to_repr(Self) -> @debug.Repr
+
+pub struct ImportSpec {
+  kind : ImportKind
+  source : String
+  names : Array[ImportName]
+  line : Int32
+  column : Int32
+  type_only : Bool
+} derive(@debug.Debug)
+pub fn ImportSpec::to_repr(Self) -> @debug.Repr
+
 type JsState
 
 pub enum LineEndingStyle {
@@ -182,6 +280,7 @@ pub fn LineEndingStyle::to_repr(Self) -> @debug.Repr
 pub struct LintConfig {
   rules : Array[Rule]
   file_rules : Array[FileRule]
+  structural_rules : Array[StructuralRule]
   scope : Scope
 } derive(@debug.Debug)
 pub fn LintConfig::to_repr(Self) -> @debug.Repr
@@ -210,6 +309,9 @@ pub enum MatchKind {
   Regex(String)
   Equals(String)
   Word(String)
+  All(Array[MatchKind])
+  Any(Array[MatchKind])
+  Not(MatchKind)
 } derive(Eq, @debug.Debug)
 pub fn MatchKind::column_of(Self, String) -> Int32
 pub fn MatchKind::equal(Self, Self) -> Bool
@@ -234,6 +336,9 @@ pub enum Prepared {
   NeverMatch
   Plain(MatchKind)
   Compiled(@string.Regex)
+  AllOf(Array[Prepared])
+  AnyOf(Array[Prepared])
+  NotOf(Prepared)
 }
 pub fn Prepared::matches(Self, StringView) -> Bool
 
@@ -242,7 +347,21 @@ pub struct Preset {
   description : String
   rules : Array[Rule]
   file_rules : Array[FileRule]
+  structural_rules : Array[StructuralRule]
 }
+
+pub struct ProjectFile {
+  rel : String
+  source : String
+  model : FileModel
+} derive(@debug.Debug)
+pub fn ProjectFile::to_repr(Self) -> @debug.Repr
+
+pub struct ProjectIndex {
+  files : Array[ProjectFile]
+  paths : @set.Set[String]
+}
+pub fn ProjectIndex::resolve(Self, String, String) -> String?
 
 pub struct Rule {
   id : String
@@ -314,6 +433,61 @@ pub struct SkippedFile {
   reason : String
 } derive(@debug.Debug)
 pub fn SkippedFile::to_repr(Self) -> @debug.Repr
+
+pub enum StructuralCheck {
+  NoUnusedImports
+  NoDuplicateImports
+  NoUnresolvedRelativeImports
+  NoImportCycles
+  NoDefaultExport
+  NoDeepRelativeImports(Int32)
+  NoRequireImports
+  NoUnusedExports
+} derive(Eq, @debug.Debug)
+pub fn StructuralCheck::equal(Self, Self) -> Bool
+pub fn StructuralCheck::not_equal(Self, Self) -> Bool
+pub fn StructuralCheck::to_repr(Self) -> @debug.Repr
+
+pub struct StructuralRule {
+  id : String
+  severity : Severity
+  message : String
+  extensions : Array[String]
+  check : StructuralCheck
+  scope : Scope
+} derive(@debug.Debug)
+pub fn StructuralRule::applies_to(Self, String) -> Bool
+pub fn StructuralRule::to_repr(Self) -> @debug.Repr
+
+pub struct Token {
+  kind : TokenKind
+  text : String
+  line : Int32
+  column : Int32
+} derive(@debug.Debug)
+pub fn Token::to_repr(Self) -> @debug.Repr
+
+pub enum TokenKind {
+  Ident
+  Number
+  Str
+  TemplateText
+  Backtick
+  InterpOpen
+  InterpClose
+  RegexLit
+  Punct
+} derive(Eq, @debug.Debug)
+pub fn TokenKind::equal(Self, Self) -> Bool
+pub fn TokenKind::not_equal(Self, Self) -> Bool
+pub fn TokenKind::to_repr(Self) -> @debug.Repr
+
+pub struct UsedIdent {
+  name : String
+  line : Int32
+  column : Int32
+} derive(@debug.Debug)
+pub fn UsedIdent::to_repr(Self) -> @debug.Repr
 
 // Type aliases
 

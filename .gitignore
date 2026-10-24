@@ -12,6 +12,12 @@ _build/
 # --- moon tooling scratch ---
 .moonagent/
 
+# --- whitebox test scratch (engine_wbtest "lint_tree on real directory") ---
+tmp_lint_test/
+
+# --- agent workspace data (not project source) ---
+.workbuddy-ai/
+
 # --- Logs (e.g. `moon coverage analyze > uncovered.log`) ---
 *.log
 

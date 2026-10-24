@@ -1,0 +1,151 @@
+{
+  "structural_rules": [
+    {
+      "id": "imports/no-unused-imports",
+      "severity": "warning",
+      "message": "Imported binding is never used",
+      "extensions": [
+        ".js",
+        ".jsx",
+        ".ts",
+        ".tsx",
+        ".mjs",
+        ".cjs",
+        ".mts",
+        ".cts",
+        ".vue",
+        ".svelte",
+        ".astro"
+      ],
+      "check": {
+        "no_unused_imports": true
+      }
+    },
+    {
+      "id": "imports/no-duplicate-imports",
+      "severity": "warning",
+      "message": "Module is imported more than once",
+      "extensions": [
+        ".js",
+        ".jsx",
+        ".ts",
+        ".tsx",
+        ".mjs",
+        ".cjs",
+        ".mts",
+        ".cts",
+        ".vue",
+        ".svelte",
+        ".astro"
+      ],
+      "check": {
+        "no_duplicate_imports": true
+      }
+    },
+    {
+      "id": "imports/no-unresolved-relative-imports",
+      "severity": "error",
+      "message": "Relative import cannot be resolved to a scanned file",
+      "extensions": [
+        ".js",
+        ".jsx",
+        ".ts",
+        ".tsx",
+        ".mjs",
+        ".cjs",
+        ".mts",
+        ".cts",
+        ".vue",
+        ".svelte",
+        ".astro"
+      ],
+      "check": {
+        "no_unresolved_relative_imports": true
+      }
+    },
+    {
+      "id": "imports/no-import-cycles",
+      "severity": "error",
+      "message": "File takes part in an import cycle",
+      "extensions": [
+        ".js",
+        ".jsx",
+        ".ts",
+        ".tsx",
+        ".mjs",
+        ".cjs",
+        ".mts",
+        ".cts",
+        ".vue",
+        ".svelte",
+        ".astro"
+      ],
+      "check": {
+        "no_import_cycles": true
+      }
+    },
+    {
+      "id": "imports/no-deep-relative-imports",
+      "severity": "warning",
+      "message": "Relative import climbs too many directories",
+      "extensions": [
+        ".js",
+        ".jsx",
+        ".ts",
+        ".tsx",
+        ".mjs",
+        ".cjs",
+        ".mts",
+        ".cts",
+        ".vue",
+        ".svelte",
+        ".astro"
+      ],
+      "check": {
+        "no_deep_relative_imports": 2
+      }
+    },
+    {
+      "id": "imports/no-require-imports",
+      "severity": "warning",
+      "message": "require() in an ES module codebase",
+      "extensions": [
+        ".js",
+        ".jsx",
+        ".ts",
+        ".tsx",
+        ".mjs",
+        ".cjs",
+        ".mts",
+        ".cts",
+        ".vue",
+        ".svelte",
+        ".astro"
+      ],
+      "check": {
+        "no_require_imports": true
+      }
+    },
+    {
+      "id": "imports/no-unused-exports",
+      "severity": "warning",
+      "message": "Exported name is never imported by another file",
+      "extensions": [
+        ".js",
+        ".jsx",
+        ".ts",
+        ".tsx",
+        ".mjs",
+        ".cjs",
+        ".mts",
+        ".cts",
+        ".vue",
+        ".svelte",
+        ".astro"
+      ],
+      "check": {
+        "no_unused_exports": true
+      }
+    }
+  ]
+}

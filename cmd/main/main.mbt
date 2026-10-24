@@ -22,6 +22,8 @@ struct Options {
   mut fix : Bool
   mut dry_run : Bool
   mut fix_tab_width : Int32?
+  mut incremental : Bool
+  mut cache_file : String
 }
 
 ///|
@@ -67,7 +69,7 @@ fn init_config() -> Unit raise {
     println("moonlint: \{path} already exists")
     return
   }
-  let config = "{\n  \"rules\": [\n    {\n      \"id\": \"common/no-console-log\",\n      \"severity\": \"warning\",\n      \"message\": \"Avoid console.log in committed code\",\n      \"extensions\": [\".js\", \".jsx\", \".ts\", \".tsx\"],\n      \"match\": { \"contains\": \"console.log\" }\n    },\n    {\n      \"id\": \"common/no-debugger\",\n      \"severity\": \"error\",\n      \"message\": \"No debugger statements\",\n      \"extensions\": [\".js\", \".jsx\", \".ts\", \".tsx\"],\n      \"match\": { \"regex\": \"^[[:space:]]*debugger[[:space:]]*;?[[:space:]]*$\" }\n    }\n  ],\n  \"file_rules\": [\n    {\n      \"id\": \"file/no-trailing-whitespace\",\n      \"severity\": \"warning\",\n      \"message\": \"Trailing whitespace found\",\n      \"extensions\": [],\n      \"check\": { \"no_trailing_whitespace\": true }\n    }\n  ]\n}\n"
+  let config = "{\n  \"rules\": [\n    {\n      \"id\": \"common/no-console-log\",\n      \"severity\": \"warning\",\n      \"message\": \"Avoid console.log in committed code\",\n      \"extensions\": [\".js\", \".jsx\", \".ts\", \".tsx\"],\n      \"match\": { \"contains\": \"console.log\" }\n    },\n    {\n      \"id\": \"common/no-todo-comment\",\n      \"severity\": \"warning\",\n      \"message\": \"TODO/FIXME comment left in code\",\n      \"extensions\": [\".js\", \".jsx\", \".ts\", \".tsx\"],\n      \"match\": { \"any\": [ { \"word\": \"TODO\" }, { \"word\": \"FIXME\" } ] }\n    },\n    {\n      \"id\": \"common/no-debugger\",\n      \"severity\": \"error\",\n      \"message\": \"No debugger statements\",\n      \"extensions\": [\".js\", \".jsx\", \".ts\", \".tsx\"],\n      \"match\": { \"regex\": \"^[[:space:]]*debugger[[:space:]]*;?[[:space:]]*$\" }\n    }\n  ],\n  \"file_rules\": [\n    {\n      \"id\": \"file/no-trailing-whitespace\",\n      \"severity\": \"warning\",\n      \"message\": \"Trailing whitespace found\",\n      \"extensions\": [],\n      \"check\": { \"no_trailing_whitespace\": true }\n    }\n  ]\n}\n"
   @lib.write_atomic_text(path, config)
   println("moonlint: created \{path}")
   println("Run with: moonlint --config \{path} <directory>")
@@ -105,6 +107,7 @@ fn run(opts : Options) -> Unit raise {
   }
   let rules = config.rules
   let file_rules = config.file_rules
+  let structural_rules = config.structural_rules
   match @lib.validate_rules(rules) {
     Ok(_) => ()
     Err(@lib.ConfigError(message)) => raise Failure("config error: \{message}")
@@ -126,7 +129,7 @@ fn run(opts : Options) -> Unit raise {
   let exts = if !opts.exts.is_empty() {
     opts.exts
   } else {
-    @lib.collect_extensions(rules, file_rules)
+    @lib.collect_extensions(rules, file_rules, structural_rules)
   }
   let files = @lib.select_files(opts.scan_mode, root, exts)
   // Repeated --glob patterns form a union, then the selector de-duplicates it.
@@ -137,14 +140,16 @@ fn run(opts : Options) -> Unit raise {
       }
     }
   }
-  let result = @lib.lint_selected(
+  let (result, cache) = scan_with_cache(
+    opts,
     root,
-    opts.scan_mode,
     files,
     rules,
     file_rules,
+    structural_rules,
     config.scope,
   )
+  persist_cache(opts, cache)
   let scan = @lib.ScanInfo::new(opts.scan_mode.tag(), root, exts)
   if opts.dry_run && !opts.fix {
     raise Failure("--dry-run only applies to --fix")
@@ -167,14 +172,16 @@ fn run(opts : Options) -> Unit raise {
     // Re-scan after fixes. Fixes were written to the working tree, so a
     // Git-backed selection (--changed/--staged) is rejected above and cannot
     // re-read stale blobs here.
-    let result2 = @lib.lint_selected(
+    let (result2, cache2) = scan_with_cache(
+      opts,
       root,
-      opts.scan_mode,
       files,
       rules,
       file_rules,
+      structural_rules,
       config.scope,
     )
+    persist_cache(opts, cache2)
     write_report(result2, opts, scan)
     emit(result2, opts, scan)
     if result2.files_failed > 0 {
@@ -217,6 +224,65 @@ fn run(opts : Options) -> Unit raise {
     @sys.exit(2)
   } else if final_result.has_errors() {
     @sys.exit(1)
+  }
+}
+
+///|
+/// Run the scan, using the incremental cache when the caller asked for it.
+/// Returns the result together with the refreshed cache to persist (or
+/// `None` when caching is off). A cache file that is missing or unparseable
+/// simply starts a fresh cache: a stale cache degrades to a full scan, never
+/// to a wrong answer.
+fn scan_with_cache(
+  opts : Options,
+  root : String,
+  files : Array[String],
+  rules : Array[@lib.Rule],
+  file_rules : Array[@lib.FileRule],
+  structural_rules : Array[@lib.StructuralRule],
+  scope : @lib.Scope,
+) -> (@lib.LintResult, @lib.Cache?) raise {
+  if !opts.incremental {
+    let result = @lib.lint_selected(
+      root,
+      opts.scan_mode,
+      files,
+      rules,
+      file_rules,
+      structural_rules,
+      scope,
+    )
+    return (result, None)
+  }
+  let previous = @fs.read_file_to_string(opts.cache_file) catch { _ => "" }
+  let loaded = if previous == "" { None } else { @lib.Cache::parse(previous) }
+  let (result, cache) = @lib.lint_selected_cached(
+    root,
+    opts.scan_mode,
+    files,
+    rules,
+    file_rules,
+    structural_rules,
+    scope,
+    loaded,
+  )
+  (result, Some(cache))
+}
+
+///|
+/// Persist a refreshed cache. A write failure is reported on stderr and
+/// otherwise ignored: the lint result is already complete, and a missing
+/// cache only costs the next run some time.
+fn persist_cache(opts : Options, cache : @lib.Cache?) -> Unit {
+  match cache {
+    None => ()
+    Some(c) =>
+      @lib.write_atomic_text(opts.cache_file, c.render()) catch {
+        _ =>
+          eprintln(
+            "moonlint: warning: could not write cache file \{opts.cache_file}",
+          )
+      }
   }
 }
 
@@ -457,6 +523,8 @@ fn parse_args(args : Array[String]) -> Options raise {
     fix: false,
     dry_run: false,
     fix_tab_width: None,
+    incremental: false,
+    cache_file: ".moonlint-cache.json",
   }
   let mut i = 1
   let mut positional_only = false
@@ -529,9 +597,14 @@ fn parse_args(args : Array[String]) -> Options raise {
       }
       "--stdin" => set_mode(opts, @lib.ScanMode::stdin())
       "--stdin0" => set_mode(opts, @lib.ScanMode::stdin0())
-      "--incremental" | "--watch" | "--watch-interval" =>
+      "--incremental" => opts.incremental = true
+      "--cache-file" => {
+        i += 1
+        opts.cache_file = option_value(args, i, arg)
+      }
+      "--watch" | "--watch-interval" =>
         raise Failure(
-          "unsupported option \{arg}: not implemented; use a supported single-run scan mode",
+          "unsupported option \{arg}: watch mode is not implemented; use --incremental for fast repeated scans",
         )
       "--ext" => {
         i += 1
@@ -575,15 +648,19 @@ fn print_help() -> Unit {
       "  --baseline <file>  strict legacy finding-hash JSON array", "  --update-baseline  atomically rewrite the full tree scan's findings",
       "  --summary          show rule totals and read/skip/failure counts", "  --errors-only      hide warning findings (including in --summary)",
       "  --ext <list>       comma-separated extension filter, in every mode", "  --format <fmt>     text (default), json, github, or sarif",
-      "  --report <file>    also write the JSON report to this file", "  -h, --help         show this help",
+      "  --report <file>    also write the JSON report to this file", "  --incremental      reuse per-file results for unchanged files (content-hash cache)",
+      "  --cache-file <f>   cache location (default: .moonlint-cache.json)", "  -h, --help         show this help",
       "", "Scan modes (mutually exclusive; default: working-tree walk):", "  --changed <ref>    merge-base(ref, HEAD)..HEAD files; read HEAD blobs",
       "  --staged           read actual index blobs, not working-tree copies", "  --glob <pattern>   repeatable union; *, ?, standalone ** segments",
       "  --stdin            root-relative paths, one per line (no trim)", "  --stdin0           NUL-separated paths (supports embedded newlines)",
       "", "Config scopes: top-level and per-rule include/exclude glob patterns",
       "restrict which files are scanned and which rules apply to them.", "", "Inline disables: // moonlint-disable [rule-id] / // moonlint-disable-next-line [rule-id]",
       "Config extends: \"extends\": \"base.json\" or \"extends\": [\"a.json\", \"b.json\"]",
+      "Structural rules: \"structural_rules\" runs cross-file checks (see --preset imports)",
+      "Matcher DSL: \"match\"/\"unless\" nest all/any/not over contains/prefix/suffix/regex/equals/word",
       "", "Symbolic links are skipped. Git/read failures exit 2; no silent fallback.",
-      "Incremental caching and Watch are not implemented and are rejected.", "Exit: 0 no lint errors, 1 lint errors, 2 argument/config/scan/IO failure.",
+      "Incremental caching re-lints only changed files; Watch is not implemented.",
+      "Exit: 0 no lint errors, 1 lint errors, 2 argument/config/scan/IO failure.",
     ].join("\n"),
   )
 }

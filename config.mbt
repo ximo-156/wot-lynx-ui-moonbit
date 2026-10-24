@@ -66,8 +66,8 @@ pub fn parse_config(src : String) -> Result[LintConfig, ConfigError] {
       }
     }
     None =>
-      // rules is optional when file_rules is present
-      if !obj.contains("file_rules") {
+      // rules is optional when file_rules or structural_rules is present
+      if !obj.contains("file_rules") && !obj.contains("structural_rules") {
         return Err(ConfigError("config missing \"rules\" array"))
       }
   }
@@ -75,21 +75,26 @@ pub fn parse_config(src : String) -> Result[LintConfig, ConfigError] {
     Ok(fr) => fr
     Err(ConfigError(msg)) => return Err(ConfigError(msg))
   }
+  let structural_rules = match parse_structural_rules(obj) {
+    Ok(sr) => sr
+    Err(ConfigError(msg)) => return Err(ConfigError(msg))
+  }
   // A duplicate id inside one file is a mistake: the later rule would be
   // silently shadowed. Reuse across `extends` is legitimate overriding, so
   // this check lives here rather than in the merge step.
-  match check_duplicate_ids(rules, file_rules) {
+  match check_duplicate_ids(rules, file_rules, structural_rules) {
     Some(message) => return Err(ConfigError(message))
     None => ()
   }
-  Ok({ rules, file_rules, scope, })
+  Ok({ rules, file_rules, structural_rules, scope, })
 }
 
 ///|
-/// Report the first duplicated rule or file-rule id, if any.
+/// Report the first duplicated rule, file-rule or structural-rule id, if any.
 fn check_duplicate_ids(
   rules : Array[Rule],
   file_rules : Array[FileRule],
+  structural_rules : Array[StructuralRule],
 ) -> String? {
   let seen_rule : Set[String] = Set([])
   for rule in rules {
@@ -104,6 +109,13 @@ fn check_duplicate_ids(
       return Some("duplicate file_rule id: \{fr.id}")
     }
     seen_file.add(fr.id)
+  }
+  let seen_structural : Set[String] = Set([])
+  for sr in structural_rules {
+    if seen_structural.contains(sr.id) {
+      return Some("duplicate structural_rule id: \{sr.id}")
+    }
+    seen_structural.add(sr.id)
   }
   None
 }
@@ -175,6 +187,7 @@ fn parse_config_with_extends_impl(
   // Load and merge extended configs
   let base_rules : Array[Rule] = []
   let base_file_rules : Array[FileRule] = []
+  let base_structural_rules : Array[StructuralRule] = []
   let mut base_scope = Scope::empty()
   for path in extends_paths {
     let full_path = join_path_parts(config_dir, path)
@@ -202,6 +215,9 @@ fn parse_config_with_extends_impl(
     for fr in ext_config.file_rules {
       base_file_rules.push(fr)
     }
+    for sr in ext_config.structural_rules {
+      base_structural_rules.push(sr)
+    }
     if !ext_config.scope.is_empty() {
       base_scope = ext_config.scope
     }
@@ -228,7 +244,9 @@ fn parse_config_with_extends_impl(
       }
     }
     None =>
-      if !obj.contains("file_rules") && extends_paths.is_empty() {
+      if !obj.contains("file_rules") &&
+        !obj.contains("structural_rules") &&
+        extends_paths.is_empty() {
         return Err(ConfigError("config missing \"rules\" array"))
       }
   }
@@ -236,9 +254,16 @@ fn parse_config_with_extends_impl(
     Ok(fr) => fr
     Err(ConfigError(msg)) => return Err(ConfigError(msg))
   }
+  let current_structural_rules = match parse_structural_rules(obj) {
+    Ok(sr) => sr
+    Err(ConfigError(msg)) => return Err(ConfigError(msg))
+  }
   // Duplicates within THIS file are mistakes. Cross-file collisions are the
   // intended override mechanism, so only the local arrays are checked.
-  match check_duplicate_ids(current_rules, current_file_rules) {
+  match
+    check_duplicate_ids(
+      current_rules, current_file_rules, current_structural_rules,
+    ) {
     Some(message) => return Err(ConfigError(message))
     None => ()
   }
@@ -271,9 +296,28 @@ fn parse_config_with_extends_impl(
       merged_file_rules.push(fr)
     }
   }
+  let seen_sr : Set[String] = Set([])
+  let merged_structural_rules : Array[StructuralRule] = []
+  for sr in current_structural_rules {
+    if !seen_sr.contains(sr.id) {
+      seen_sr.add(sr.id)
+      merged_structural_rules.push(sr)
+    }
+  }
+  for sr in base_structural_rules {
+    if !seen_sr.contains(sr.id) {
+      seen_sr.add(sr.id)
+      merged_structural_rules.push(sr)
+    }
+  }
   // Use current scope if non-empty, otherwise base scope
   let final_scope = if scope.is_empty() { base_scope } else { scope }
-  Ok({ rules: merged_rules, file_rules: merged_file_rules, scope: final_scope, })
+  Ok({
+    rules: merged_rules,
+    file_rules: merged_file_rules,
+    structural_rules: merged_structural_rules,
+    scope: final_scope,
+  })
 }
 
 ///|
@@ -550,12 +594,152 @@ fn parse_file_check(cj : Json) -> Result[FileCheck, ConfigError] {
 }
 
 ///|
-/// Parse a matcher object: exactly one of contains / prefix / suffix / regex /
-/// equals / word.
+/// Parse the optional `structural_rules` array from the config object.
+fn parse_structural_rules(
+  obj : Map[String, Json],
+) -> Result[Array[StructuralRule], ConfigError] {
+  let sr_json = match obj.get("structural_rules") {
+    Some(r) => r
+    None => return Ok([])
+  }
+  let arr = match sr_json.as_array() {
+    Some(a) => a
+    None => return Err(ConfigError("\"structural_rules\" must be an array"))
+  }
+  let rules : Array[StructuralRule] = []
+  for (idx, rj) in arr.iter2() {
+    let rule = match parse_structural_rule(rj) {
+      Ok(r) => r
+      Err(ConfigError(msg)) =>
+        return Err(ConfigError("structural_rule #\{idx}: \{msg}"))
+    }
+    rules.push(rule)
+  }
+  Ok(rules)
+}
+
+///|
+/// Parse a single structural (project-level) rule object.
+fn parse_structural_rule(rj : Json) -> Result[StructuralRule, ConfigError] {
+  let obj = match rj.as_object() {
+    Some(o) => o
+    None => return Err(ConfigError("structural_rule must be an object"))
+  }
+  let id = match get_str(obj, "id") {
+    Some(s) => s
+    None => return Err(ConfigError("structural_rule missing \"id\""))
+  }
+  let severity = match get_str(obj, "severity") {
+    Some(s) => Severity::parse(s)
+    None => Severity::Warning
+  }
+  let message = match get_str(obj, "message") {
+    Some(s) => s
+    None =>
+      return Err(ConfigError("structural_rule \"\{id}\" missing \"message\""))
+  }
+  let extensions = match get_str_array(obj, "extensions") {
+    Some(a) => a
+    None => []
+  }
+  let scope = match parse_scope(obj, "structural_rule \"\{id}\"") {
+    Ok(scope) => scope
+    Err(message) => return Err(ConfigError(message))
+  }
+  let check_json = match obj.get("check") {
+    Some(c) => c
+    None =>
+      return Err(ConfigError("structural_rule \"\{id}\" missing \"check\""))
+  }
+  let check = match parse_structural_check(check_json) {
+    Ok(c) => c
+    Err(ConfigError(msg)) =>
+      return Err(ConfigError("structural_rule \"\{id}\": \{msg}"))
+  }
+  Ok({ id, severity, message, extensions, check, scope, })
+}
+
+///|
+/// Parse a structural check object: exactly one of the cross-file checks.
+fn parse_structural_check(cj : Json) -> Result[StructuralCheck, ConfigError] {
+  let obj = match cj.as_object() {
+    Some(o) => o
+    None => return Err(ConfigError("check must be an object"))
+  }
+  if obj.contains("no_unused_imports") {
+    return Ok(NoUnusedImports)
+  }
+  if obj.contains("no_duplicate_imports") {
+    return Ok(NoDuplicateImports)
+  }
+  if obj.contains("no_unresolved_relative_imports") {
+    return Ok(NoUnresolvedRelativeImports)
+  }
+  if obj.contains("no_import_cycles") {
+    return Ok(NoImportCycles)
+  }
+  if obj.contains("no_default_export") {
+    return Ok(NoDefaultExport)
+  }
+  if obj.contains("no_deep_relative_imports") {
+    return match obj.get("no_deep_relative_imports") {
+      Some(v) =>
+        match v.as_number() {
+          Some(n) => Ok(NoDeepRelativeImports(n.to_int()))
+          None =>
+            Err(ConfigError("\"no_deep_relative_imports\" must be a number"))
+        }
+      None => Err(ConfigError("\"no_deep_relative_imports\" must be a number"))
+    }
+  }
+  if obj.contains("no_require_imports") {
+    return Ok(NoRequireImports)
+  }
+  if obj.contains("no_unused_exports") {
+    return Ok(NoUnusedExports)
+  }
+  Err(
+    ConfigError(
+      "check needs one of: no_unused_imports, no_duplicate_imports, no_unresolved_relative_imports, no_import_cycles, no_default_export, no_deep_relative_imports, no_require_imports, no_unused_exports",
+    ),
+  )
+}
+
+///|
+/// Parse a matcher object: one of the combinators `all` / `any` / `not`, or
+/// exactly one of contains / prefix / suffix / regex / equals / word.
+///
+/// Combinators nest arbitrarily deep, so `match` can express any boolean
+/// formula over the leaf matchers:
+/// ```json
+/// {"all": [{"contains": "console."}, {"not": {"word": "allow"}}]}
+/// ```
 fn parse_match_kind(mj : Json) -> Result[MatchKind, ConfigError] {
   let obj = match mj.as_object() {
     Some(o) => o
     None => return Err(ConfigError("matcher must be an object"))
+  }
+  if obj.contains("all") {
+    return match parse_matcher_array(obj, "all") {
+      Ok(subs) => Ok(All(subs))
+      Err(ConfigError(msg)) => Err(ConfigError("\"all\": \{msg}"))
+    }
+  }
+  if obj.contains("any") {
+    return match parse_matcher_array(obj, "any") {
+      Ok(subs) => Ok(Any(subs))
+      Err(ConfigError(msg)) => Err(ConfigError("\"any\": \{msg}"))
+    }
+  }
+  if obj.contains("not") {
+    return match obj.get("not") {
+      Some(v) =>
+        match parse_match_kind(v) {
+          Ok(m) => Ok(Not(m))
+          Err(ConfigError(msg)) => Err(ConfigError("\"not\": \{msg}"))
+        }
+      None => Err(ConfigError("\"not\" must be a matcher object"))
+    }
   }
   if obj.contains("regex") {
     return match get_str(obj, "regex") {
@@ -595,9 +779,35 @@ fn parse_match_kind(mj : Json) -> Result[MatchKind, ConfigError] {
   }
   Err(
     ConfigError(
-      "matcher needs one of: regex, contains, prefix, suffix, equals, word",
+      "matcher needs one of: all, any, not, regex, contains, prefix, suffix, equals, word",
     ),
   )
+}
+
+///|
+/// Parse a matcher-array field (`all` / `any`) into nested matchers.
+/// Element errors are reported with their index so a malformed sub-matcher
+/// inside a deep formula can still be located.
+fn parse_matcher_array(
+  obj : Map[String, Json],
+  key : String,
+) -> Result[Array[MatchKind], ConfigError] {
+  let value = match obj.get(key) {
+    Some(v) => v
+    None => return Err(ConfigError("\{key} must be an array of matchers"))
+  }
+  let arr = match value.as_array() {
+    Some(a) => a
+    None => return Err(ConfigError("\{key} must be an array of matchers"))
+  }
+  let subs : Array[MatchKind] = []
+  for (idx, mj) in arr.iter2() {
+    match parse_match_kind(mj) {
+      Ok(m) => subs.push(m)
+      Err(ConfigError(msg)) => return Err(ConfigError("#\{idx}: \{msg}"))
+    }
+  }
+  Ok(subs)
 }
 
 ///|
@@ -628,9 +838,11 @@ pub fn validate_rules(rules : Array[Rule]) -> Result[Unit, ConfigError] {
 pub fn collect_extensions(
   rules : Array[Rule],
   file_rules : Array[FileRule],
+  structural_rules : Array[StructuralRule],
 ) -> Array[String] {
   if rules.any(rule => rule.extensions.is_empty()) ||
-    file_rules.any(fr => fr.extensions.is_empty()) {
+    file_rules.any(fr => fr.extensions.is_empty()) ||
+    structural_rules.any(sr => sr.extensions.is_empty()) {
     return []
   }
   let exts : Array[String] = []
@@ -643,6 +855,13 @@ pub fn collect_extensions(
   }
   for fr in file_rules {
     for e in fr.extensions {
+      if not(exts.contains(e)) {
+        exts.push(e)
+      }
+    }
+  }
+  for sr in structural_rules {
+    for e in sr.extensions {
       if not(exts.contains(e)) {
         exts.push(e)
       }
