@@ -3,9 +3,15 @@
 ///
 /// Each matcher is compiled once per rule (see `MatchKind::prepare`), then
 /// reused for every line — compiling per line dominates scan time otherwise.
+///
+/// Two views of the file are passed in: `lines` is the comment-stripped view
+/// (see `comment.mbt`) and `raw_lines` is the file exactly as written. A rule
+/// matches against `lines` unless it sets `match_comments`, in which case it
+/// sees `raw_lines` — the opt-in a comment-targeting rule needs.
 pub fn lint_lines(
   rel : String,
   lines : Array[(Int32, String)],
+  raw_lines : Array[(Int32, String)],
   rules : Array[Rule],
 ) -> Array[Finding] {
   let findings : Array[Finding] = []
@@ -18,7 +24,8 @@ pub fn lint_lines(
       None => None
       Some(unless_) => Some(unless_.prepare())
     }
-    for (lineno, text) in lines {
+    let view = if rule.match_comments { raw_lines } else { lines }
+    for (lineno, text) in view {
       if matcher.matches(text) {
         let skip = match unless {
           None => false
@@ -267,7 +274,7 @@ fn lint_selected_impl(
       // Per-file findings are collected separately so they can be stored in
       // the cache; the project pass appends its own afterwards.
       let file_findings : Array[Finding] = []
-      for finding in lint_lines(rel, lines, rules) {
+      for finding in lint_lines(rel, lines, raw_lines, rules) {
         if !disable_map.is_disabled(finding.rule_id, finding.line) {
           file_findings.push(finding)
         }

@@ -11,14 +11,21 @@ fn test_rule(id : String, match_ : MatchKind, unless : MatchKind?) -> Rule {
     match_,
     unless,
     scope: Scope::empty(),
+    match_comments: false,
   }
+}
+
+///|
+/// A rule that opted into the raw (comment-inclusive) view.
+fn test_comment_rule(id : String, match_ : MatchKind) -> Rule {
+  Rule::{ ..test_rule(id, match_, None), match_comments: true, }
 }
 
 ///|
 test "lint_lines finds violations" {
   let rules = [test_rule("no-foo", Contains("foo"), None)]
   let lines = [(1, "let x = 1"), (2, "let y = foo"), (3, "let z = 3")]
-  let findings = lint_lines("test.ts", lines, rules)
+  let findings = lint_lines("test.ts", lines, lines, rules)
   assert_eq(findings.length(), 1)
   assert_eq(findings[0].line, 2)
   assert_eq(findings[0].rule_id, "no-foo")
@@ -37,7 +44,7 @@ test "lint_lines respects unless guard" {
     (1, "import { x } from 'vue'"),
     (2, "import { y } from 'vue-lynx'"),
   ]
-  let findings = lint_lines("test.ts", lines, rules)
+  let findings = lint_lines("test.ts", lines, lines, rules)
   assert_eq(findings.length(), 1)
   assert_eq(findings[0].line, 1)
 }
@@ -47,10 +54,10 @@ test "lint_lines respects extensions" {
   let rules = [test_rule("no-foo", Contains("foo"), None)]
   let lines = [(1, "foo")]
   // Rule applies to .ts, file is .ts
-  let findings_ts = lint_lines("test.ts", lines, rules)
+  let findings_ts = lint_lines("test.ts", lines, lines, rules)
   assert_eq(findings_ts.length(), 1)
   // Rule applies to .ts, file is .vue — should not match
-  let findings_vue = lint_lines("test.vue", lines, rules)
+  let findings_vue = lint_lines("test.vue", lines, lines, rules)
   assert_eq(findings_vue.length(), 0)
 }
 
@@ -65,11 +72,12 @@ test "lint_lines respects a rule-level scope" {
     match_: Contains("foo"),
     unless: None,
     scope,
+    match_comments: false,
   }
   let lines = [(1, "foo")]
-  assert_eq(lint_lines("src/app.ts", lines, [rule]).length(), 1)
-  assert_eq(lint_lines("lib/app.ts", lines, [rule]).length(), 0)
-  assert_eq(lint_lines("src/legacy/app.ts", lines, [rule]).length(), 0)
+  assert_eq(lint_lines("src/app.ts", lines, lines, [rule]).length(), 1)
+  assert_eq(lint_lines("lib/app.ts", lines, lines, [rule]).length(), 0)
+  assert_eq(lint_lines("src/legacy/app.ts", lines, lines, [rule]).length(), 0)
 }
 
 ///|
@@ -82,10 +90,60 @@ test "lint_lines with empty extensions matches all" {
     match_: Contains("foo"),
     unless: None,
     scope: Scope::empty(),
+    match_comments: false,
   }
   let lines = [(1, "foo")]
-  let findings = lint_lines("test.js", lines, [rule])
+  let findings = lint_lines("test.js", lines, lines, [rule])
   assert_eq(findings.length(), 1)
+}
+
+///|
+test "a code-view rule never sees a line comment" {
+  // What the scanner hands the matcher: the comment blanked to spaces.
+  let source = "let x = 1\n  // TODO: ship it\n"
+  let stripped = split_lines(strip_comments(source, CommentMode::Js))
+  let raw = split_lines(source)
+  let rule = test_rule("no-todo", Word("TODO"), None)
+  assert_eq(lint_lines("test.ts", stripped, raw, [rule]).length(), 0)
+}
+
+///|
+test "match_comments opts a rule into the raw view" {
+  let source = "let x = 1\n  // TODO: ship it\nconst y = 2\n"
+  let stripped = split_lines(strip_comments(source, CommentMode::Js))
+  let raw = split_lines(source)
+  let rule = test_comment_rule("no-todo", Word("TODO"))
+  let findings = lint_lines("test.ts", stripped, raw, [rule])
+  assert_eq(findings.length(), 1)
+  assert_eq(findings[0].line, 2)
+  // The snippet quotes the comment as written, positions intact.
+  assert_eq(findings[0].snippet, "// TODO: ship it")
+}
+
+///|
+test "match_comments sees block comments and honours the unless guard" {
+  let source = "/* TODO: one */\n  // TODO: tracked, moonlint-ok\n  // TODO: untracked\n"
+  let stripped = split_lines(strip_comments(source, CommentMode::Js))
+  let raw = split_lines(source)
+  let rule = Rule::{
+    ..test_comment_rule("no-todo", Word("TODO")),
+    severity: Severity::warning(),
+    unless: Some(Contains("moonlint-ok")),
+  }
+  let findings = lint_lines("test.ts", stripped, raw, [rule])
+  assert_eq(findings.length(), 2)
+  assert_eq(findings[0].line, 1)
+  assert_eq(findings[1].line, 3)
+}
+
+///|
+test "a TODO inside a template literal is text, not a comment" {
+  // The Js scanner keeps template bodies intact, so even the code view sees
+  // this TODO — a stringified script is not a comment.
+  let source = "const s = `// TODO: not a comment`\n"
+  let stripped = split_lines(strip_comments(source, CommentMode::Js))
+  let rule = test_rule("no-todo", Word("TODO"), None)
+  assert_eq(lint_lines("test.ts", stripped, stripped, [rule]).length(), 1)
 }
 
 ///|

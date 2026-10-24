@@ -94,6 +94,12 @@ pub struct Rule {
   unless : MatchKind?
   /// Paths this rule applies to. An empty scope means "every file".
   scope : Scope
+  /// Whether this rule also matches inside comments. Line rules normally see
+  /// the comment-stripped view of a file (see `comment.mbt`), which keeps a
+  /// stringified script or a URL fragment from looking like code; a rule that
+  /// targets comments themselves — a no-TODO rule, say — opts into the raw
+  /// view instead. `false` keeps the historical stripped view.
+  match_comments : Bool
 } derive(Debug)
 
 ///|

@@ -69,6 +69,7 @@ fn rule(
     match_,
     unless: None,
     scope: Scope::empty(),
+    match_comments: false,
   }
 }
 
@@ -90,6 +91,7 @@ fn guarded_rule(
     match_,
     unless: Some(unless),
     scope: Scope::empty(),
+    match_comments: false,
   }
 }
 

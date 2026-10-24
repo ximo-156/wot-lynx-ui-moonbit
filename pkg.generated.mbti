@@ -42,7 +42,7 @@ pub fn lint_file(String, String, Array[(Int32, String)], Array[FileRule]) -> Arr
 
 pub fn lint_files(String, Array[String], Array[Rule], Array[FileRule], Array[StructuralRule], Scope) -> LintResult raise
 
-pub fn lint_lines(String, Array[(Int32, String)], Array[Rule]) -> Array[Finding]
+pub fn lint_lines(String, Array[(Int32, String)], Array[(Int32, String)], Array[Rule]) -> Array[Finding]
 
 pub fn lint_selected(String, ScanMode, Array[String], Array[Rule], Array[FileRule], Array[StructuralRule], Scope) -> LintResult raise
 
@@ -371,6 +371,7 @@ pub struct Rule {
   match_ : MatchKind
   unless : MatchKind?
   scope : Scope
+  match_comments : Bool
 } derive(@debug.Debug)
 pub fn Rule::to_repr(Self) -> @debug.Repr
 

@@ -15,7 +15,7 @@ Ported from `wot-lynx-ui`'s `scripts/review-lint.mjs` as an entry for the 2026 M
 - **Regex + substring matching** — `contains`, `prefix`, `suffix`, `regex`, `equals` and `word` matchers
 - **Matcher combinators** — `all` / `any` / `not` nest arbitrarily deep, so `match` expresses any boolean formula over the leaf matchers
 - **Negative guards** — `unless` field to suppress false positives (e.g. "import from 'vue' but not 'vue-lynx'")
-- **Comment-aware** — `//` and `/* */` comments are blanked out before matching, preserving line numbers and columns; in JS/TS/JSX files the scanner understands template literals, `${}` interpolations, strings and regex literals, so a `//` inside a template string is text, not a comment
+- **Comment-aware** — `//` and `/* */` comments are blanked out before matching, preserving line numbers and columns; in JS/TS/JSX files the scanner understands template literals, `${}` interpolations, strings and regex literals, so a `//` inside a template string is text, not a comment. Rules that *target* comments opt in with `"match_comments": true`
 - **Cross-file structural rules** — a JS/TS tokenizer + parser builds a project-wide import graph, powering unused imports, duplicate imports, unresolved relative imports, import cycles, deep relative imports, `require()` usage, `export default` and dead exports (`--preset imports`)
 - **Baseline support** — hash-based exemption for existing violations, enabling incremental adoption; `--update-baseline` refreshes it atomically from a full scan
 - **Incremental caching** — `--incremental` re-lints only files whose content hash changed, invalidated automatically when the effective config changes
@@ -163,6 +163,29 @@ matchers, nested arbitrarily deep:
 This fires on `console.log(x)` but not on `console.log(x) // moonlint-ok`.
 A bad regex nested inside a combinator is a config error (exit 2), reported
 with the path to the offending sub-matcher.
+
+### Matching inside comments
+
+Line rules normally see the comment-stripped view of a file: comments are
+blanked to spaces before matching, so a stringified script or a URL fragment
+never looks like code. A rule that targets comments themselves — a no-TODO
+rule, say — opts into the raw view instead:
+
+```json
+{
+  "id": "common/no-todo-comment",
+  "severity": "warning",
+  "message": "TODO/FIXME comment left in code",
+  "extensions": [".ts"],
+  "match": { "any": [ { "word": "TODO" }, { "word": "FIXME" } ] },
+  "match_comments": true
+}
+```
+
+`match_comments` is per-rule and defaults to `false`. The opt-in sees the file
+exactly as written — line and block comments included, but strings and
+template literals too, since those are also "raw". The `unless` guard and
+inline `// moonlint-disable` comments apply as usual.
 
 ## File-Level Rules
 

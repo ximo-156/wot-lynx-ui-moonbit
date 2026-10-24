@@ -103,7 +103,7 @@ pub fn config_fingerprint(
       Some(u) => match_signature(u)
     }
     parts.push(
-      "rule|\{r.id}|\{r.severity.tag()}|\{r.message}|\{r.extensions.join(",")}|\{match_signature(r.match_)}|\{unless}|\{scope_signature(r.scope)}",
+      "rule|\{r.id}|\{r.severity.tag()}|\{r.message}|\{r.extensions.join(",")}|\{match_signature(r.match_)}|\{unless}|\{scope_signature(r.scope)}|\{if r.match_comments { "comments" } else { "code" }}",
     )
   }
   for fr in file_rules {

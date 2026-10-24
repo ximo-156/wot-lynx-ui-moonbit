@@ -2,6 +2,17 @@
 
 All notable changes to this project are documented in this file.
 
+## [Unreleased]
+
+### Added
+
+- **`match_comments` rule option** — line rules normally match the
+  comment-stripped view of a file; `"match_comments": true` opts a rule into
+  the raw view so it can target comments themselves. The starter config
+  written by `--init` uses it for the no-TODO rule, which previously could
+  never fire on a `// TODO` comment. The option takes part in the incremental
+  cache fingerprint, so toggling it invalidates cached results.
+
 ## [0.2.0] — 2026-10-24
 
 The "engineering depth" release: moonlint grows from a line matcher into a

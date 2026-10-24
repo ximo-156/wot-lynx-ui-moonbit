@@ -94,6 +94,7 @@ test "lint_files: missing file is a failure, not a successful read" {
       match_: MatchKind::Contains("bad"),
       unless: None,
       scope: Scope::empty(),
+      match_comments: false,
     },
   ]
   let result = lint_files(

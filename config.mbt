@@ -437,7 +437,21 @@ fn parse_rule(rj : Json) -> Result[Rule, ConfigError] {
       }
     None => None
   }
-  Ok({ id, severity, message, extensions, match_: match_kind, unless, scope, })
+  let match_comments = match get_bool_field(obj, "match_comments") {
+    None => false
+    Some(Ok(b)) => b
+    Some(Err(message)) => return Err(ConfigError("rule \"\{id}\": \{message}"))
+  }
+  Ok({
+    id,
+    severity,
+    message,
+    extensions,
+    match_: match_kind,
+    unless,
+    scope,
+    match_comments,
+  })
 }
 
 ///|
@@ -880,6 +894,24 @@ fn get_str(obj : Map[String, Json], key : String) -> String? {
   match obj.get(key) {
     None => None
     Some(v) => v.as_string()
+  }
+}
+
+///|
+/// Read a boolean field from a JSON object. `None` means "absent", which the
+/// caller treats as the documented default; `Some(Err(..))` means the field is
+/// present but not a boolean, which is a config error rather than a default.
+fn get_bool_field(
+  obj : Map[String, Json],
+  key : String,
+) -> Result[Bool, String]? {
+  match obj.get(key) {
+    None => None
+    Some(v) =>
+      match v.as_bool() {
+        Some(b) => Some(Ok(b))
+        None => Some(Err("\"\{key}\" must be a boolean"))
+      }
   }
 }
 

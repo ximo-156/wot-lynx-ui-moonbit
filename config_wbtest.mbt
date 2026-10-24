@@ -245,6 +245,25 @@ test "validate_rules catches a bad regex nested in a combinator" {
 }
 
 ///|
+test "config: match_comments defaults to false and parses when present" {
+  let off = "{\"rules\":[{\"id\":\"r1\",\"message\":\"m\",\"match\":{\"word\":\"TODO\"}}]}"
+  let on = "{\"rules\":[{\"id\":\"r1\",\"message\":\"m\",\"match\":{\"word\":\"TODO\"},\"match_comments\":true}]}"
+  assert_eq(parse_config(off).unwrap().rules[0].match_comments, false)
+  assert_eq(parse_config(on).unwrap().rules[0].match_comments, true)
+}
+
+///|
+test "config: match_comments must be a boolean" {
+  let json = "{\"rules\":[{\"id\":\"r1\",\"message\":\"m\",\"match\":{\"word\":\"TODO\"},\"match_comments\":\"yes\"}]}"
+  let message = match parse_config(json) {
+    Ok(_) => "accepted"
+    Err(ConfigError(message)) => message
+  }
+  assert_true(message.contains("match_comments"))
+  assert_true(message.contains("boolean"))
+}
+
+///|
 test "config parses file_rules with max_lines" {
   let json = "{\"rules\":[],\"file_rules\":[{\"id\":\"file/max-lines\",\"message\":\"too long\",\"extensions\":[\".ts\"],\"check\":{\"max_lines\":100}}]}"
   let config = parse_config(json).unwrap()
