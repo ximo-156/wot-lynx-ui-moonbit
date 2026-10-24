@@ -21,6 +21,9 @@ tmp_lint_test/
 # --- submission document: local only, never published ---
 docs/申报书.md
 
+# --- supplement material for the resubmission: local only (same rationale) ---
+docs/补充材料.md
+
 # --- defense Q&A prep: local only (same rationale as the submission doc) ---
 docs/答辩问答.md
 
