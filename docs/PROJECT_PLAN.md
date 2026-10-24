@@ -97,25 +97,31 @@ MoonBit 2026 十月黑客松报名初审被驳回，驳回理由原文：
 
 ### 7.1 核心叙事（一句话）
 
-> moonlint 是一个三层静态分析引擎：**词法/语法层**（lex/parse）→ **项目分析层**（import 图、8 项跨文件检查）→ **规则引擎层**（行/文件/结构三类规则 + 布尔 DSL），行匹配只是其中最基础的一层。
+> moonlint 是一个四层静态分析引擎：**词法/语法层**（lex/parse）→ **项目分析层**（import 图、8 项跨文件检查）→ **规则引擎层**（行/文件/结构三类规则 + 布尔 DSL）→ **增量缓存层**（内容哈希 + 配置指纹），行匹配只是其中最基础的一层。
 
 ### 7.2 驳回理由关键词映射表（材料必含）
 
 | 驳回理由关键词 | 回应 | 证据（材料中可点击） |
 |---|---|---|
-| "独立逐行匹配" | 行匹配仅为三层之一；上有完整 tokenizer/parser 与 import 图 | `lex.mbt`、`parse.mbt`、`analysis.mbt`、README Architecture |
+| "独立逐行匹配" | 行匹配仅为四层之一；上有完整 tokenizer/parser 与 import 图 | `lex.mbt`、`parse.mbt`、`analysis.mbt`、README Architecture |
 | "简单文件属性检查" | 文件级 11 项检查之上，新增 8 项**跨文件**结构检查 | `types.mbt` StructuralCheck、`presets/imports.json` |
-| "工程深度不足" | 分层架构 + 增量缓存（内容哈希+配置指纹）+ 匹配器组合 DSL + 272 单测 + 163 集成测试 + CI 门禁 | `CHANGELOG.md` 0.2.0、`.github/workflows/ci.yml` |
+| "工程深度不足" | 分层架构 + 增量缓存（内容哈希+配置指纹）+ 匹配器组合 DSL + 277 单测 + 164 集成测试 + CI 门禁 | `CHANGELOG.md` 0.2.0、`.github/workflows/ci.yml` |
 
 ### 7.3 模拟评审人 5 分钟走查路径
 
-1. 打开 README → 30 秒内看到"三层架构 + 跨文件分析"主张（Features 区第 4 条）
+1. 打开 README → 30 秒内看到"逐行匹配之外的四层"主张（Origin 段第 2 句 +
+   Features 区 Cross-file structural rules 一条）
 2. 点 Architecture 章节 → 看到模块分层图与各层职责
 3. 点 CHANGELOG → 0.2.0 的 Added 清单即证据索引
 4. 点 `analysis.mbt` → 8 个 check 函数是真实程序分析，不是字符串匹配
 5. 点 Actions 标签页 → CI 绿 = 测试与工程规范的自证
 
 **走查记录**：每次模拟后记录卡点，卡点即修订项。
+
+| 日期 | 走查人 | 卡点 | 处置 |
+|---|---|---|---|
+| 2026-10-24 | AI（模拟评审人） | ① 路径第 1 步原写"Features 区第 4 条"，实际第 4 条已是匹配器组合，架构主张在 Origin 段与 Features 第 7 条 → 路径已修正；② §7.2 映射表测试数停留在 265/160，与 CHANGELOG（277/164）不一致 → 已同步 | 两处均当日修复（commit `e66b3a2` 前后） |
+| 2026-10-24 | AI（模拟评审人） | Architecture 章节模块树、CHANGELOG 0.2.0 索引、`analysis.mbt` 8 个 `check_*` 函数逐项核对无误；走查第 5 步（Actions 绿）依赖用户侧确认 | 无修订项，等 R1 关闭 |
 
 ## 8. 质量门与配置管理
 
