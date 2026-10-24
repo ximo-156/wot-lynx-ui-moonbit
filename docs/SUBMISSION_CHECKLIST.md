@@ -6,7 +6,7 @@
 ## A. 代码与质量（提交前必须全绿）
 
 - [ ] A1 `git status` 干净，main 分支包含 0.2.0 全部提交（commit `97c07fc` 之后无遗留）
-- [ ] A2 GitHub Actions CI 运行成功（`CI` workflow，含 unit + integration 全 phase）
+- [ ] A2 GitHub Actions CI 运行成功（`CI` workflow，含 unit + integration 全 phase）—— 当前阻塞：GitHub 账户因账单问题被锁，作业从未启动（2026-10-24 经 API 核实 5 次运行全部因此失败，与代码无关）；需先在 settings/billing 解除锁定
 - [x] A3 若有测试失败：每个失败有书面归类（环境限制 / 已知问题），且不影响材料主张 —— 5 个 wasm-gc 失败均为缺 native FFI 的环境限制，归类见 CHANGELOG 0.2.0「Tests」段与 README Development
 - [x] A4 `moon check --target wasm-gc` 0 error（本地复验）—— 2026-10-24 复验通过
 - [x] A5 README 中 Architecture 章节与代码实际结构一致（模块清单无漂移）—— 2026-10-24 逐文件核对：20 个实现模块 + git_native.c + presets/ + tests/ + examples/ + cmd/main/ 全部在树中，无缺失无多余
