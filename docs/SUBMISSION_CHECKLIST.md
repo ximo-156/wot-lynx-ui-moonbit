@@ -7,15 +7,15 @@
 
 - [ ] A1 `git status` 干净，main 分支包含 0.2.0 全部提交（commit `97c07fc` 之后无遗留）
 - [ ] A2 GitHub Actions CI 运行成功（`CI` workflow，含 unit + integration 全 phase）
-- [ ] A3 若有测试失败：每个失败有书面归类（环境限制 / 已知问题），且不影响材料主张
-- [ ] A4 `moon check --target wasm-gc` 0 error（本地复验）
-- [ ] A5 README 中 Architecture 章节与代码实际结构一致（模块清单无漂移）
+- [x] A3 若有测试失败：每个失败有书面归类（环境限制 / 已知问题），且不影响材料主张 —— 5 个 wasm-gc 失败均为缺 native FFI 的环境限制，归类见 CHANGELOG 0.2.0「Tests」段与 README Development
+- [x] A4 `moon check --target wasm-gc` 0 error（本地复验）—— 2026-10-24 复验通过
+- [x] A5 README 中 Architecture 章节与代码实际结构一致（模块清单无漂移）—— 2026-10-24 逐文件核对：20 个实现模块 + git_native.c + presets/ + tests/ + examples/ + cmd/main/ 全部在树中，无缺失无多余
 
 ## B. 证据链（映射表逐条核对，见计划 §7.2）
 
 - [ ] B1 "逐行匹配"回应：材料指向 `lex.mbt` / `parse.mbt` / `analysis.mbt`，一句话说明 tokenizer→parser→import 图分层
 - [ ] B2 "文件属性检查"回应：材料列出 11 项文件级检查 + 8 项跨文件结构检查，指向 `presets/imports.json`
-- [ ] B3 "工程深度"回应：材料包含 CHANGELOG 0.2.0 Added 清单、CI 链接、测试数量（270 单测 / 160 集成）
+- [ ] B3 "工程深度"回应：材料包含 CHANGELOG 0.2.0 Added 清单、CI 链接、测试数量（277 单测 / 164 集成 / 10 phase）
 - [ ] B4 每条证据都是**可点击的仓库内链接或路径**，不写"详见代码"这类空指向
 
 ## C. 材料本身
@@ -37,7 +37,7 @@
 
 | 轮次 | 日期 | 评审人视角发现 | 修订项 | 关闭 |
 |---|---|---|---|---|
-| 1 | | | | |
+| 1 | 2026-10-24 | 走查路径第 1 步引用失效（Features 第 4 条已是匹配器组合）；§7.2 测试数停留在 265/160；核心叙事写"三层"而全套材料用"四层" | 三处均已修复，走查记录见 PROJECT_PLAN.md §7.3 | ✅ |
 | 2 | | | | |
 
 > 模拟评审人守则：只按驳回理由和走查路径挑刺，不夸项目好；发现"看不懂"即卡点，必须修订到"5 分钟走查无卡点"为止。
