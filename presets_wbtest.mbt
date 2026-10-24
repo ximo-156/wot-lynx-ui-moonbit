@@ -153,7 +153,7 @@ test "vue preset has expected rule count" {
 ///|
 test "common preset has expected rule count" {
   let config = merge_presets(["common"]).unwrap()
-  assert_eq(config.rules.length(), 5)
+  assert_eq(config.rules.length(), 6)
 }
 
 ///|
@@ -196,7 +196,24 @@ test "merge_presets concatenates in preset order" {
   let config = merge_presets(["common", "react"]).unwrap()
   assert_eq(config.rules[0].id, "common/no-console-log")
   assert_eq(config.rules[4].id, "common/no-var")
-  assert_eq(config.rules[5].id, "react/no-danger")
+  assert_eq(config.rules[6].id, "react/no-danger")
+}
+
+///|
+test "the common preset's TODO rule opts into the raw view" {
+  let config = merge_presets(["common"]).unwrap()
+  let mut todo : Rule? = None
+  for r in config.rules {
+    if r.id == "common/no-todo-comment" {
+      todo = Some(r)
+    }
+    if r.id != "common/no-todo-comment" {
+      assert_false(r.match_comments)
+    }
+  }
+  let todo = todo.unwrap()
+  assert_true(todo.match_comments)
+  assert_eq(todo.match_, Any([Word("TODO"), Word("FIXME")]))
 }
 
 ///|

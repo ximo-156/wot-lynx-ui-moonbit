@@ -94,6 +94,33 @@
       "match": {
         "regex": "\\bvar[[:space:]]"
       }
+    },
+    {
+      "id": "common/no-todo-comment",
+      "severity": "warning",
+      "message": "TODO/FIXME comment left in code",
+      "extensions": [
+        ".js",
+        ".jsx",
+        ".ts",
+        ".tsx",
+        ".mjs",
+        ".cjs",
+        ".vue",
+        ".svelte",
+        ".astro"
+      ],
+      "match": {
+        "any": [
+          {
+            "word": "TODO"
+          },
+          {
+            "word": "FIXME"
+          }
+        ]
+      },
+      "match_comments": true
     }
   ]
 }

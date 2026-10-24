@@ -95,6 +95,28 @@ fn guarded_rule(
   }
 }
 
+///|
+/// Shorthand constructor for a rule that targets comments themselves, so it
+/// matches the raw (comment-inclusive) view instead of the stripped one.
+fn comment_rule(
+  id : String,
+  severity : Severity,
+  message : String,
+  extensions : Array[String],
+  match_ : MatchKind,
+) -> Rule {
+  Rule::{
+    id,
+    severity,
+    message,
+    extensions,
+    match_,
+    unless: None,
+    scope: Scope::empty(),
+    match_comments: true,
+  }
+}
+
 // ---------------------------------------------------------------------------
 // common — framework-agnostic JavaScript/TypeScript hygiene
 // ---------------------------------------------------------------------------
@@ -146,6 +168,15 @@ fn common_rules() -> Array[Rule] {
         ".js", ".jsx", ".ts", ".tsx", ".mjs", ".cjs", ".vue", ".svelte", ".astro",
       ],
       Regex("\\bvar[[:space:]]"),
+    ),
+    comment_rule(
+      "common/no-todo-comment",
+      Severity::warning(),
+      "TODO/FIXME comment left in code",
+      [
+        ".js", ".jsx", ".ts", ".tsx", ".mjs", ".cjs", ".vue", ".svelte", ".astro",
+      ],
+      Any([Word("TODO"), Word("FIXME")]),
     ),
   ]
 }

@@ -12,6 +12,10 @@ All notable changes to this project are documented in this file.
   written by `--init` uses it for the no-TODO rule, which previously could
   never fire on a `// TODO` comment. The option takes part in the incremental
   cache fingerprint, so toggling it invalidates cached results.
+- **`common/no-todo-comment` preset rule** — the `common` preset now ships a
+  comment-targeting TODO/FIXME rule (`match_comments: true`, matched through
+  the `any` combinator), so the new option is part of the preset surface and
+  not only of `--init`. `presets/common.json` carries the same rule.
 - **`examples/demo`** — a tiny TypeScript project whose report under the
   shipped config is hand-verified finding by finding: seven findings across
   the line, file and structural layers, plus two deliberate near-misses (an
@@ -23,7 +27,8 @@ All notable changes to this project are documented in this file.
 
 - 163 CLI integration test methods across 10 phases (the new `demo` phase
   pins the demo's full expected output, `--errors-only` filtering and
-  `--summary` tally).
+  `--summary` tally; the `common` preset case now also asserts the TODO
+  rule fires on a comment).
 
 ## [0.2.0] — 2026-10-24
 

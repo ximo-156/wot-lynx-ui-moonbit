@@ -1134,13 +1134,15 @@ class PresetTests(FixtureCase):
         self.write_file("utils.ts",
                         "var x = 1;\n"
                         "console.log('debug');\n"
-                        "debugger;\n")
+                        "debugger;\n"
+                        "// TODO: clean this up\n")
         result = self.run_cli(["--preset", "common", self.root])
         self.assert_exit(result, 1)
         output = self.output(result)
         self.assertIn("common/no-var", output)
         self.assertIn("common/no-console-log", output)
         self.assertIn("common/no-debugger", output)
+        self.assertIn("common/no-todo-comment", output)
 
     def test_preset_vue_finds_violations(self):
         self.write_file("App.vue",
