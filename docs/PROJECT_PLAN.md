@@ -28,6 +28,12 @@ MoonBit 2026 十月黑客松报名初审被驳回，驳回理由原文：
 | 补充材料 | ❌ 未开始 | 未撰写、未提交 |
 | 评审视角检验 | ❌ 未进行 | 未经"模拟评审人"走查 |
 
+> **基线更新（2026-10-24 深夜，合规审查后）**：上表为当日白天快照。审查期间新增
+> `match_comments` 规则选项、`examples/demo` 可复现演示、`common/no-todo-comment`
+> 预设规则与合规自证文档，单元测试基线升至 **277 tests / 272 passed**（失败数不变），
+> 集成测试增至 **163 方法 / 10 phase**；相应证据见 `docs/COMPLIANCE_AUDIT.md` 与
+> CHANGELOG `[Unreleased]`。
+
 **关键差距（Gap）**：材料的缺口大于代码的缺口。代码已回答了"工程深度"，但还没有把答案**递到评审手上**。
 
 ## 3. 目标与验收标准
@@ -99,7 +105,7 @@ MoonBit 2026 十月黑客松报名初审被驳回，驳回理由原文：
 |---|---|---|
 | "独立逐行匹配" | 行匹配仅为三层之一；上有完整 tokenizer/parser 与 import 图 | `lex.mbt`、`parse.mbt`、`analysis.mbt`、README Architecture |
 | "简单文件属性检查" | 文件级 11 项检查之上，新增 8 项**跨文件**结构检查 | `types.mbt` StructuralCheck、`presets/imports.json` |
-| "工程深度不足" | 分层架构 + 增量缓存（内容哈希+配置指纹）+ 匹配器组合 DSL + 265 单测 + 160 集成测试 + CI 门禁 | `CHANGELOG.md` 0.2.0、`.github/workflows/ci.yml` |
+| "工程深度不足" | 分层架构 + 增量缓存（内容哈希+配置指纹）+ 匹配器组合 DSL + 272 单测 + 163 集成测试 + CI 门禁 | `CHANGELOG.md` 0.2.0、`.github/workflows/ci.yml` |
 
 ### 7.3 模拟评审人 5 分钟走查路径
 
