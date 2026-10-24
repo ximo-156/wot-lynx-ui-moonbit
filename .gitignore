@@ -18,6 +18,9 @@ tmp_lint_test/
 # --- agent workspace data (not project source) ---
 .workbuddy-ai/
 
+# --- submission document: local only, never published ---
+docs/申报书.md
+
 # --- Logs (e.g. `moon coverage analyze > uncovered.log`) ---
 *.log
 
