@@ -2,7 +2,18 @@
 
 A config-driven convention linter for source trees, written in [MoonBit](https://www.moonbitlang.com/).
 
-Ported from `wot-lynx-ui`'s `scripts/review-lint.mjs` as an entry for the 2026 MoonBit Hackathon.
+## Origin
+
+moonlint reimplements, from scratch in MoonBit, the review-lint script of
+[`ximo-156/wot-lynx-ui`](https://github.com/ximo-156/wot-lynx-ui)
+(`scripts/review-lint.mjs`, MIT © ximo-156) — a Vue Lynx component library by
+the same author. The original script enforces that project's conventions with
+line-by-line pattern matching; this repository began as its portable core and
+then grew the layers that per-line matching cannot express: a tokenizer, a
+structural parser, cross-file analysis and an incremental cache. All MoonBit
+sources here are original work written for this repository; nothing is
+vendored or generated from the JavaScript original. moonlint itself is
+distributed under the Apache License 2.0 (see `LICENSE`).
 
 ## What it does
 
