@@ -1,5 +1,11 @@
 # 初审合规审查报告
 
+> **2026-10-30 更新**：本文是 0.2.0 阶段的历史记录。此后项目新增 MoonBit
+> 源码前端（`moonbit_lang.mbt`）与 `moonbit` 预设；当前基线为 282 个单测
+> （native 目标全过）与 167 个 CLI 集成测试。项目定位与最新能力以
+> `README.md`、`CHANGELOG.md` 和 2026-10-30 版项目申报书为准。
+
+
 - 审查日期：2026-10-24
 - 审查依据：[2026 MoonBit 黑客松官方页面](https://moonbitlang.github.io/Hackathon2026/)
   （验收标准 6 条、排除条款、十月参赛须知、FAQ）

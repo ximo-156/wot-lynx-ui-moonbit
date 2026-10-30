@@ -6,6 +6,19 @@ All notable changes to this project are documented in this file.
 
 ### Added
 
+- **MoonBit source front end** (`moonbit_lang.mbt`) — MoonBit files are
+  scanned for top-level `fn` / `struct` / `enum` / `type` / `trait` / `let` /
+  `const` / `impl` / `test` declarations. Comments and string literals are
+  blanked before brace-depth tracking, so bodies do not produce false
+  top-level items; `///|` blocks are attached to the declaration that follows
+  them, including across `#...` attribute lines.
+- **`moonbit` preset** — `moonbit/require-public-doc` and
+  `moonbit/naming` structural checks, plus `moonbit/no-unwrap`,
+  `moonbit/no-panic`, `moonbit/no-println` and `moonbit/no-todo-comment` line
+  rules. The preset excludes `*_test.mbt` and `*_wbtest.mbt`: tests may
+  unwrap, panic and print. `presets/moonbit.json` is the standalone copy.
+- **`examples/moonbit-demo`** — a five-finding MoonBit sample with the exact
+  expected report, exercised by the `moonbit` CLI integration phase.
 - **`match_comments` rule option** — line rules normally match the
   comment-stripped view of a file; `"match_comments": true` opts a rule into
   the raw view so it can target comments themselves. The starter config
@@ -31,11 +44,14 @@ All notable changes to this project are documented in this file.
 
 ### Tests
 
-- 164 CLI integration test methods across 10 phases (the new `demo` phase
-  pins the demo's full expected output, `--errors-only` filtering,
-  `--summary` tally and the incremental cache round trip — cache file
-  contents included; the `common` preset case now also asserts the TODO
-  rule fires on a comment).
+- 282 whitebox unit tests pass on the native target; on the wasm-gc target
+  278 of 283 pass. The 5 failures are the known native filesystem/Git-bridge
+  tests that wasm cannot run.
+- 167 CLI integration test methods across 11 phases (the `moonbit` phase pins
+  the MoonBit demo's full report and checks that the built-in preset and
+  `presets/moonbit.json` agree; the `demo` phase pins the TS demo's output,
+  `--errors-only` filtering, `--summary` tally and the incremental cache
+  round trip).
 
 ## [0.2.0] — 2026-10-24
 
