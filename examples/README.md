@@ -98,3 +98,14 @@ files. Rewrite a file with identical bytes and the cache stays valid:
 entries are keyed by content hash, not modification time. Edit a file and
 only that file is re-linted; edit the config and the whole cache is
 invalidated, because the fingerprint changed.
+
+## MoonBit demo
+
+The MoonBit source front end has its own five-finding sample under
+[`moonbit-demo/`](moonbit-demo/). It exercises the declaration scanner
+(public docs and naming) and the line rules (unwrap, TODO), and it is pinned
+by the `moonbit` integration phase:
+
+```sh
+moonlint --preset moonbit examples/moonbit-demo/src
+```

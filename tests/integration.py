@@ -1107,15 +1107,16 @@ class PresetTests(FixtureCase):
         result = self.run_cli(["--list-presets"])
         self.assert_exit(result, 0)
         output = self.output(result)
-        for name in ("angular", "astro", "common", "file", "next",
-                     "nuxt", "react", "solid", "svelte", "vue"):
+        for name in ("angular", "astro", "common", "file", "imports",
+                     "moonbit", "next", "nuxt", "react", "solid",
+                     "svelte", "vue"):
             self.assertIn(name, output)
 
     def test_list_presets_is_sorted(self):
         result = self.run_cli(["--list-presets"])
         self.assert_exit(result, 0)
         lines = [line for line in self.output(result).splitlines() if line.strip()]
-        self.assertEqual(len(lines), 10)
+        self.assertEqual(len(lines), 12)
         names = [line.split(" ")[0] for line in lines]
         self.assertEqual(names, sorted(names))
 
@@ -1795,7 +1796,9 @@ class IncrementalTests(FixtureCase):
         self.assert_findings(self.invoke("--incremental"), 1)
         # Silence the rule: same content, different config, new answer.
         self.write_config(rules=[rule(severity="warning")])
-        self.assert_findings(self.invoke("--incremental"), 1)
+        warning_run = self.invoke("--incremental")
+        self.assert_exit(warning_run, 0)
+        self.assertIn("test/forbidden", self.output(warning_run))
         self.write_config(rules=[rule(token="ABSENT")])
         self.assert_findings(self.invoke("--incremental"), 0)
 
@@ -1813,6 +1816,7 @@ class IncrementalTests(FixtureCase):
     def test_custom_cache_file_location(self):
         self.write_file("src/a.ts", "const a = FORBIDDEN;\n")
         custom = self.base / "nested" / "cache.json"
+        custom.parent.mkdir(parents=True, exist_ok=True)
         result = self.invoke("--incremental", "--cache-file", custom)
         self.assert_findings(result, 1)
         self.assertTrue(custom.is_file(), "custom cache location was not written")
@@ -1863,7 +1867,7 @@ class StructuralRuleTests(FixtureCase):
     def test_imports_preset_runs_the_structural_checks(self):
         self.write_config(rules=[])
         self.write_file("src/a.ts", "import { x } from './missing';\n")
-        result = self.invoke("--preset", "imports")
+        result = self.run_cli(["--preset", "imports", self.root])
         self.assert_findings(result, 1, rule_id="imports/no-unresolved-relative-imports")
 
     def test_structural_rules_survive_extends(self):
@@ -1890,11 +1894,13 @@ class StructuralRuleTests(FixtureCase):
 class CombinatorTests(FixtureCase):
     """The all/any/not matcher DSL, as the CLI applies it."""
 
-    def combinator_config(self, match, unless=None):
+    def combinator_config(self, match, unless=None, match_comments=False):
         rule = {"id": "combo", "severity": "error", "message": "combo hit",
                 "extensions": [".ts"], "match": match}
         if unless is not None:
             rule["unless"] = unless
+        if match_comments:
+            rule["match_comments"] = True
         self.write_config(rules=[rule])
 
     def test_all_requires_every_child(self):
@@ -1907,7 +1913,10 @@ class CombinatorTests(FixtureCase):
         self.assertIn("a.ts", self.output(result))
 
     def test_any_requires_one_child(self):
-        self.combinator_config({"any": [{"contains": "TODO"}, {"contains": "FIXME"}]})
+        self.combinator_config(
+            {"any": [{"contains": "TODO"}, {"contains": "FIXME"}]},
+            match_comments=True,
+        )
         self.write_file("a.ts", "// TODO: later\n")
         self.write_file("b.ts", "// FIXME: soon\n")
         self.write_file("c.ts", "// nothing\n")
@@ -1915,7 +1924,7 @@ class CombinatorTests(FixtureCase):
         self.assert_findings(result, 2, rule_id="combo")
 
     def test_not_negates_its_child(self):
-        self.combinator_config({"not": {"contains": "allow"}})
+        self.combinator_config({"not": {"contains": "allow"}}, match_comments=True)
         self.write_file("a.ts", "console.log(x);\n")
         self.write_file("b.ts", "console.log(x); // allow\n")
         result = self.invoke()
@@ -1929,7 +1938,7 @@ class CombinatorTests(FixtureCase):
                 {"contains": "console."},
                 {"not": {"any": [{"word": "allow"}, {"contains": "//"}]}},
             ]
-        })
+        }, match_comments=True)
         self.write_file("hit.ts", "console.log(x);\n")
         self.write_file("allowed.ts", "console.log(x); // allow\n")
         self.write_file("comment.ts", "console.log(x); // note\n")
@@ -1942,6 +1951,7 @@ class CombinatorTests(FixtureCase):
         self.combinator_config(
             {"contains": "console."},
             unless={"all": [{"contains": "allow"}, {"contains": "debug"}]},
+            match_comments=True,
         )
         self.write_file("a.ts", "console.log(x); // allow debug\n")
         self.write_file("b.ts", "console.log(x); // allow\n")
@@ -1959,6 +1969,69 @@ class CombinatorTests(FixtureCase):
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 DEMO_DIR = REPO_ROOT / "examples" / "demo"
+MOONBIT_DEMO_DIR = REPO_ROOT / "examples" / "moonbit-demo"
+
+
+class MoonbitTests(FixtureCase):
+    """The MoonBit source preset: declaration checks and test-file scope."""
+
+    EXPECTED = (
+        "lib.mbt:7: [warning] moonbit/naming — Name does not follow the "
+        "MoonBit naming convention (fn 'BadName' should be snake_case)\n"
+        "    pub fn BadName() -> Int {\n"
+        "lib.mbt:7: [warning] moonbit/require-public-doc — Public item is "
+        "missing a ///| doc comment (public fn 'BadName' has no ///| doc "
+        "comment)\n"
+        "    pub fn BadName() -> Int {\n"
+        "lib.mbt:12: [warning] moonbit/naming — Name does not follow the "
+        "MoonBit naming convention (struct 'point' should be PascalCase)\n"
+        "    pub struct point {\n"
+        "lib.mbt:18: [warning] moonbit/no-unwrap — unwrap() can panic; "
+        "handle the error explicitly\n"
+        "    let value = @json.parse(text).unwrap()\n"
+        "lib.mbt:19: [warning] moonbit/no-todo-comment — TODO/FIXME comment "
+        "left in code\n"
+        "    // TODO: handle malformed input\n"
+    )
+
+    def stage_demo(self):
+        self.assertTrue(
+            MOONBIT_DEMO_DIR.is_dir(), f"missing demo directory: {MOONBIT_DEMO_DIR}"
+        )
+        target = self.root / "src"
+        target.mkdir(parents=True)
+        (target / "lib.mbt").write_bytes(
+            (MOONBIT_DEMO_DIR / "src" / "lib.mbt").read_bytes()
+        )
+        self.assert_owned(target)
+
+    def test_preset_reports_exactly_the_documented_findings(self):
+        self.stage_demo()
+        result = self.run_cli(["--preset", "moonbit", self.root / "src"])
+        self.assert_exit(result, 0)
+        self.assertEqual(self.output(result), self.EXPECTED)
+
+    def test_shipped_json_preset_matches_the_builtin(self):
+        self.stage_demo()
+        result = self.run_cli(
+            ["--config", REPO_ROOT / "presets" / "moonbit.json", self.root / "src"]
+        )
+        self.assert_exit(result, 0)
+        self.assertEqual(self.output(result), self.EXPECTED)
+
+    def test_test_files_are_excluded_from_the_preset(self):
+        target = self.root / "src"
+        target.mkdir(parents=True)
+        (target / "lib_test.mbt").write_text(
+            'test {\n  let x = Some(1).unwrap()\n  panic("fixture")\n}\n',
+            encoding="utf-8",
+        )
+        result = self.run_cli(["--preset", "moonbit", "--summary", target])
+        self.assert_exit(result, 0)
+        out = self.output(result)
+        self.assertIn("files selected: 1  files scanned: 0", out)
+        self.assertIn("skipped: 1", out)
+        self.assertNotIn("moonbit/no-unwrap", out)
 
 
 class DemoTests(FixtureCase):
@@ -2079,6 +2152,7 @@ PHASES = {
     "structural": StructuralRuleTests,
     "combinator": CombinatorTests,
     "demo": DemoTests,
+    "moonbit": MoonbitTests,
 }
 
 
