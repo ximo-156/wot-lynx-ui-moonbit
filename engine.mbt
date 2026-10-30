@@ -308,8 +308,19 @@ fn lint_selected_impl(
   // Project pass: one index over every scanned file, then every structural
   // rule. Findings honour inline disables like per-file findings do.
   if !structural_rules.is_empty() {
-    let index = build_index(project_sources)
-    for finding in analyze(index, structural_rules) {
+    // The JS/TS index does not need to parse MoonBit files; handing them to
+    // the JS parser would only produce empty models. MoonBit rules get the
+    // raw sources and their own declaration scanner.
+    let js_sources = project_sources.filter(pair => {
+      let (rel, _) = pair
+      !rel.has_suffix(".mbt")
+    })
+    let index = build_index(js_sources)
+    let structural_findings = analyze(index, structural_rules)
+    for finding in analyze_moonbit(project_sources, structural_rules) {
+      structural_findings.push(finding)
+    }
+    for finding in structural_findings {
       let suppressed = disable_maps.any(pair => {
         let (rel, map) = pair
         rel == finding.file && map.is_disabled(finding.rule_id, finding.line)
@@ -438,11 +449,12 @@ pub fn lint_file(
         for (lineno, text) in lines {
           if text.length() > limit {
             findings.push(
-              file_finding(
+              file_finding_at(
                 fr,
                 rel,
                 lineno,
                 "line has \{text.length()} characters (limit: \{limit})",
+                text.trim().to_owned(),
               ),
             )
           }
@@ -553,6 +565,20 @@ fn file_finding(
   line : Int32,
   detail : String,
 ) -> Finding {
+  file_finding_at(fr, file, line, detail, detail)
+}
+
+///|
+/// A file-level finding with an explicit snippet. Per-line checks
+/// (`max_line_length`, trailing whitespace, tabs) pass the offending source
+/// line; whole-file properties pass the detail sentence instead.
+fn file_finding_at(
+  fr : FileRule,
+  file : String,
+  line : Int32,
+  detail : String,
+  snippet : String,
+) -> Finding {
   {
     rule_id: fr.id,
     severity: fr.severity,
@@ -562,7 +588,7 @@ fn file_finding(
     // Whole-file checks describe a property of the file, not a position on
     // one line, so they report the first column.
     column: 1,
-    snippet: detail,
+    snippet,
   }
 }
 

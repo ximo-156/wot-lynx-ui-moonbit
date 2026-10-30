@@ -272,6 +272,10 @@ pub enum StructuralCheck {
   NoRequireImports
   /// An exported name is never imported by any other scanned file.
   NoUnusedExports
+  /// A public top-level MoonBit item has no `///|` doc comment.
+  MoonbitRequirePublicDoc
+  /// A MoonBit declaration name does not follow the language convention.
+  MoonbitNaming
 } derive(Debug, Eq)
 
 ///|

@@ -167,6 +167,8 @@ fn structural_check_signature(c : StructuralCheck) -> String {
     NoDeepRelativeImports(n) => "no_deep_relative_imports:\{n}"
     NoRequireImports => "no_require_imports"
     NoUnusedExports => "no_unused_exports"
+    MoonbitRequirePublicDoc => "moonbit_require_public_doc"
+    MoonbitNaming => "moonbit_naming"
   }
 }
 

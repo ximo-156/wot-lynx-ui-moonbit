@@ -917,6 +917,131 @@ fn imports_structural_rules() -> Array[StructuralRule] {
 }
 
 // ---------------------------------------------------------------------------
+// moonbit — conventions for MoonBit source files
+// ---------------------------------------------------------------------------
+
+///|
+/// Test files are allowed to unwrap, panic and print: those calls are the
+/// point of a test. The MoonBit preset therefore applies to library and
+/// command sources only, not to `*_test.mbt` / `*_wbtest.mbt`.
+fn moonbit_scope() -> Scope {
+  match Scope::new([], ["*_test.mbt", "*_wbtest.mbt"]) {
+    Ok(scope) => scope
+    Err(_) => Scope::empty()
+  }
+}
+
+///|
+fn moonbit_rule(
+  id : String,
+  severity : Severity,
+  message : String,
+  match_ : MatchKind,
+) -> Rule {
+  {
+    id,
+    severity,
+    message,
+    extensions: [".mbt"],
+    match_,
+    unless: None,
+    scope: moonbit_scope(),
+    match_comments: false,
+  }
+}
+
+///|
+fn moonbit_comment_rule(
+  id : String,
+  severity : Severity,
+  message : String,
+  match_ : MatchKind,
+) -> Rule {
+  {
+    id,
+    severity,
+    message,
+    extensions: [".mbt"],
+    match_,
+    unless: None,
+    scope: moonbit_scope(),
+    match_comments: true,
+  }
+}
+
+///|
+fn moonbit_structural_rule(
+  id : String,
+  severity : Severity,
+  message : String,
+  check : StructuralCheck,
+) -> StructuralRule {
+  {
+    id,
+    severity,
+    message,
+    extensions: [".mbt"],
+    check,
+    scope: moonbit_scope(),
+  }
+}
+
+///|
+/// Line-level MoonBit rules. These are the conventions that are cheap to
+/// state as text and expensive to enforce by review: panic-prone calls,
+/// leftover debug output, and TODO markers.
+fn moonbit_rules() -> Array[Rule] {
+  [
+    moonbit_rule(
+      "moonbit/no-unwrap",
+      Severity::warning(),
+      "unwrap() can panic; handle the error explicitly",
+      Contains(".unwrap()"),
+    ),
+    moonbit_rule(
+      "moonbit/no-panic",
+      Severity::warning(),
+      "panic() in regular code",
+      Contains("panic("),
+    ),
+    moonbit_comment_rule(
+      "moonbit/no-todo-comment",
+      Severity::warning(),
+      "TODO/FIXME comment left in code",
+      Any([Word("TODO"), Word("FIXME")]),
+    ),
+    moonbit_rule(
+      "moonbit/no-println",
+      Severity::warning(),
+      "println() left in library code",
+      Contains("println("),
+    ),
+  ]
+}
+
+///|
+/// Declaration-level MoonBit rules. Both need the scanner: `moon check`
+/// proves types, `moon fmt` fixes layout, but neither can tell whether a
+/// public item has a `///|` block or whether its name follows the language
+/// convention.
+fn moonbit_structural_rules() -> Array[StructuralRule] {
+  [
+    moonbit_structural_rule(
+      "moonbit/require-public-doc",
+      Severity::warning(),
+      "Public item is missing a ///| doc comment",
+      MoonbitRequirePublicDoc,
+    ),
+    moonbit_structural_rule(
+      "moonbit/naming",
+      Severity::warning(),
+      "Name does not follow the MoonBit naming convention",
+      MoonbitNaming,
+    ),
+  ]
+}
+
+// ---------------------------------------------------------------------------
 // Preset registry
 // ---------------------------------------------------------------------------
 
@@ -979,6 +1104,13 @@ fn all_presets() -> Array[Preset] {
       rules: [],
       file_rules: [],
       structural_rules: imports_structural_rules(),
+    },
+    {
+      name: "moonbit",
+      description: "MoonBit source conventions (public docs, naming, unwrap/panic, ...)",
+      rules: moonbit_rules(),
+      file_rules: [],
+      structural_rules: moonbit_structural_rules(),
     },
     {
       name: "solid",

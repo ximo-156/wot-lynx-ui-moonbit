@@ -1,0 +1,55 @@
+{
+  "rules": [
+    {
+      "id": "moonbit/no-unwrap",
+      "severity": "warning",
+      "message": "unwrap() can panic; handle the error explicitly",
+      "extensions": [".mbt"],
+      "exclude": ["*_test.mbt", "*_wbtest.mbt"],
+      "match": { "contains": ".unwrap()" }
+    },
+    {
+      "id": "moonbit/no-panic",
+      "severity": "warning",
+      "message": "panic() in regular code",
+      "extensions": [".mbt"],
+      "exclude": ["*_test.mbt", "*_wbtest.mbt"],
+      "match": { "contains": "panic(" }
+    },
+    {
+      "id": "moonbit/no-todo-comment",
+      "severity": "warning",
+      "message": "TODO/FIXME comment left in code",
+      "extensions": [".mbt"],
+      "exclude": ["*_test.mbt", "*_wbtest.mbt"],
+      "match": { "any": [ { "word": "TODO" }, { "word": "FIXME" } ] },
+      "match_comments": true
+    },
+    {
+      "id": "moonbit/no-println",
+      "severity": "warning",
+      "message": "println() left in library code",
+      "extensions": [".mbt"],
+      "exclude": ["*_test.mbt", "*_wbtest.mbt"],
+      "match": { "contains": "println(" }
+    }
+  ],
+  "structural_rules": [
+    {
+      "id": "moonbit/require-public-doc",
+      "severity": "warning",
+      "message": "Public item is missing a ///| doc comment",
+      "extensions": [".mbt"],
+      "exclude": ["*_test.mbt", "*_wbtest.mbt"],
+      "check": { "moonbit_require_public_doc": true }
+    },
+    {
+      "id": "moonbit/naming",
+      "severity": "warning",
+      "message": "Name does not follow the MoonBit naming convention",
+      "extensions": [".mbt"],
+      "exclude": ["*_test.mbt", "*_wbtest.mbt"],
+      "check": { "moonbit_naming": true }
+    }
+  ]
+}

@@ -4,18 +4,19 @@
 ///|
 test "preset_names lists all presets sorted" {
   let names = preset_names()
-  assert_eq(names.length(), 11)
+  assert_eq(names.length(), 12)
   assert_eq(names[0], "angular")
   assert_eq(names[1], "astro")
   assert_eq(names[2], "common")
   assert_eq(names[3], "file")
   assert_eq(names[4], "imports")
-  assert_eq(names[5], "next")
-  assert_eq(names[6], "nuxt")
-  assert_eq(names[7], "react")
-  assert_eq(names[8], "solid")
-  assert_eq(names[9], "svelte")
-  assert_eq(names[10], "vue")
+  assert_eq(names[5], "moonbit")
+  assert_eq(names[6], "next")
+  assert_eq(names[7], "nuxt")
+  assert_eq(names[8], "react")
+  assert_eq(names[9], "solid")
+  assert_eq(names[10], "svelte")
+  assert_eq(names[11], "vue")
 }
 
 ///|
@@ -124,18 +125,19 @@ test "render_preset_list contains all preset names" {
 test "render_preset_list is sorted alphabetically" {
   let text = render_preset_list()
   let lines = text.split("\n").to_array()
-  assert_eq(lines.length(), 11)
+  assert_eq(lines.length(), 12)
   assert_true(lines[0].has_prefix("angular"))
   assert_true(lines[1].has_prefix("astro"))
   assert_true(lines[2].has_prefix("common"))
   assert_true(lines[3].has_prefix("file"))
   assert_true(lines[4].has_prefix("imports"))
-  assert_true(lines[5].has_prefix("next"))
-  assert_true(lines[6].has_prefix("nuxt"))
-  assert_true(lines[7].has_prefix("react"))
-  assert_true(lines[8].has_prefix("solid"))
-  assert_true(lines[9].has_prefix("svelte"))
-  assert_true(lines[10].has_prefix("vue"))
+  assert_true(lines[5].has_prefix("moonbit"))
+  assert_true(lines[6].has_prefix("next"))
+  assert_true(lines[7].has_prefix("nuxt"))
+  assert_true(lines[8].has_prefix("react"))
+  assert_true(lines[9].has_prefix("solid"))
+  assert_true(lines[10].has_prefix("svelte"))
+  assert_true(lines[11].has_prefix("vue"))
 }
 
 ///|

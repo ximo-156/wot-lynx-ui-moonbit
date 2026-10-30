@@ -444,6 +444,8 @@ pub enum StructuralCheck {
   NoDeepRelativeImports(Int32)
   NoRequireImports
   NoUnusedExports
+  MoonbitRequirePublicDoc
+  MoonbitNaming
 } derive(Eq, @debug.Debug)
 pub fn StructuralCheck::equal(Self, Self) -> Bool
 pub fn StructuralCheck::not_equal(Self, Self) -> Bool

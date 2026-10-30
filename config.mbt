@@ -712,9 +712,15 @@ fn parse_structural_check(cj : Json) -> Result[StructuralCheck, ConfigError] {
   if obj.contains("no_unused_exports") {
     return Ok(NoUnusedExports)
   }
+  if obj.contains("moonbit_require_public_doc") {
+    return Ok(MoonbitRequirePublicDoc)
+  }
+  if obj.contains("moonbit_naming") {
+    return Ok(MoonbitNaming)
+  }
   Err(
     ConfigError(
-      "check needs one of: no_unused_imports, no_duplicate_imports, no_unresolved_relative_imports, no_import_cycles, no_default_export, no_deep_relative_imports, no_require_imports, no_unused_exports",
+      "check needs one of: no_unused_imports, no_duplicate_imports, no_unresolved_relative_imports, no_import_cycles, no_default_export, no_deep_relative_imports, no_require_imports, no_unused_exports, moonbit_require_public_doc, moonbit_naming",
     ),
   )
 }
