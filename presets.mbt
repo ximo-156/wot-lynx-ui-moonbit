@@ -996,25 +996,25 @@ fn moonbit_rules() -> Array[Rule] {
       "moonbit/no-unwrap",
       Severity::warning(),
       "unwrap() can panic; handle the error explicitly",
-      Contains(".unwrap()"),
+      Regex("^[^\"]*\\.unwrap\\(\\)"),
     ),
     moonbit_rule(
       "moonbit/no-panic",
       Severity::warning(),
       "panic() in regular code",
-      Contains("panic("),
+      Regex("^[^\"]*panic\\("),
     ),
     moonbit_comment_rule(
       "moonbit/no-todo-comment",
       Severity::warning(),
       "TODO/FIXME comment left in code",
-      Any([Word("TODO"), Word("FIXME")]),
+      Regex("//.*(TODO|FIXME)"),
     ),
     moonbit_rule(
       "moonbit/no-println",
       Severity::warning(),
       "println() left in library code",
-      Contains("println("),
+      Regex("^[^\"]*println\\("),
     ),
   ]
 }
@@ -1028,13 +1028,13 @@ fn moonbit_structural_rules() -> Array[StructuralRule] {
   [
     moonbit_structural_rule(
       "moonbit/require-public-doc",
-      Severity::warning(),
+      Severity::error(),
       "Public item is missing a ///| doc comment",
       MoonbitRequirePublicDoc,
     ),
     moonbit_structural_rule(
       "moonbit/naming",
-      Severity::warning(),
+      Severity::error(),
       "Name does not follow the MoonBit naming convention",
       MoonbitNaming,
     ),

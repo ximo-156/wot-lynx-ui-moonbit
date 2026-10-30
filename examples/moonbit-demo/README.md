@@ -10,11 +10,11 @@ moonlint --preset moonbit examples/moonbit-demo/src
 Expected output:
 
 ```text
-lib.mbt:7: [warning] moonbit/naming — Name does not follow the MoonBit naming convention (fn 'BadName' should be snake_case)
+lib.mbt:7: [error] moonbit/naming — Name does not follow the MoonBit naming convention (fn 'BadName' should be snake_case)
     pub fn BadName() -> Int {
-lib.mbt:7: [warning] moonbit/require-public-doc — Public item is missing a ///| doc comment (public fn 'BadName' has no ///| doc comment)
+lib.mbt:7: [error] moonbit/require-public-doc — Public item is missing a ///| doc comment (public fn 'BadName' has no ///| doc comment)
     pub fn BadName() -> Int {
-lib.mbt:12: [warning] moonbit/naming — Name does not follow the MoonBit naming convention (struct 'point' should be PascalCase)
+lib.mbt:12: [error] moonbit/naming — Name does not follow the MoonBit naming convention (struct 'point' should be PascalCase)
     pub struct point {
 lib.mbt:18: [warning] moonbit/no-unwrap — unwrap() can panic; handle the error explicitly
     let value = @json.parse(text).unwrap()

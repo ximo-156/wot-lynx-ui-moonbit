@@ -6,7 +6,7 @@
       "message": "unwrap() can panic; handle the error explicitly",
       "extensions": [".mbt"],
       "exclude": ["*_test.mbt", "*_wbtest.mbt"],
-      "match": { "contains": ".unwrap()" }
+      "match": { "regex": "^[^\"]*\\.unwrap\\(\\)" }
     },
     {
       "id": "moonbit/no-panic",
@@ -14,7 +14,7 @@
       "message": "panic() in regular code",
       "extensions": [".mbt"],
       "exclude": ["*_test.mbt", "*_wbtest.mbt"],
-      "match": { "contains": "panic(" }
+      "match": { "regex": "^[^\"]*panic\\(" }
     },
     {
       "id": "moonbit/no-todo-comment",
@@ -22,7 +22,7 @@
       "message": "TODO/FIXME comment left in code",
       "extensions": [".mbt"],
       "exclude": ["*_test.mbt", "*_wbtest.mbt"],
-      "match": { "any": [ { "word": "TODO" }, { "word": "FIXME" } ] },
+      "match": { "regex": "//.*(TODO|FIXME)" },
       "match_comments": true
     },
     {
@@ -31,13 +31,13 @@
       "message": "println() left in library code",
       "extensions": [".mbt"],
       "exclude": ["*_test.mbt", "*_wbtest.mbt"],
-      "match": { "contains": "println(" }
+      "match": { "regex": "^[^\"]*println\\(" }
     }
   ],
   "structural_rules": [
     {
       "id": "moonbit/require-public-doc",
-      "severity": "warning",
+      "severity": "error",
       "message": "Public item is missing a ///| doc comment",
       "extensions": [".mbt"],
       "exclude": ["*_test.mbt", "*_wbtest.mbt"],
@@ -45,7 +45,7 @@
     },
     {
       "id": "moonbit/naming",
-      "severity": "warning",
+      "severity": "error",
       "message": "Name does not follow the MoonBit naming convention",
       "extensions": [".mbt"],
       "exclude": ["*_test.mbt", "*_wbtest.mbt"],

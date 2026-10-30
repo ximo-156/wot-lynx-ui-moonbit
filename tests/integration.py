@@ -1976,14 +1976,14 @@ class MoonbitTests(FixtureCase):
     """The MoonBit source preset: declaration checks and test-file scope."""
 
     EXPECTED = (
-        "lib.mbt:7: [warning] moonbit/naming — Name does not follow the "
+        "lib.mbt:7: [error] moonbit/naming — Name does not follow the "
         "MoonBit naming convention (fn 'BadName' should be snake_case)\n"
         "    pub fn BadName() -> Int {\n"
-        "lib.mbt:7: [warning] moonbit/require-public-doc — Public item is "
+        "lib.mbt:7: [error] moonbit/require-public-doc — Public item is "
         "missing a ///| doc comment (public fn 'BadName' has no ///| doc "
         "comment)\n"
         "    pub fn BadName() -> Int {\n"
-        "lib.mbt:12: [warning] moonbit/naming — Name does not follow the "
+        "lib.mbt:12: [error] moonbit/naming — Name does not follow the "
         "MoonBit naming convention (struct 'point' should be PascalCase)\n"
         "    pub struct point {\n"
         "lib.mbt:18: [warning] moonbit/no-unwrap — unwrap() can panic; "
@@ -2008,7 +2008,7 @@ class MoonbitTests(FixtureCase):
     def test_preset_reports_exactly_the_documented_findings(self):
         self.stage_demo()
         result = self.run_cli(["--preset", "moonbit", self.root / "src"])
-        self.assert_exit(result, 0)
+        self.assert_exit(result, 1)
         self.assertEqual(self.output(result), self.EXPECTED)
 
     def test_shipped_json_preset_matches_the_builtin(self):
@@ -2016,7 +2016,7 @@ class MoonbitTests(FixtureCase):
         result = self.run_cli(
             ["--config", REPO_ROOT / "presets" / "moonbit.json", self.root / "src"]
         )
-        self.assert_exit(result, 0)
+        self.assert_exit(result, 1)
         self.assertEqual(self.output(result), self.EXPECTED)
 
     def test_test_files_are_excluded_from_the_preset(self):
