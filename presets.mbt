@@ -400,7 +400,7 @@ fn vue_rules() -> Array[Rule] {
       Severity::warning(),
       "Use shorthand for true attributes (:disabled instead of :disabled=\"true\")",
       vue_exts,
-      Regex(":[[:alpha:]-]+=\"true\""),
+      Regex(":[[:alpha:]\\-]+=\"true\""),
     ),
     rule(
       "vue/no-useless-mustaches",

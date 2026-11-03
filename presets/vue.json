@@ -57,7 +57,7 @@
       "severity": "warning",
       "message": "Use shorthand for true attributes (:disabled instead of :disabled=\"true\")",
       "extensions": [".vue", ".js", ".ts"],
-      "match": { "regex": ":[[:alpha:]-]+=\"true\"" }
+      "match": { "regex": ":[[:alpha:]\\-]+=\"true\"" }
     },
     {
       "id": "vue/no-useless-mustaches",

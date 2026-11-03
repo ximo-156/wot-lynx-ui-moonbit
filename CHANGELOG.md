@@ -58,6 +58,9 @@ All notable changes to this project are documented in this file.
 - **Removed `ScanMode::incremental`.** The deprecated variant always raised;
   `--incremental` is the supported cache path. `\x00` literals were replaced
   with `\u{0}`.
+- **Vue preset regex compatibility.** `vue/prefer-true-attribute-shorthand`
+  escapes the hyphen in its character class; the current MoonBit regex engine
+  rejects the unescaped form.
 
 ### Tests
 
