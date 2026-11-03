@@ -7,8 +7,6 @@ pub enum ScanMode {
   Glob(String)
   Stdin
   Stdin0
-  /// Kept for source compatibility; selecting it raises an explicit error.
-  Incremental
 } derive(Debug, Eq)
 
 ///|
@@ -42,12 +40,6 @@ pub fn ScanMode::stdin0() -> ScanMode {
 }
 
 ///|
-#deprecated("incremental caching is not implemented; this mode now raises an error")
-pub fn ScanMode::incremental() -> ScanMode {
-  Incremental
-}
-
-///|
 pub fn ScanMode::tag(self : ScanMode) -> String {
   match self {
     Tree => "tree"
@@ -56,7 +48,6 @@ pub fn ScanMode::tag(self : ScanMode) -> String {
     Glob(_) => "glob"
     Stdin => "stdin"
     Stdin0 => "stdin0"
-    Incremental => "incremental"
   }
 }
 
@@ -81,7 +72,6 @@ pub fn select_files(
     }
     Stdin => parse_stdin_paths(read_stdin_text(), false)
     Stdin0 => parse_stdin_paths(read_stdin_text(), true)
-    Incremental => raise Failure("incremental caching is not implemented")
   }
   let wanted = Set::from_iter(exts.iter().map(e => e.to_lower()))
   let seen : Set[String] = Set::from_iter([].iter())
@@ -101,11 +91,11 @@ pub fn select_files(
 /// Newlines delimit --stdin; NUL delimiters in --stdin0 preserve embedded
 /// newlines. Only CRLF's terminal CR is removed; no filename is trim()ed.
 fn parse_stdin_paths(content : String, nul : Bool) -> Array[String] raise {
-  if !nul && content.contains("\x00") {
+  if !nul && content.contains("\u{0}") {
     raise Failure("NUL in --stdin input; use --stdin0 for NUL-separated paths")
   }
   let paths : Array[String] = []
-  let delimiter = if nul { "\x00" } else { "\n" }
+  let delimiter = if nul { "\u{0}" } else { "\n" }
   for view in content.split(delimiter) {
     let path = if nul {
       view.to_owned()
@@ -133,7 +123,7 @@ pub fn validate_glob(pattern : String) -> Unit raise {
 /// Validate a glob pattern and return the reason it is invalid, or `None`
 /// when the pattern is well-formed.
 pub fn glob_pattern_error(pattern : String) -> String? {
-  if pattern == "" || pattern.has_prefix("/") || pattern.contains("\x00") {
+  if pattern == "" || pattern.has_prefix("/") || pattern.contains("\u{0}") {
     return Some("glob must be non-empty and relative to the scan root")
   }
   for c in pattern.iter() {

@@ -1457,6 +1457,33 @@ class PresetTests(FixtureCase):
         config_path = init_dir / "moonlint.json"
         self.assertTrue(config_path.is_file(), "moonlint.json was not created")
 
+    def test_init_writes_a_moonbit_config(self):
+        init_dir = self.base / "init-moonbit"
+        init_dir.mkdir()
+        result = subprocess.run(
+            [str(BINARY), "--init"],
+            cwd=init_dir, env=self.env,
+            stdout=subprocess.PIPE, stderr=subprocess.PIPE, timeout=15,
+        )
+        self.assert_exit(result, 0)
+        config = json.loads((init_dir / "moonlint.json").read_text(encoding="utf-8"))
+        ids = [rule["id"] for rule in config["rules"]]
+        self.assertIn("moonbit/no-todo-comment", ids)
+        self.assertIn("moonbit/no-unwrap", ids)
+        self.assertEqual(
+            config["exclude"], ["**/*_test.mbt", "**/*_wbtest.mbt"]
+        )
+        (init_dir / "lib.mbt").write_text(
+            "pub fn BadName() -> Int {\n  1\n}\n", encoding="utf-8"
+        )
+        result = subprocess.run(
+            [str(BINARY), "."],
+            cwd=init_dir, env=self.env,
+            stdout=subprocess.PIPE, stderr=subprocess.PIPE, timeout=15,
+        )
+        self.assert_exit(result, 1)
+        self.assertIn("moonbit/naming", self.output(result))
+
     def test_sarif_output_format(self):
         self.write_config([{
             "id": "test/rule",
@@ -2032,6 +2059,35 @@ class MoonbitTests(FixtureCase):
         self.assertIn("files selected: 1  files scanned: 0", out)
         self.assertIn("skipped: 1", out)
         self.assertNotIn("moonbit/no-unwrap", out)
+
+    def test_eprintln_and_prose_do_not_fire(self):
+        target = self.root / "src"
+        target.mkdir(parents=True)
+        (target / "lib.mbt").write_text(
+            "///|\n/// Run.\npub fn run() -> Unit {\n"
+            '  eprintln("debug")\n}\n'
+            "// Prose mentions TODO but is not a marker\n"
+            "// TODO: real marker\n",
+            encoding="utf-8",
+        )
+        result = self.run_cli(["--preset", "moonbit", target])
+        self.assert_exit(result, 0)
+        out = self.output(result)
+        self.assertNotIn("moonbit/no-println", out)
+        self.assertEqual(out.count("moonbit/no-todo-comment"), 1)
+
+    def test_cmd_entry_point_prints_are_out_of_scope(self):
+        target = self.root / "cmd" / "main"
+        target.mkdir(parents=True)
+        (target / "main.mbt").write_text(
+            "///|\n/// Main.\npub fn main() -> Unit {\n"
+            '  println("ok")\n}\n',
+            encoding="utf-8",
+        )
+        result = self.run_cli(["--preset", "moonbit", "--summary", self.root])
+        self.assert_exit(result, 0)
+        out = self.output(result)
+        self.assertNotIn("moonbit/no-println", out)
 
 
 class DemoTests(FixtureCase):

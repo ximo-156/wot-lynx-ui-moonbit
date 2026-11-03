@@ -69,11 +69,48 @@ fn init_config() -> Unit raise {
     println("moonlint: \{path} already exists")
     return
   }
-  let config = "{\n  \"rules\": [\n    {\n      \"id\": \"common/no-console-log\",\n      \"severity\": \"warning\",\n      \"message\": \"Avoid console.log in committed code\",\n      \"extensions\": [\".js\", \".jsx\", \".ts\", \".tsx\"],\n      \"match\": { \"contains\": \"console.log\" }\n    },\n    {\n      \"id\": \"common/no-todo-comment\",\n      \"severity\": \"warning\",\n      \"message\": \"TODO/FIXME comment left in code\",\n      \"extensions\": [\".js\", \".jsx\", \".ts\", \".tsx\"],\n      \"match\": { \"any\": [ { \"word\": \"TODO\" }, { \"word\": \"FIXME\" } ] },\n      \"match_comments\": true\n    },\n    {\n      \"id\": \"common/no-debugger\",\n      \"severity\": \"error\",\n      \"message\": \"No debugger statements\",\n      \"extensions\": [\".js\", \".jsx\", \".ts\", \".tsx\"],\n      \"match\": { \"regex\": \"^[[:space:]]*debugger[[:space:]]*;?[[:space:]]*$\" }\n    }\n  ],\n  \"file_rules\": [\n    {\n      \"id\": \"file/no-trailing-whitespace\",\n      \"severity\": \"warning\",\n      \"message\": \"Trailing whitespace found\",\n      \"extensions\": [],\n      \"check\": { \"no_trailing_whitespace\": true }\n    }\n  ]\n}\n"
+  let config =
+    #|{
+    #|  "exclude": ["**/*_test.mbt", "**/*_wbtest.mbt"],
+    #|  "rules": [
+    #|    {
+    #|      "id": "moonbit/no-todo-comment",
+    #|      "severity": "warning",
+    #|      "message": "TODO/FIXME comment left in code",
+    #|      "extensions": [".mbt"],
+    #|      "match": { "regex": "^[[:space:]]*//[[:space:]]*(TODO|FIXME)([[:space:]:]|$)" },
+    #|      "match_comments": true
+    #|    },
+    #|    {
+    #|      "id": "moonbit/no-unwrap",
+    #|      "severity": "warning",
+    #|      "message": "unwrap() can panic; handle the error explicitly",
+    #|      "extensions": [".mbt"],
+    #|      "match": { "regex": "^[^\"]*\\.unwrap\\(\\)" }
+    #|    }
+    #|  ],
+    #|  "structural_rules": [
+    #|    {
+    #|      "id": "moonbit/require-public-doc",
+    #|      "severity": "error",
+    #|      "message": "Public item is missing a ///| doc comment",
+    #|      "extensions": [".mbt"],
+    #|      "check": { "moonbit_require_public_doc": true }
+    #|    },
+    #|    {
+    #|      "id": "moonbit/naming",
+    #|      "severity": "error",
+    #|      "message": "Name does not follow the MoonBit naming convention",
+    #|      "extensions": [".mbt"],
+    #|      "check": { "moonbit_naming": true }
+    #|    }
+    #|  ]
+    #|}
+    #|
   @lib.write_atomic_text(path, config)
   println("moonlint: created \{path}")
-  println("Run with: moonlint --config \{path} <directory>")
-  println("Or use a preset: moonlint --preset react <directory>")
+  println("Run with: moonlint .")
+  println("For the full rule set: moonlint --preset moonbit .")
 }
 
 ///|

@@ -1,32 +1,52 @@
 # moonlint
 
-A config-driven convention linter for MoonBit and JavaScript/TypeScript source trees, written in [MoonBit](https://www.moonbitlang.com/).
+A MoonBit-native convention linter for MoonBit source trees, written in
+[MoonBit](https://www.moonbitlang.com/). It also ships JavaScript/TypeScript
+presets for mixed repositories, but MoonBit is the primary target.
+
+## Why this exists
+
+`moon check` proves types and `moon fmt` fixes layout. Neither enforces the
+conventions a MoonBit package still needs in review: `///|` documentation on
+public items, naming, `unwrap()` / `panic()` in library code, or leftover TODO
+markers. The `moon` toolchain has no built-in configurable lint subcommand.
+ESLint and Biome parse JavaScript/TypeScript; neither parses MoonBit.
+
+moonlint fills that gap. It is a MoonBit binary, reads JSON rules, and emits
+text, JSON, GitHub Actions annotations or SARIF for CI. The language front end
+and the rule engine are separate, so a new check does not require a new
+executable.
 
 ## Origin
 
-moonlint reimplements, from scratch in MoonBit, the review-lint script of
+moonlint began as a MoonBit rewrite of the review-lint script in
 [`ximo-156/wot-lynx-ui`](https://github.com/ximo-156/wot-lynx-ui)
-(`scripts/review-lint.mjs`, MIT © ximo-156) — a Vue Lynx component library by
+(`scripts/review-lint.mjs`, MIT © ximo-156), a Vue Lynx component library by
 the same author. The original script enforces that project's conventions with
-line-by-line pattern matching; this repository began as its portable core and
-then grew the layers that per-line matching cannot express: a tokenizer, a
-structural parser, cross-file analysis and an incremental cache. The MoonBit
-source front end (`moonbit_lang.mbt`) adds declaration-aware checks for
-MoonBit itself: `moon check` proves types and `moon fmt` fixes layout, but
-neither enforces public API docs or naming. All MoonBit
-sources here are original work written for this repository; nothing is
-vendored or generated from the JavaScript original. moonlint itself is
-distributed under the Apache License 2.0 (see `LICENSE`).
+line-by-line pattern matching. This repository kept the script's rule catalogue
+as a compatibility layer and built a MoonBit front end, a JSON rule engine,
+cross-file analysis and an incremental cache around it. The MoonBit sources
+are original work; nothing is vendored or generated from the JavaScript
+original. moonlint is distributed under the Apache License 2.0 (see `LICENSE`).
 
 ## What it does
 
-`moonlint` scans a directory tree, applies a set of declarative rules to each source file, and reports violations. Rules are loaded from a JSON config file, so the same engine can enforce any project's conventions. MoonBit files get declarations plus `///|` documentation; JS/TS files get the tokenizer and import-graph layers.
+`moonlint` scans a directory tree, applies declarative rules to each source
+file, and reports violations. Rules are loaded from JSON, so the same engine
+can enforce any project's conventions. MoonBit files are read by a declaration
+scanner that attaches `///|` blocks to top-level items. JS/TS files are read by
+the tokenizer and import-graph layers.
 
 ## Features
 
+- **MoonBit first** — the `moonbit` preset covers public documentation, naming,
+  `unwrap()` / `panic()`, `println()` and TODO comments; test files are
+  excluded recursively and CLI entry points are excluded from the print rule
 - **Config-driven** — rules defined in JSON, no code changes needed
-- **MoonBit source checks** — a declaration scanner attaches `///|` blocks to top-level `fn` / `struct` / `enum` / `type` / `trait` / `let` / `const` items; `--preset moonbit` checks public docs, naming, `.unwrap()`, `panic()`, `println()` and TODO comments, with `*_test.mbt` / `*_wbtest.mbt` excluded
-- **Built-in framework presets** — ready-to-use rule sets for React, Vue, Angular, Svelte, Next.js, SolidJS, Astro, Nuxt, common JS/TS hygiene, file-level checks and cross-file import checks; activate with `--preset <name>`
+- **JS/TS compatibility presets** — ready-to-use rule sets for React, Vue,
+  Angular, Svelte, Next.js, SolidJS, Astro, Nuxt, common JS/TS hygiene,
+  file-level checks and cross-file import checks; activate with
+  `--preset <name>`
 - **Regex + substring matching** — `contains`, `prefix`, `suffix`, `regex`, `equals` and `word` matchers
 - **Matcher combinators** — `all` / `any` / `not` nest arbitrarily deep, so `match` expresses any boolean formula over the leaf matchers
 - **Negative guards** — `unless` field to suppress false positives (e.g. "import from 'vue' but not 'vue-lynx'")
@@ -52,8 +72,14 @@ moon build
 ## Usage
 
 ```bash
-# Lint current directory with default config
-moon run cmd/main
+# Create a MoonBit starter config in the current directory
+moon run cmd/main -- --init
+
+# Lint a MoonBit package with the built-in preset
+moon run cmd/main -- --preset moonbit packages/
+
+# Lint with the generated config
+moon run cmd/main -- .
 
 # Lint a specific directory
 moon run cmd/main -- /path/to/project
@@ -80,7 +106,7 @@ moon run cmd/main -- --report moonlint-report.json /path/to/project
 # GitHub Actions annotations
 moon run cmd/main -- --format github /path/to/project
 
-# Cross-file import checks (unused imports, cycles, unresolved paths, ...)
+# Cross-file import checks for a JS/TS compatibility scan
 moon run cmd/main -- --preset imports /path/to/project
 
 # Fast repeated scans: only changed files are re-linted
@@ -89,9 +115,10 @@ moon run cmd/main -- --incremental /path/to/project
 
 ## Built-in Presets
 
-moonlint ships built-in rule sets for MoonBit sources and popular frontend
-frameworks. Activate one or more with `--preset <name>` (repeatable); rules
-from multiple presets are merged with de-duplication by rule id.
+The primary preset is `moonbit`. The JS/TS presets are compatibility sets for
+repositories that also contain frontend code. Activate one or more with
+`--preset <name>` (repeatable); rules from multiple presets are merged with
+de-duplication by rule id.
 
 ```bash
 # List available presets
@@ -117,6 +144,7 @@ usage error (exit code 2).
 
 | Preset | Extensions | Rules | Focus |
 |--------|-----------|-------|-------|
+| `moonbit` | `.mbt` | 4 line + 2 structural rules | MoonBit: require-public-doc, naming, no-unwrap, no-panic, no-println, no-todo-comment |
 | `common` | `.js` `.jsx` `.ts` `.tsx` `.mjs` `.cjs` `.vue` `.svelte` `.astro` | 6 | Framework-agnostic hygiene: no-console-log, no-debugger, no-alert, no-eval, no-var, no-todo-comment |
 | `react` | `.jsx` `.tsx` | 20 | React/JSX: no-danger, no-string-refs, jsx-key, self-closing, target-blank, button-type, ... |
 | `vue` | `.vue` `.js` `.ts` | 11 | Vue 3: no-v-html, require-v-for-key, no-v-if-with-v-for, require-scoped-style, ... |
@@ -128,7 +156,10 @@ usage error (exit code 2).
 | `nuxt` | `.vue` `.js` `.ts` | 5 | Nuxt: no-env-in-runtime, prefer-use-fetch, no-window-in-ssr, ... |
 | `file` | `.js` `.jsx` `.ts` `.tsx` `.mjs` `.cjs` `.vue` `.svelte` `.astro` | 6 file rules | File-level: max-lines, max-line-length, no-trailing-whitespace, no-tabs, final-newline, no-duplicate-lines |
 | `imports` | `.js` `.jsx` `.ts` `.tsx` `.mjs` `.cjs` `.mts` `.cts` `.vue` `.svelte` `.astro` | 7 structural rules | Cross-file: no-unused-imports, no-duplicate-imports, no-unresolved-relative-imports, no-import-cycles, no-deep-relative-imports, no-require-imports, no-unused-exports |
-| `moonbit` | `.mbt` | 4 line + 2 structural rules | MoonBit: require-public-doc, naming, no-unwrap, no-panic, no-println, no-todo-comment |
+
+The `moonbit` preset checks top-level public items only. `*_test.mbt` and
+`*_wbtest.mbt` are excluded recursively; `cmd/**` is excluded from the
+`no-println` rule because CLI entry points print by design.
 
 Every preset is also shipped as a standalone JSON file under `presets/`
 (`angular`, `astro`, `common`, `file`, `imports`, `moonbit`, `next`, `nuxt`,
@@ -702,11 +733,13 @@ moonlint/
 └── cmd/main/         — CLI entry point
 ```
 
-The engine is layered: **tokenizer → parser → project index/import graph** for
-JS/TS cross-file checks, a **declaration scanner** for MoonBit doc and naming
-checks, and the line/file layers underneath both. Each layer is pure MoonBit
-with no native dependency (the native bridge is limited to filesystem and Git
-access), and each is unit-tested in isolation.
+The MoonBit front end is a declaration scanner: it blanks comments and
+literals, tracks brace depth to separate top-level items from bodies, attaches
+`///|` blocks, and evaluates the public-doc and naming checks. The JS/TS
+compatibility path is the tokenizer → parser → project index/import graph.
+Both share the line/file layers, rule engine, cache and reporters. The
+implementation is pure MoonBit except for the native filesystem/Git bridge in
+`git_native.c`, and each layer is unit-tested in isolation.
 
 ## Development
 
@@ -726,14 +759,12 @@ also runs on the wasm-gc target (`moon test --target wasm-gc`); the only
 expected failures there are the handful of tests that exercise the native
 filesystem/Git bridge, which wasm cannot provide.
 
-Current baseline: 282 whitebox unit tests pass on the native target; on
-wasm-gc 278 of 283 pass (the 5 failures are native filesystem/Git-FFI tests
-that wasm cannot provide), and 167 CLI integration test methods cover 11
-phases.
-
-Project management artifacts live in [`docs/`](docs/):
-[`PROJECT_PLAN.md`](docs/PROJECT_PLAN.md) (schedule, risks, review strategy)
-and [`SUBMISSION_CHECKLIST.md`](docs/SUBMISSION_CHECKLIST.md).
+Current baseline: 283 whitebox unit tests pass on the native target; on
+wasm-gc 279 of 284 pass (the 5 failures are native filesystem/Git-FFI tests
+that wasm cannot provide), and 170 CLI integration test methods cover 11
+phases. The repository also lints itself: `moonlint .` uses
+`moonlint.json`, which extends `presets/moonbit.json` and excludes the
+intentional violations under `examples/`.
 
 ## License
 

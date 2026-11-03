@@ -390,13 +390,10 @@ pub enum ScanMode {
   Glob(String)
   Stdin
   Stdin0
-  Incremental
 } derive(Eq, @debug.Debug)
 pub fn ScanMode::changed(String) -> Self
 pub fn ScanMode::equal(Self, Self) -> Bool
 pub fn ScanMode::glob(String) -> Self
-#deprecated
-pub fn ScanMode::incremental() -> Self
 pub fn ScanMode::not_equal(Self, Self) -> Bool
 pub fn ScanMode::staged() -> Self
 pub fn ScanMode::stdin() -> Self

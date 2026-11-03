@@ -925,9 +925,39 @@ fn imports_structural_rules() -> Array[StructuralRule] {
 /// point of a test. The MoonBit preset therefore applies to library and
 /// command sources only, not to `*_test.mbt` / `*_wbtest.mbt`.
 fn moonbit_scope() -> Scope {
-  match Scope::new([], ["*_test.mbt", "*_wbtest.mbt"]) {
+  match Scope::new([], ["**/*_test.mbt", "**/*_wbtest.mbt"]) {
     Ok(scope) => scope
     Err(_) => Scope::empty()
+  }
+}
+
+///|
+/// CLI entry points print by design, so `println` there is output, not leftover
+/// debugging. Only the print rule uses this narrower scope.
+fn moonbit_cli_scope() -> Scope {
+  match Scope::new([], ["**/*_test.mbt", "**/*_wbtest.mbt", "cmd/**"]) {
+    Ok(scope) => scope
+    Err(_) => Scope::empty()
+  }
+}
+
+///|
+fn moonbit_rule_with_scope(
+  id : String,
+  severity : Severity,
+  message : String,
+  match_ : MatchKind,
+  scope : Scope,
+) -> Rule {
+  {
+    id,
+    severity,
+    message,
+    extensions: [".mbt"],
+    match_,
+    unless: None,
+    scope,
+    match_comments: false,
   }
 }
 
@@ -938,16 +968,7 @@ fn moonbit_rule(
   message : String,
   match_ : MatchKind,
 ) -> Rule {
-  {
-    id,
-    severity,
-    message,
-    extensions: [".mbt"],
-    match_,
-    unless: None,
-    scope: moonbit_scope(),
-    match_comments: false,
-  }
+  moonbit_rule_with_scope(id, severity, message, match_, moonbit_scope())
 }
 
 ///|
@@ -1002,19 +1023,20 @@ fn moonbit_rules() -> Array[Rule] {
       "moonbit/no-panic",
       Severity::warning(),
       "panic() in regular code",
-      Regex("^[^\"]*panic\\("),
+      Regex("^[^\"]*\\bpanic\\("),
     ),
     moonbit_comment_rule(
       "moonbit/no-todo-comment",
       Severity::warning(),
       "TODO/FIXME comment left in code",
-      Regex("//.*(TODO|FIXME)"),
+      Regex("^[[:space:]]*//[[:space:]]*(TODO|FIXME)([[:space:]:]|$)"),
     ),
-    moonbit_rule(
+    moonbit_rule_with_scope(
       "moonbit/no-println",
       Severity::warning(),
       "println() left in library code",
-      Regex("^[^\"]*println\\("),
+      Regex("^[^\"]*\\bprintln\\("),
+      moonbit_cli_scope(),
     ),
   ]
 }

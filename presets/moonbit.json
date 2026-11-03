@@ -5,7 +5,7 @@
       "severity": "warning",
       "message": "unwrap() can panic; handle the error explicitly",
       "extensions": [".mbt"],
-      "exclude": ["*_test.mbt", "*_wbtest.mbt"],
+      "exclude": ["**/*_test.mbt", "**/*_wbtest.mbt"],
       "match": { "regex": "^[^\"]*\\.unwrap\\(\\)" }
     },
     {
@@ -13,16 +13,16 @@
       "severity": "warning",
       "message": "panic() in regular code",
       "extensions": [".mbt"],
-      "exclude": ["*_test.mbt", "*_wbtest.mbt"],
-      "match": { "regex": "^[^\"]*panic\\(" }
+      "exclude": ["**/*_test.mbt", "**/*_wbtest.mbt"],
+      "match": { "regex": "^[^\"]*\\bpanic\\(" }
     },
     {
       "id": "moonbit/no-todo-comment",
       "severity": "warning",
       "message": "TODO/FIXME comment left in code",
       "extensions": [".mbt"],
-      "exclude": ["*_test.mbt", "*_wbtest.mbt"],
-      "match": { "regex": "//.*(TODO|FIXME)" },
+      "exclude": ["**/*_test.mbt", "**/*_wbtest.mbt"],
+      "match": { "regex": "^[[:space:]]*//[[:space:]]*(TODO|FIXME)([[:space:]:]|$)" },
       "match_comments": true
     },
     {
@@ -30,8 +30,8 @@
       "severity": "warning",
       "message": "println() left in library code",
       "extensions": [".mbt"],
-      "exclude": ["*_test.mbt", "*_wbtest.mbt"],
-      "match": { "regex": "^[^\"]*println\\(" }
+      "exclude": ["**/*_test.mbt", "**/*_wbtest.mbt", "cmd/**"],
+      "match": { "regex": "^[^\"]*\\bprintln\\(" }
     }
   ],
   "structural_rules": [
@@ -40,7 +40,7 @@
       "severity": "error",
       "message": "Public item is missing a ///| doc comment",
       "extensions": [".mbt"],
-      "exclude": ["*_test.mbt", "*_wbtest.mbt"],
+      "exclude": ["**/*_test.mbt", "**/*_wbtest.mbt"],
       "check": { "moonbit_require_public_doc": true }
     },
     {
@@ -48,7 +48,7 @@
       "severity": "error",
       "message": "Name does not follow the MoonBit naming convention",
       "extensions": [".mbt"],
-      "exclude": ["*_test.mbt", "*_wbtest.mbt"],
+      "exclude": ["**/*_test.mbt", "**/*_wbtest.mbt"],
       "check": { "moonbit_naming": true }
     }
   ]

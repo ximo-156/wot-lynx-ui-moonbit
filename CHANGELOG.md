@@ -15,8 +15,10 @@ All notable changes to this project are documented in this file.
 - **`moonbit` preset** — `moonbit/require-public-doc` and
   `moonbit/naming` structural checks, plus `moonbit/no-unwrap`,
   `moonbit/no-panic`, `moonbit/no-println` and `moonbit/no-todo-comment` line
-  rules. The preset excludes `*_test.mbt` and `*_wbtest.mbt`: tests may
-  unwrap, panic and print. `presets/moonbit.json` is the standalone copy.
+  rules. The preset excludes `*_test.mbt` and `*_wbtest.mbt` recursively:
+  tests may unwrap, panic and print. `cmd/**` is excluded from `no-println`
+  because CLI entry points print by design. `presets/moonbit.json` is the
+  standalone copy.
 - **`examples/moonbit-demo`** — a five-finding MoonBit sample with the exact
   expected report, exercised by the `moonbit` CLI integration phase.
 - **`match_comments` rule option** — line rules normally match the
@@ -34,7 +36,7 @@ All notable changes to this project are documented in this file.
   the line, file and structural layers, plus two deliberate near-misses (an
   `unless`-suppressed TODO and an import that is resolved-but-unused). The
   demo runs as a CLI integration phase and asserts the exact report text.
-  The repository's own config excludes `examples/demo` from its scope.
+  The repository's own config excludes `examples/**` from its scope.
 - **Incremental cache walkthrough in `examples/README.md`** — documents the
   fourth layer end to end: which findings the cache stores per file (the
   line and file rules: 2 for `app.ts`, 1 for `helpers.ts`), why the four
@@ -42,12 +44,27 @@ All notable changes to this project are documented in this file.
   answer can change when an unrelated file is edited), and how content-hash
   keying keeps the cache valid across byte-identical rewrites.
 
+### Changed
+
+- **MoonBit is the primary target.** The root `moonlint.json` now extends
+  `presets/moonbit.json` and excludes `examples/**`; `moonlint .` lints the
+  repository's own MoonBit sources with no findings. `--init` writes a MoonBit
+  starter config instead of a JS/TS one. The JS/TS presets remain for mixed
+  repositories and are documented as a compatibility layer.
+- **`moonbit` preset false positives fixed.** `no-println` no longer matches
+  `eprintln` and skips `cmd/**`; `no-todo-comment` matches only TODO/FIXME at
+  the start of a comment; test-file exclusions are recursive
+  (`**/*_test.mbt`, `**/*_wbtest.mbt`).
+- **Removed `ScanMode::incremental`.** The deprecated variant always raised;
+  `--incremental` is the supported cache path. `\x00` literals were replaced
+  with `\u{0}`.
+
 ### Tests
 
-- 282 whitebox unit tests pass on the native target; on the wasm-gc target
-  278 of 283 pass. The 5 failures are the known native filesystem/Git-bridge
+- 283 whitebox unit tests pass on the native target; on the wasm-gc target
+  279 of 284 pass. The 5 failures are the known native filesystem/Git-bridge
   tests that wasm cannot run.
-- 167 CLI integration test methods across 11 phases (the `moonbit` phase pins
+- 170 CLI integration test methods across 11 phases (the `moonbit` phase pins
   the MoonBit demo's full report and checks that the built-in preset and
   `presets/moonbit.json` agree; the `demo` phase pins the TS demo's output,
   `--errors-only` filtering, `--summary` tally and the incremental cache

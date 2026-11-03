@@ -78,12 +78,6 @@ test "scan mode: stdin constructor" {
 }
 
 ///|
-test "scan mode: incremental constructor" {
-  let mode = ScanMode::incremental()
-  assert_true(mode is ScanMode::Incremental(_))
-}
-
-///|
 test "lint_files: missing file is a failure, not a successful read" {
   let rules = [
     Rule::{

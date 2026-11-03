@@ -112,7 +112,7 @@ fn relative_path(root : String, full : String) -> String {
 /// Reject absolute/traversing paths, normalize ./ and duplicate separators.
 /// Whitespace, Unicode, quotes and newlines are significant filename data.
 fn normalize_relative(path : String) -> String raise {
-  if path == "" || path.has_prefix("/") || path.contains("\x00") {
+  if path == "" || path.has_prefix("/") || path.contains("\u{0}") {
     raise Failure("file path must be non-empty and relative to the scan root")
   }
   let parts : Array[String] = []
@@ -160,7 +160,7 @@ fn read_source(path : String) -> String raise {
   let src = @utf8.decode(bytes) catch {
     _ => raise Failure("source is not valid UTF-8: \{path}")
   }
-  if src.contains("\x00") {
+  if src.contains("\u{0}") {
     raise Failure("binary source contains NUL bytes: \{path}")
   }
   src
