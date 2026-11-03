@@ -27,6 +27,9 @@ docs/补充材料.md
 # --- defense Q&A prep: local only (same rationale as the submission doc) ---
 docs/答辩问答.md
 
+# --- historical planning notes: kept locally, not part of the public project ---
+docs/internal/
+
 # --- moonlint incremental cache (e.g. from the examples/demo walkthrough) ---
 .moonlint*cache*.json
 
