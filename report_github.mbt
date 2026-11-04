@@ -38,7 +38,7 @@ pub fn render_github(result : LintResult) -> String {
 fn github_summary(result : LintResult) -> String {
   let errors = result.count_by(Severity::error())
   let warnings = result.count_by(Severity::warning())
-  "files selected: \{result.files_selected}, scanned: \{result.files_scanned}, skipped: \{result.files_skipped}, failed: \{result.files_failed}, out of scope: \{result.files_out_of_scope}, errors: \{errors}, warnings: \{warnings}, baseline-suppressed: \{result.baseline_hits}"
+  "files selected: \{result.files_selected}, scanned: \{result.files_scanned}, skipped: \{result.files_skipped}, failed: \{result.files_failed}, out of scope: \{result.files_out_of_scope}, errors: \{errors}, warnings: \{warnings}, baseline-suppressed: \{result.baseline_hits}, context scanned: \{result.context_files_scanned}, context failed: \{result.context_files_failed}"
 }
 
 ///|

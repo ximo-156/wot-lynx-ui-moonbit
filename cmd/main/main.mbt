@@ -24,6 +24,19 @@ struct Options {
   mut fix_tab_width : Int32?
   mut incremental : Bool
   mut cache_file : String
+  mut project_mode : ProjectMode?
+  mut api_toolchain : String?
+  mut api_backend : String?
+  mut api_module_version : String?
+  mut api_version_policy : String
+  mut baseline_format : String
+  mut baseline_format_set : Bool
+  mut baseline_reason : String?
+  mut baseline_owner : String?
+  mut baseline_expires : String?
+  mut baseline_today : String?
+  mut audit_baseline : Bool
+  mut migrate_baseline : Bool
 }
 
 ///|
@@ -45,6 +58,10 @@ fn main {
     print_help()
     return
   }
+  if opts.project_mode is Some(_) {
+    run_project_mode(opts) catch { error => die(@lib.error_message(error)) }
+    return
+  }
   if opts.list_presets {
     println(@lib.render_preset_list())
     return
@@ -64,46 +81,19 @@ fn main {
 /// Generate a starter moonlint.json config file.
 fn init_config() -> Unit raise {
   let path = "moonlint.json"
-  let exists = @fs.read_file_to_string(path) catch { _ => "" }
-  if exists != "" {
+  if @lib.source_path_kind(path) != 0 {
     println("moonlint: \{path} already exists")
     return
   }
   let config =
     #|{
     #|  "exclude": ["**/*_test.mbt", "**/*_wbtest.mbt"],
-    #|  "rules": [
-    #|    {
-    #|      "id": "moonbit/no-todo-comment",
-    #|      "severity": "warning",
-    #|      "message": "TODO/FIXME comment left in code",
-    #|      "extensions": [".mbt"],
-    #|      "match": { "regex": "^[[:space:]]*//[[:space:]]*(TODO|FIXME)([[:space:]:]|$)" },
-    #|      "match_comments": true
-    #|    },
-    #|    {
-    #|      "id": "moonbit/no-unwrap",
-    #|      "severity": "warning",
-    #|      "message": "unwrap() can panic; handle the error explicitly",
-    #|      "extensions": [".mbt"],
-    #|      "match": { "regex": "^[^\"]*\\.unwrap\\(\\)" }
-    #|    }
-    #|  ],
+    #|  "rules": [],
     #|  "structural_rules": [
-    #|    {
-    #|      "id": "moonbit/require-public-doc",
-    #|      "severity": "error",
-    #|      "message": "Public item is missing a ///| doc comment",
-    #|      "extensions": [".mbt"],
-    #|      "check": { "moonbit_require_public_doc": true }
-    #|    },
-    #|    {
-    #|      "id": "moonbit/naming",
-    #|      "severity": "error",
-    #|      "message": "Name does not follow the MoonBit naming convention",
-    #|      "extensions": [".mbt"],
-    #|      "check": { "moonbit_naming": true }
-    #|    }
+    #|    { "id": "moonbit/no-todo-comment", "severity": "warning", "message": "TODO/FIXME comment left in code", "extensions": [".mbt"], "check": { "moonbit_no_todo": true } },
+    #|    { "id": "moonbit/no-unwrap", "severity": "warning", "message": "Method named unwrap() requires review; it may panic", "extensions": [".mbt"], "check": { "moonbit_no_unwrap": true } },
+    #|    { "id": "moonbit/require-public-doc", "severity": "error", "message": "Public item is missing documentation", "extensions": [".mbt"], "check": { "moonbit_require_public_doc": true } },
+    #|    { "id": "moonbit/naming", "severity": "error", "message": "Name does not follow the MoonBit naming convention", "extensions": [".mbt"], "check": { "moonbit_naming": true } }
     #|  ]
     #|}
     #|
@@ -149,12 +139,13 @@ fn run(opts : Options) -> Unit raise {
     Ok(_) => ()
     Err(@lib.ConfigError(message)) => raise Failure("config error: \{message}")
   }
-  if opts.update_baseline &&
+  if (opts.update_baseline || opts.audit_baseline) &&
     (opts.scan_mode.tag() != "tree" || !opts.exts.is_empty()) {
     raise Failure(
       "--update-baseline requires a full tree scan without --ext or other scan modes",
     )
   }
+  if opts.fix && (opts.update_baseline || opts.audit_baseline) { raise Failure("--fix cannot be combined with baseline update/migration/audit") }
   // --fix writes the working tree; Git-backed modes read blobs, so fixes would
   // never be reflected in the re-scan and the report would contradict disk.
   if opts.fix &&
@@ -192,18 +183,18 @@ fn run(opts : Options) -> Unit raise {
     raise Failure("--dry-run only applies to --fix")
   }
   if opts.fix {
-    apply_fixes(root, files, file_rules, opts.fix_tab_width, opts.dry_run)
+    if result.files_failed + result.context_files_failed > 0 {
+      write_report(result, opts, scan)
+      emit(result, opts, scan)
+      @sys.exit(2)
+      return
+    }
+    apply_fixes(root, files, file_rules, config.scope, opts.fix_tab_width, opts.dry_run)
     // A dry run leaves the working tree untouched, so re-scanning would
     // report the same findings again and suggest the fixes did nothing. The
     // pre-fix result is the honest answer: it is what the user still has.
     if opts.dry_run {
-      write_report(result, opts, scan)
-      emit(result, opts, scan)
-      if result.files_failed > 0 {
-        @sys.exit(2)
-      } else if result.has_errors() {
-        @sys.exit(1)
-      }
+      finish_source_run(result, opts, scan)
       return
     }
     // Re-scan after fixes. Fixes were written to the working tree, so a
@@ -219,49 +210,10 @@ fn run(opts : Options) -> Unit raise {
       config.scope,
     )
     persist_cache(opts, cache2)
-    write_report(result2, opts, scan)
-    emit(result2, opts, scan)
-    if result2.files_failed > 0 {
-      @sys.exit(2)
-    } else if result2.has_errors() {
-      @sys.exit(1)
-    }
+    finish_source_run(result2, opts, scan)
     return
   }
-  if opts.update_baseline {
-    if result.files_failed > 0 {
-      emit(result, opts, scan)
-      @sys.exit(2)
-      return
-    }
-    let path = opts.baseline.unwrap_or("moonlint.baseline.json")
-    // Refresh from raw findings BEFORE partition; repeated refresh is idempotent.
-    @lib.write_atomic_text(path, @lib.Baseline::render(result.findings))
-    if opts.format is Text {
-      println("moonlint: wrote \{result.findings.length()} findings to \{path}")
-    }
-    write_report(result, opts, scan)
-    emit(result, opts, scan)
-    return
-  }
-  let final_result = match opts.baseline {
-    None => result
-    Some(path) => {
-      let source = @fs.read_file_to_string(path) catch {
-        _ => raise Failure("cannot read baseline: \{path}")
-      }
-      let baseline = @lib.Baseline::parse(source)
-      let (findings, suppressed) = baseline.partition(result.findings)
-      result.with_findings(findings, suppressed.length())
-    }
-  }
-  write_report(final_result, opts, scan)
-  emit(final_result, opts, scan)
-  if final_result.files_failed > 0 {
-    @sys.exit(2)
-  } else if final_result.has_errors() {
-    @sys.exit(1)
-  }
+  finish_source_run(result, opts, scan)
 }
 
 ///|
@@ -336,24 +288,37 @@ fn apply_fixes(
   root : String,
   files : Array[String],
   file_rules : Array[@lib.FileRule],
+  scope : @lib.Scope,
   tab_width : Int32?,
   dry_run : Bool,
 ) -> Unit raise {
   let mut fixed_count = 0
   for rel in files {
+    if !scope.allows(rel) { continue }
     // Only rules that genuinely apply to this path, including scope.
     let applicable = file_rules.filter(fr => fr.applies_to(rel))
     if applicable.is_empty() {
       continue
     }
     let path = "\{root}/\{rel}"
-    let source = @fs.read_file_to_string(path) catch { _ => continue }
+    @lib.validate_fix_path(root, rel)
+    let source = @lib.read_fix_source(root, rel)
+    let script_fix = [".js", ".mjs", ".cjs", ".ts", ".mts", ".cts", ".jsx", ".tsx"].any(ext => rel.has_suffix(ext)) && !source.contains("<")
     let crlf = source.contains("\r\n")
     let mut fixed = source
     let mut changed = false
+    if rel.has_suffix(".mbt") {
+      fixed = @lib.fix_moonbit_whitespace(source,
+        applicable.any(fr => fr.check is @lib.FileCheck::NoTrailingWhitespace),
+        if applicable.any(fr => fr.check is @lib.FileCheck::NoTabs) { tab_width } else { None },
+        applicable.any(fr => fr.check is @lib.FileCheck::FinalNewline))
+      changed = fixed != source
+    }
     for fr in applicable {
+      if rel.has_suffix(".mbt") { continue }
       match fr.check {
         @lib.FileCheck::NoTrailingWhitespace => {
+          if !script_fix || source.contains("`") { continue }
           let lines = fixed.split("\n")
           let new_lines : Array[String] = []
           for line_view in lines {
@@ -370,7 +335,8 @@ fn apply_fixes(
           // Tab replacement is opt-in: it silently changes indentation width.
           match tab_width {
             Some(width) =>
-              if fixed.contains("\t") {
+              if script_fix && !source.contains("`") && !source.contains("\"") &&
+                !source.contains("'") && !source.contains("/") && fixed.contains("\t") {
                 let parts = fixed.split("\t")
                 fixed = parts.join(" ".repeat(width))
                 changed = true
@@ -378,7 +344,7 @@ fn apply_fixes(
             None => ()
           }
         @lib.FileCheck::FinalNewline =>
-          if fixed.length() > 0 && !fixed.has_suffix("\n") {
+          if script_fix && !source.contains("`") && fixed.length() > 0 && !fixed.has_suffix("\n") {
             // Match the file's existing convention instead of forcing LF.
             fixed = fixed + (if crlf { "\r\n" } else { "\n" })
             changed = true
@@ -389,6 +355,8 @@ fn apply_fixes(
     if changed {
       if !dry_run {
         // Atomic replace: a crash mid-write must not truncate user source.
+        @lib.validate_fix_path(root, rel)
+        if @lib.read_fix_source(root, rel) != source { raise Failure("source changed before fix: \{rel}") }
         @lib.write_atomic_text(path, fixed)
       }
       fixed_count += 1
@@ -408,11 +376,12 @@ fn apply_fixes(
 /// Trim trailing whitespace (spaces and tabs) from a string.
 fn trim_trailing_ws(s : String) -> String {
   let chars = s.to_array()
-  let mut end = chars.length()
+  let has_cr = chars.length() > 0 && chars[chars.length() - 1] == '\r'
+  let mut end = chars.length() - if has_cr { 1 } else { 0 }
   while end > 0 && (chars[end - 1] == ' ' || chars[end - 1] == '\t') {
     end -= 1
   }
-  String::from_array(chars[:end])
+  String::from_array(chars[:end]) + if has_cr { "\r" } else { "" }
 }
 
 ///|
@@ -562,6 +531,19 @@ fn parse_args(args : Array[String]) -> Options raise {
     fix_tab_width: None,
     incremental: false,
     cache_file: ".moonlint-cache.json",
+    project_mode: None,
+    api_toolchain: None,
+    api_backend: None,
+    api_module_version: None,
+    api_version_policy: "none",
+    baseline_format: "legacy",
+    baseline_format_set: false,
+    baseline_reason: None,
+    baseline_owner: None,
+    baseline_expires: None,
+    baseline_today: None,
+    audit_baseline: false,
+    migrate_baseline: false,
   }
   let mut i = 1
   let mut positional_only = false
@@ -579,6 +561,31 @@ fn parse_args(args : Array[String]) -> Options raise {
     match arg {
       "--" => positional_only = true
       "-h" | "--help" => opts.help = true
+      "--package-graph" => {
+        i += 1
+        set_project_mode(opts, PackageGraph(option_value(args, i, arg)))
+      }
+      "--api-snapshot" => {
+        i += 1
+        set_project_mode(opts, ApiSnapshot(option_value(args, i, arg)))
+      }
+      "--api-check" => {
+        i += 1
+        let before = option_value(args, i, arg)
+        i += 1
+        let after = option_value(args, i, arg)
+        set_project_mode(opts, ApiCheck(before, after))
+      }
+      "--api-toolchain" => { i += 1; opts.api_toolchain = Some(option_value(args, i, arg)) }
+      "--api-backend" => { i += 1; opts.api_backend = Some(option_value(args, i, arg)) }
+      "--api-module-version" => { i += 1; opts.api_module_version = Some(option_value(args, i, arg)) }
+      "--api-version-policy" => {
+        i += 1
+        opts.api_version_policy = option_value(args, i, arg)
+        if opts.api_version_policy != "none" && opts.api_version_policy != "semver" {
+          raise Failure("--api-version-policy expects none or semver")
+        }
+      }
       "--config" => {
         i += 1
         opts.config = option_value(args, i, arg)
@@ -601,6 +608,23 @@ fn parse_args(args : Array[String]) -> Options raise {
           Some(w) => opts.fix_tab_width = Some(w)
           None => raise Failure("--fix-tab-width expects a positive integer")
         }
+      }
+      "--baseline-format" => {
+        i += 1
+        opts.baseline_format = option_value(args, i, arg)
+        opts.baseline_format_set = true
+        if opts.baseline_format != "legacy" && opts.baseline_format != "v2" { raise Failure("--baseline-format expects legacy or v2") }
+      }
+      "--baseline-reason" => { i += 1; opts.baseline_reason = Some(option_value(args, i, arg)) }
+      "--baseline-owner" => { i += 1; opts.baseline_owner = Some(option_value(args, i, arg)) }
+      "--baseline-expires" => { i += 1; opts.baseline_expires = Some(option_value(args, i, arg)) }
+      "--baseline-today" => { i += 1; opts.baseline_today = Some(option_value(args, i, arg)) }
+      "--audit-baseline" => opts.audit_baseline = true
+      "--migrate-baseline" => {
+        opts.migrate_baseline = true
+        opts.update_baseline = true
+        opts.baseline_format = "v2"
+        opts.baseline_format_set = true
       }
       "--baseline" => {
         i += 1
@@ -669,6 +693,19 @@ fn parse_args(args : Array[String]) -> Options raise {
     }
     i += 1
   }
+  if opts.project_mode is None && (opts.api_toolchain is Some(_) || opts.api_backend is Some(_) ||
+    opts.api_module_version is Some(_) || opts.api_version_policy != "none") {
+    raise Failure("API metadata/version options require an API policy mode")
+  }
+  if opts.fix_tab_width is Some(_) && !opts.fix { raise Failure("--fix-tab-width requires --fix") }
+  if !opts.help {
+    if opts.audit_baseline && (opts.baseline is None || opts.update_baseline) { raise Failure("--audit-baseline requires --baseline and cannot update it") }
+    if opts.migrate_baseline && (opts.baseline is None || opts.baseline_format != "v2") { raise Failure("--migrate-baseline requires a named legacy baseline and v2 format") }
+    if opts.baseline_format_set && !opts.update_baseline { raise Failure("--baseline-format only applies to baseline writes") }
+    if (opts.baseline_reason is Some(_) || opts.baseline_owner is Some(_) || opts.baseline_expires is Some(_)) &&
+      (!opts.update_baseline || opts.baseline_format != "v2") { raise Failure("exception metadata requires a v2 baseline write") }
+    if opts.baseline_today is Some(_) && opts.baseline is None { raise Failure("--baseline-today requires --baseline") }
+  }
   opts
 }
 
@@ -697,6 +734,19 @@ fn print_help() -> Unit {
       "Matcher DSL: \"match\"/\"unless\" nest all/any/not over contains/prefix/suffix/regex/equals/word",
       "", "Symbolic links are skipped. Git/read failures exit 2; no silent fallback.",
       "Incremental caching re-lints only changed files; Watch is not implemented.",
+      "", "Project policies (read pre-generated compiler output; no implicit build):",
+      "  --package-graph <json> --config <policy.json>   Check moon tree schema v3",
+      "  --api-snapshot <mbti> --api-toolchain <id> --api-backend <target>",
+      "                  --api-module-version <version>   Write snapshot JSON",
+      "  --api-check <before.json> <after.json>           Compare public interfaces",
+      "  --api-version-policy none|semver                Opt-in release policy",
+      "", "Versioned exceptions (baseline loading is always explicit):",
+      "  --update-baseline --baseline-format v2 --baseline-reason <reason>",
+      "                  --baseline-owner <owner> [--baseline-expires YYYY-MM-DD]",
+      "  --audit-baseline --baseline <v2.json>    Audit a full tree and count budgets",
+      "  --migrate-baseline --baseline <legacy.json> --baseline-reason R --baseline-owner O",
+      "  --baseline-today YYYY-MM-DD             Override UTC date for reproducible checks",
+      "Unknown graph/interface metadata or syntax exits 2, never a clean pass.",
       "Exit: 0 no lint errors, 1 lint errors, 2 argument/config/scan/IO failure.",
     ].join("\n"),
   )

@@ -15,6 +15,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <time.h>
 #include "moonbit.h"
 
 #if defined(__APPLE__) || defined(__linux__)
@@ -221,6 +222,7 @@ static int git_run(struct moonlint_result *r, const char *root,
   memset(output, 0, sizeof(*output));
   argv[argc++] = (char *)"git";
   argv[argc++] = (char *)"--no-pager";
+  argv[argc++] = (char *)"--no-replace-objects";
   argv[argc++] = (char *)"--no-optional-locks";
   argv[argc++] = (char *)"--literal-pathspecs";
   argv[argc++] = (char *)"-c";
@@ -561,6 +563,73 @@ static void git_staged(struct moonlint_result *r, const char *root) {
   git_context_free(&c);
 }
 
+/* Capture immutable blob ids for complete HEAD/index context. */
+static void git_snapshot(struct moonlint_result *r, const char *root, int staged) {
+  struct git_context c;
+  struct git_output output;
+  char *head = NULL;
+  size_t start = 0, prefix_len;
+  const char *index_args[] = {"ls-files", "--stage", "--full-name", "-z", NULL};
+  const char *head_args[] = {"ls-tree", "-r", "--full-tree", "-z", NULL, NULL};
+  if (!git_context_open(r, root, &c)) return;
+  if (staged) {
+    if (!git_reject_unmerged(r, &c)) goto done;
+    if (!buffer_append(&r->out, "index", 6)) goto memory;
+    if (!git_run(r, c.top, "index snapshot", index_args, &output)) goto done;
+  } else {
+    head = git_commit(r, &c, "HEAD");
+    if (!head) goto done;
+    if (!buffer_append(&r->out, head, strlen(head) + 1)) goto memory;
+    head_args[4] = head;
+    if (!git_run(r, c.top, "HEAD snapshot", head_args, &output)) goto done;
+  }
+  prefix_len = strlen(c.prefix);
+  while (start < output.out.len) {
+    const unsigned char *record = output.out.data + start;
+    const unsigned char *nul = memchr(record, '\0', output.out.len - start);
+    const unsigned char *tab = nul ? memchr(record, '\t', (size_t)(nul - record)) : NULL;
+    size_t path_len;
+    if (!nul || !tab || tab + 1 == nul) {
+      result_fail(r, "malformed Git snapshot record"); break;
+    }
+    path_len = (size_t)(nul - tab - 1);
+    if (path_len > prefix_len && (!prefix_len || !memcmp(tab + 1, c.prefix, prefix_len))) {
+      const char *rel = (const char *)tab + 1 + prefix_len;
+      if (!path_is_relative(r, rel)) break;
+      if (!buffer_append(&r->out, record, (size_t)(tab - record) + 1) ||
+          !buffer_append(&r->out, rel, path_len - prefix_len + 1)) {
+        result_fail(r, "Git snapshot is too large or memory is exhausted"); break;
+      }
+    }
+    start = (size_t)(nul - output.out.data) + 1;
+  }
+  git_output_free(&output);
+  goto done;
+memory:
+  result_fail(r, "native bridge: out of memory");
+done:
+  free(head);
+  git_context_free(&c);
+}
+
+static void git_object_blob(struct moonlint_result *r, const char *root, const char *oid) {
+  struct git_context c;
+  struct git_output output;
+  const char *args[] = {"cat-file", "blob", oid, NULL};
+  size_t n = strlen(oid), i;
+  if (n != 40 && n != 64) { result_fail(r, "invalid blob object id"); return; }
+  for (i = 0; i < n; i++) if (!((oid[i] >= '0' && oid[i] <= '9') || (oid[i] >= 'a' && oid[i] <= 'f'))) {
+    result_fail(r, "invalid blob object id"); return;
+  }
+  if (!git_context_open(r, root, &c)) return;
+  if (git_run(r, c.top, "read immutable blob", args, &output)) {
+    if (!buffer_append(&r->out, output.out.data, output.out.len))
+      result_fail(r, "Git blob is too large or memory is exhausted");
+    git_output_free(&output);
+  }
+  git_context_free(&c);
+}
+
 static int mode_kind(unsigned int mode) {
   if ((mode & 0170000) == 0100000) return 1;
   if ((mode & 0170000) == 0040000) return 2;
@@ -846,6 +915,17 @@ MOONBIT_FFI_EXPORT void *moonlint_native_request(int32_t operation,
       if (second_len < 0) result_fail(r, "negative atomic-write content length");
       else atomic_write(r, (const char *)first, second, (size_t)second_len);
       break;
+    case 8: git_snapshot(r, (const char *)first, flag != 0); break;
+    case 9: git_object_blob(r, (const char *)first, (const char *)second); break;
+    case 10: {
+      time_t now = time(NULL);
+      struct tm utc;
+      char date[16];
+      if (now == (time_t)-1 || !gmtime_r(&now, &utc) || strftime(date, sizeof(date), "%Y-%m-%d", &utc) != 10)
+        result_fail(r, "cannot obtain UTC calendar date");
+      else if (!buffer_append(&r->out, date, 10)) result_fail(r, "native bridge: out of memory");
+      break;
+    }
     default: result_fail(r, "unsupported native operation"); break;
   }
 #else

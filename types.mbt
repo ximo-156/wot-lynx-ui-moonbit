@@ -276,6 +276,14 @@ pub enum StructuralCheck {
   MoonbitRequirePublicDoc
   /// A MoonBit declaration name does not follow the language convention.
   MoonbitNaming
+  /// A syntactic method call named unwrap, excluding literal text and tests.
+  MoonbitNoUnwrap
+  /// A syntactic unqualified panic call, excluding declarations and tests.
+  MoonbitNoPanic
+  /// A syntactic unqualified println call, excluding declarations and tests.
+  MoonbitNoPrintln
+  /// A TODO/FIXME marker at the start of an actual comment.
+  MoonbitNoTodo
 } derive(Debug, Eq)
 
 ///|
@@ -309,6 +317,12 @@ pub struct LintResult {
   files_failed : Int32
   /// Candidate files removed by the global scope before scanning.
   files_out_of_scope : Int32
+  /// Additional dependency files read only to supply structural context.
+  context_files_scanned : Int32
+  /// Context read failures make cross-file checks inconclusive.
+  context_files_failed : Int32
+  /// Captured Git commit id or index label; None means working-tree input.
+  source_snapshot : String?
   /// Findings suppressed by the baseline.
   baseline_hits : Int32
   diagnostics : Array[Diagnostic]
@@ -329,6 +343,9 @@ pub fn LintResult::new(
     files_skipped: 0,
     files_failed: 0,
     files_out_of_scope: 0,
+    context_files_scanned: 0,
+    context_files_failed: 0,
+    source_snapshot: None,
     baseline_hits,
     diagnostics: [],
     skipped_files: [],
@@ -349,6 +366,9 @@ pub fn LintResult::with_findings(
     files_skipped: self.files_skipped,
     files_failed: self.files_failed,
     files_out_of_scope: self.files_out_of_scope,
+    context_files_scanned: self.context_files_scanned,
+    context_files_failed: self.context_files_failed,
+    source_snapshot: self.source_snapshot,
     baseline_hits,
     diagnostics: self.diagnostics,
     skipped_files: self.skipped_files,

@@ -942,55 +942,6 @@ fn moonbit_cli_scope() -> Scope {
 }
 
 ///|
-fn moonbit_rule_with_scope(
-  id : String,
-  severity : Severity,
-  message : String,
-  match_ : MatchKind,
-  scope : Scope,
-) -> Rule {
-  {
-    id,
-    severity,
-    message,
-    extensions: [".mbt"],
-    match_,
-    unless: None,
-    scope,
-    match_comments: false,
-  }
-}
-
-///|
-fn moonbit_rule(
-  id : String,
-  severity : Severity,
-  message : String,
-  match_ : MatchKind,
-) -> Rule {
-  moonbit_rule_with_scope(id, severity, message, match_, moonbit_scope())
-}
-
-///|
-fn moonbit_comment_rule(
-  id : String,
-  severity : Severity,
-  message : String,
-  match_ : MatchKind,
-) -> Rule {
-  {
-    id,
-    severity,
-    message,
-    extensions: [".mbt"],
-    match_,
-    unless: None,
-    scope: moonbit_scope(),
-    match_comments: true,
-  }
-}
-
-///|
 fn moonbit_structural_rule(
   id : String,
   severity : Severity,
@@ -1008,50 +959,29 @@ fn moonbit_structural_rule(
 }
 
 ///|
-/// Line-level MoonBit rules. These are the conventions that are cheap to
-/// state as text and expensive to enforce by review: panic-prone calls,
-/// leftover debug output, and TODO markers.
-fn moonbit_rules() -> Array[Rule] {
-  [
-    moonbit_rule(
-      "moonbit/no-unwrap",
-      Severity::warning(),
-      "unwrap() can panic; handle the error explicitly",
-      Regex("^[^\"]*\\.unwrap\\(\\)"),
-    ),
-    moonbit_rule(
-      "moonbit/no-panic",
-      Severity::warning(),
-      "panic() in regular code",
-      Regex("^[^\"]*\\bpanic\\("),
-    ),
-    moonbit_comment_rule(
-      "moonbit/no-todo-comment",
-      Severity::warning(),
-      "TODO/FIXME comment left in code",
-      Regex("^[[:space:]]*//[[:space:]]*(TODO|FIXME)([[:space:]:]|$)"),
-    ),
-    moonbit_rule_with_scope(
-      "moonbit/no-println",
-      Severity::warning(),
-      "println() left in library code",
-      Regex("^[^\"]*\\bprintln\\("),
-      moonbit_cli_scope(),
-    ),
-  ]
-}
+/// MoonBit builtins use structural, lexical call/comment checks rather than
+/// regular expressions. Custom line rules remain available through JSON.
+fn moonbit_rules() -> Array[Rule] { [] }
 
 ///|
-/// Declaration-level MoonBit rules. Both need the scanner: `moon check`
-/// proves types, `moon fmt` fixes layout, but neither can tell whether a
-/// public item has a `///|` block or whether its name follows the language
-/// convention.
+/// MoonBit declaration, code-call and actual-comment policies. The compiler's
+/// optional W74 already checks missing documentation; these rules add scopes,
+/// baseline integration and configurable project conventions.
 fn moonbit_structural_rules() -> Array[StructuralRule] {
   [
+    moonbit_structural_rule("moonbit/no-unwrap", Severity::warning(),
+      "Method named unwrap() requires review; it may panic", MoonbitNoUnwrap),
+    moonbit_structural_rule("moonbit/no-panic", Severity::warning(),
+      "panic() in regular code", MoonbitNoPanic),
+    moonbit_structural_rule("moonbit/no-todo-comment", Severity::warning(),
+      "TODO/FIXME comment left in code", MoonbitNoTodo),
+    { id: "moonbit/no-println", severity: Severity::warning(),
+      message: "println() left in library code", extensions: [".mbt"],
+      check: MoonbitNoPrintln, scope: moonbit_cli_scope() },
     moonbit_structural_rule(
       "moonbit/require-public-doc",
       Severity::error(),
-      "Public item is missing a ///| doc comment",
+      "Public item is missing documentation",
       MoonbitRequirePublicDoc,
     ),
     moonbit_structural_rule(

@@ -186,7 +186,7 @@ pub fn analyze(
           check_unused_exports(
             rule, file, export_usage, namespace_used, findings,
           )
-        MoonbitRequirePublicDoc | MoonbitNaming => ()
+        MoonbitRequirePublicDoc | MoonbitNaming | MoonbitNoUnwrap | MoonbitNoPanic | MoonbitNoPrintln | MoonbitNoTodo => ()
       }
     }
   }

@@ -5,10 +5,9 @@
 /// syntax, so MoonBit files are handled by a declaration scanner instead:
 /// comments and string literals are blanked in place, brace depth separates
 /// top-level items from function/impl/test bodies, and `///|` blocks are
-/// attached to the declaration that follows them. That is enough for the
-/// conventions neither `moon check` nor `moon fmt` enforces: public API
-/// documentation, naming, and the panic-prone calls covered by the preset's
-/// line rules.
+/// attached to the declaration that follows them. The compiler already offers
+/// missing_doc (W74); this layer supplies configurable scopes, naming and
+/// syntactic call policies without claiming a complete AST or type resolver.
 
 ///|
 /// The kind of a top-level MoonBit declaration.
@@ -22,6 +21,10 @@ priv enum MoonbitDeclKind {
   MLet
   MConst
   MTest
+  MSuberror
+  MExtern
+  MUsing
+  MExtend
 } derive(Debug, Eq)
 
 ///|
@@ -31,6 +34,8 @@ priv struct MoonbitDecl {
   /// The declared name. Empty when the syntax does not expose a simple name
   /// (for example `let (a, b) = ...` or `test { ... }`).
   name : String
+  /// Receiver identity is retained for qualified methods.
+  receiver : String
   /// 1-based line of the declaration keyword.
   line : Int32
   /// Whether the declaration starts with `pub` / `pub(...)`.
@@ -60,80 +65,7 @@ fn moonbit_is_ident_char(c : Char) -> Bool {
 /// an unrecognised comment opener would otherwise let braces inside it leak
 /// into the depth count.
 fn moonbit_strip(src : String) -> String {
-  let chars = src.to_array()
-  let out : Array[Char] = []
-  let n = chars.length()
-  let mut i = 0
-  while i < n {
-    let c = chars[i]
-    if c == '/' && i + 1 < n && chars[i + 1] == '/' {
-      while i < n && chars[i] != '\n' {
-        out.push(' ')
-        i += 1
-      }
-      continue
-    }
-    if c == '/' && i + 1 < n && chars[i + 1] == '*' {
-      out.push(' ')
-      out.push(' ')
-      i += 2
-      while i < n {
-        if chars[i] == '*' && i + 1 < n && chars[i + 1] == '/' {
-          out.push(' ')
-          out.push(' ')
-          i += 2
-          break
-        }
-        if chars[i] == '\n' {
-          out.push('\n')
-        } else {
-          out.push(' ')
-        }
-        i += 1
-      }
-      continue
-    }
-    if c == '"' || c == '\'' {
-      let quote = c
-      out.push(' ')
-      i += 1
-      let mut escaped = false
-      while i < n {
-        let d = chars[i]
-        if escaped {
-          escaped = false
-          if d == '\n' {
-            out.push('\n')
-          } else {
-            out.push(' ')
-          }
-          i += 1
-          continue
-        }
-        if d == '\\' {
-          escaped = true
-          out.push(' ')
-          i += 1
-          continue
-        }
-        if d == quote {
-          out.push(' ')
-          i += 1
-          break
-        }
-        if d == '\n' {
-          out.push('\n')
-        } else {
-          out.push(' ')
-        }
-        i += 1
-      }
-      continue
-    }
-    out.push(c)
-    i += 1
-  }
-  String::from_array(out)
+  moonbit_lex(src).declarations
 }
 
 ///|
@@ -243,6 +175,7 @@ fn moonbit_parse_decl(
     return None
   }
   i = moonbit_skip_spaces(chars, after)
+  let mut receiver = ""
   let (kind, name) = match keyword {
     "fn" => {
       if i < n && chars[i] == '[' {
@@ -253,6 +186,7 @@ fn moonbit_parse_decl(
       let mut name = first
       let mut k = j
       if k + 1 < n && chars[k] == ':' && chars[k + 1] == ':' {
+        receiver = first
         k += 2
         let (second, l) = moonbit_read_word(chars, k)
         if second != "" {
@@ -334,9 +268,17 @@ fn moonbit_parse_decl(
       (MImpl, name)
     }
     "test" => (MTest, "")
+    "suberror" => { let (name, _) = moonbit_read_word(chars, i); (MSuberror, name) }
+    "extern" => {
+      if moonbit_match_word(chars, i, "fn") { i = moonbit_skip_spaces(chars, i + 2) }
+      let (name, _) = moonbit_read_word(chars, i)
+      (MExtern, name)
+    }
+    "using" => (MUsing, "")
+    "extend" => (MExtend, "")
     _ => return None
   }
-  Some({ kind, name, line: lineno, is_pub, has_doc, })
+  Some({ kind, name, receiver, line: lineno, is_pub, has_doc, })
 }
 
 ///|
@@ -348,55 +290,54 @@ fn moonbit_parse_decl(
 /// pending block.
 fn scan_moonbit_decls(src : String) -> Array[MoonbitDecl] {
   let decls : Array[MoonbitDecl] = []
-  let raw_lines = split_lines(src)
-  let code_lines = split_lines(moonbit_strip(src))
-  let limit = if raw_lines.length() < code_lines.length() {
-    raw_lines.length()
-  } else {
-    code_lines.length()
-  }
+  let view = moonbit_lex(src)
+  let comments = split_lines(view.comments)
+  let code_lines = split_lines(view.declarations)
   let mut depth = 0
   let mut doc_active = false
-  for idx in 0..<limit {
+  let mut attribute_depth = 0
+  for idx in 0..<code_lines.length() {
     let (lineno, code_line) = code_lines[idx]
-    let (_, raw_line) = raw_lines[idx]
-    let raw_trim = raw_line.trim().to_owned()
-    if depth == 0 && raw_trim.has_prefix("///|") {
-      doc_active = true
-      continue
-    }
-    if depth == 0 && raw_trim.has_prefix("///") {
-      if doc_active {
-        continue
-      }
-    }
-    if raw_trim == "" {
+    let (_, comment) = comments[idx]
+    let text = comment.trim().to_owned()
+    let mut code = code_line.trim().to_owned()
+    if depth == 0 && code == "" && text.has_prefix("///|") {
       doc_active = false
       continue
     }
-    if raw_trim.has_prefix("#") {
+    if depth == 0 && code == "" && text.has_prefix("///") {
+      if text[3:].trim().to_owned() != "" { doc_active = true }
+      continue
+    }
+    if depth == 0 && (code.has_prefix("#") || attribute_depth > 0) {
+      if code.contains("#doc(hidden)") { doc_active = true }
+      for c in code.iter() {
+        if c == '(' || c == '[' { attribute_depth += 1 }
+        else if (c == ')' || c == ']') && attribute_depth > 0 { attribute_depth -= 1 }
+      }
+      match moonbit_public_offset(code) {
+        Some(offset) if attribute_depth == 0 => code = String::from_array(code.to_array()[offset:])
+        _ => {
+          for c in code_line.iter() {
+            if c == '{' { depth += 1 } else if c == '}' && depth > 0 { depth -= 1 }
+          }
+          continue
+        }
+      }
+    }
+    if code == "" {
+      doc_active = false
       continue
     }
     if depth == 0 {
-      match
-        moonbit_parse_decl(code_line.trim().to_owned(), lineno, doc_active) {
-        Some(decl) => {
-          decls.push(decl)
-          doc_active = false
-        }
+      match moonbit_parse_decl(code, lineno, doc_active) {
+        Some(decl) => { decls.push(decl); doc_active = false }
         None => doc_active = false
       }
-    } else {
-      doc_active = false
-    }
+    } else { doc_active = false }
     for c in code_line.iter() {
-      if c == '{' {
-        depth += 1
-      } else if c == '}' {
-        if depth > 0 {
-          depth -= 1
-        }
-      }
+      if c == '{' { depth += 1 }
+      else if c == '}' && depth > 0 { depth -= 1 }
     }
   }
   decls
@@ -414,6 +355,10 @@ fn moonbit_kind_name(kind : MoonbitDeclKind) -> String {
     MLet => "let"
     MConst => "const"
     MTest => "test"
+    MSuberror => "suberror"
+    MExtern => "extern fn"
+    MUsing => "using"
+    MExtend => "extend"
   }
 }
 
@@ -422,8 +367,8 @@ fn moonbit_kind_name(kind : MoonbitDeclKind) -> String {
 /// expected to carry a `///|` doc block when it is `pub`.
 fn moonbit_needs_doc(kind : MoonbitDeclKind) -> Bool {
   match kind {
-    MFn | MStruct | MEnum | MType | MTrait | MLet | MConst => true
-    MImpl | MTest => false
+    MFn | MStruct | MEnum | MType | MTrait | MLet | MConst | MSuberror | MExtern => true
+    MImpl | MTest | MUsing | MExtend => false
   }
 }
 
@@ -508,20 +453,20 @@ fn moonbit_is_screaming(name : String) -> Bool {
 ///|
 fn moonbit_name_ok(kind : MoonbitDeclKind, name : String) -> Bool {
   match kind {
-    MFn | MLet => moonbit_is_snake(name)
-    MStruct | MEnum | MType | MTrait => moonbit_is_pascal(name)
+    MFn | MLet | MExtern => moonbit_is_snake(name)
+    MStruct | MEnum | MType | MTrait | MSuberror => moonbit_is_pascal(name)
     MConst => moonbit_is_screaming(name)
-    MImpl | MTest => true
+    MImpl | MTest | MUsing | MExtend => true
   }
 }
 
 ///|
 fn moonbit_expected_style(kind : MoonbitDeclKind) -> String {
   match kind {
-    MFn | MLet => "snake_case"
-    MStruct | MEnum | MType | MTrait => "PascalCase"
+    MFn | MLet | MExtern => "snake_case"
+    MStruct | MEnum | MType | MTrait | MSuberror => "PascalCase"
     MConst => "SCREAMING_SNAKE_CASE"
-    MImpl | MTest => ""
+    MImpl | MTest | MUsing | MExtend => ""
   }
 }
 
@@ -569,6 +514,7 @@ fn analyze_moonbit(
     if !rel.has_suffix(".mbt") {
       continue
     }
+    let view = moonbit_lex(source)
     let decls = scan_moonbit_decls(source)
     for rule in rules {
       if !rule.applies_to(rel) {
@@ -584,7 +530,7 @@ fn analyze_moonbit(
                   rel,
                   source,
                   decl.line,
-                  "public \{moonbit_kind_name(decl.kind)} '\{decl.name}' has no ///| doc comment",
+                  "public \{moonbit_kind_name(decl.kind)} '\{decl.name}' has no non-empty doc comment",
                 ),
               )
             }
@@ -603,6 +549,12 @@ fn analyze_moonbit(
               )
             }
           }
+        MoonbitNoUnwrap | MoonbitNoPanic | MoonbitNoPrintln => {
+          for finding in moonbit_call_findings(rel, source, view, rule) { findings.push(finding) }
+        }
+        MoonbitNoTodo => {
+          for finding in moonbit_todo_findings(rel, source, view, rule) { findings.push(finding) }
+        }
         _ => ()
       }
     }

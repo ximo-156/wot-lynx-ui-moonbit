@@ -38,12 +38,16 @@ pub(all) suberror ConfigError {
 ///|
 /// Parse a rules config from a JSON string.
 pub fn parse_config(src : String) -> Result[LintConfig, ConfigError] {
-  let json = @json.parse(src) catch {
+  let json = @json.parse(src, max_nesting_depth=64, reject_duplicate_keys=true) catch {
     _ => return Err(ConfigError("config is not valid JSON"))
   }
   let obj = match json.as_object() {
     Some(o) => o
     None => return Err(ConfigError("config root must be a JSON object"))
+  }
+  match config_fields(obj, ["rules", "file_rules", "structural_rules", "include", "exclude", "extends"], "config") {
+    Some(message) => return Err(ConfigError(message))
+    None => ()
   }
   let scope = match parse_scope(obj, "config") {
     Ok(scope) => scope
@@ -105,6 +109,7 @@ fn check_duplicate_ids(
   }
   let seen_file : Set[String] = Set([])
   for fr in file_rules {
+    if seen_rule.contains(fr.id) { return Some("duplicate rule id across rule kinds: \{fr.id}") }
     if seen_file.contains(fr.id) {
       return Some("duplicate file_rule id: \{fr.id}")
     }
@@ -112,6 +117,7 @@ fn check_duplicate_ids(
   }
   let seen_structural : Set[String] = Set([])
   for sr in structural_rules {
+    if seen_rule.contains(sr.id) || seen_file.contains(sr.id) { return Some("duplicate rule id across rule kinds: \{sr.id}") }
     if seen_structural.contains(sr.id) {
       return Some("duplicate structural_rule id: \{sr.id}")
     }
@@ -172,7 +178,7 @@ fn parse_config_with_extends_impl(
   config_dir : String,
   visited : Set[String],
 ) -> Result[LintConfig, ConfigError] {
-  let json = @json.parse(src) catch {
+  let json = @json.parse(src, max_nesting_depth=64, reject_duplicate_keys=true) catch {
     _ => return Err(ConfigError("config is not valid JSON"))
   }
   let obj = match json.as_object() {
@@ -400,21 +406,28 @@ fn parse_rule(rj : Json) -> Result[Rule, ConfigError] {
     Some(o) => o
     None => return Err(ConfigError("rule must be an object"))
   }
+  match config_fields(obj, ["id", "severity", "message", "extensions", "include", "exclude", "match", "unless", "match_comments"], "parse_rule") {
+    Some(message) => return Err(ConfigError(message))
+    None => ()
+  }
   let id = match get_str(obj, "id") {
     Some(s) => s
     None => return Err(ConfigError("rule missing \"id\""))
   }
-  let severity = match get_str(obj, "severity") {
-    Some(s) => Severity::parse(s)
-    None => Severity::Warning
+  let severity = match config_severity(obj) {
+    Ok(severity) => severity
+    Err(error) => return Err(error)
   }
   let message = match get_str(obj, "message") {
     Some(s) => s
     None => return Err(ConfigError("rule \"\{id}\" missing \"message\""))
   }
-  let extensions = match get_str_array(obj, "extensions") {
-    Some(a) => a
-    None => []
+  if id.trim().to_owned() == "" || message.trim().to_owned() == "" {
+    return Err(ConfigError("rule id and message must be nonempty"))
+  }
+  let extensions = match config_extensions(obj) {
+    Ok(extensions) => extensions
+    Err(error) => return Err(error)
   }
   let scope = match parse_scope(obj, "rule \"\{id}\"") {
     Ok(scope) => scope
@@ -486,21 +499,28 @@ fn parse_file_rule(rj : Json) -> Result[FileRule, ConfigError] {
     Some(o) => o
     None => return Err(ConfigError("file_rule must be an object"))
   }
+  match config_fields(obj, ["id", "severity", "message", "extensions", "include", "exclude", "check"], "parse_file_rule") {
+    Some(message) => return Err(ConfigError(message))
+    None => ()
+  }
   let id = match get_str(obj, "id") {
     Some(s) => s
     None => return Err(ConfigError("file_rule missing \"id\""))
   }
-  let severity = match get_str(obj, "severity") {
-    Some(s) => Severity::parse(s)
-    None => Severity::Warning
+  let severity = match config_severity(obj) {
+    Ok(severity) => severity
+    Err(error) => return Err(error)
   }
   let message = match get_str(obj, "message") {
     Some(s) => s
     None => return Err(ConfigError("file_rule \"\{id}\" missing \"message\""))
   }
-  let extensions = match get_str_array(obj, "extensions") {
-    Some(a) => a
-    None => []
+  if id.trim().to_owned() == "" || message.trim().to_owned() == "" {
+    return Err(ConfigError("rule id and message must be nonempty"))
+  }
+  let extensions = match config_extensions(obj) {
+    Ok(extensions) => extensions
+    Err(error) => return Err(error)
   }
   let scope = match parse_scope(obj, "file_rule \"\{id}\"") {
     Ok(scope) => scope
@@ -523,88 +543,37 @@ fn parse_file_rule(rj : Json) -> Result[FileRule, ConfigError] {
 /// no_trailing_whitespace / no_tabs / final_newline / no_duplicate_lines /
 /// file_naming.
 fn parse_file_check(cj : Json) -> Result[FileCheck, ConfigError] {
-  let obj = match cj.as_object() {
-    Some(o) => o
-    None => return Err(ConfigError("check must be an object"))
-  }
-  if obj.contains("max_lines") {
-    return match obj.get("max_lines") {
-      Some(v) =>
-        match v.as_number() {
-          Some(n) => Ok(MaxLines(n.to_int()))
-          None => Err(ConfigError("\"max_lines\" must be a number"))
-        }
-      None => Err(ConfigError("\"max_lines\" must be a number"))
+  let obj = match cj.as_object() { Some(obj) => obj; None => return Err(ConfigError("check must be an object")) }
+  match config_one_field(obj, "check") { Some(msg) => return Err(ConfigError(msg)); None => () }
+  for (key, value) in obj {
+    if key == "max_lines" || key == "max_line_length" || key == "max_file_size" {
+      let n = match config_check_integer(value, key) { Ok(n) => n; Err(error) => return Err(error) }
+      return Ok(match key { "max_lines" => MaxLines(n); "max_line_length" => MaxLineLength(n); _ => MaxFileSize(n) })
+    }
+    if key == "file_naming" {
+      return match value.as_string() {
+        Some(s) => match NamingStyle::parse(s) { Some(style) => Ok(FileNaming(style)); None => Err(ConfigError("invalid file_naming style")) }
+        None => Err(ConfigError("file_naming must be a string"))
+      }
+    }
+    if key == "line_ending" {
+      return match value.as_string() {
+        Some(s) => match LineEndingStyle::parse(s) { Some(style) => Ok(LineEnding(style)); None => Err(ConfigError("invalid line_ending style")) }
+        None => Err(ConfigError("line_ending must be a string"))
+      }
+    }
+    if value.as_bool() != Some(true) { return Err(ConfigError("check \{key} must be true")) }
+    return match key {
+      "no_trailing_whitespace" => Ok(NoTrailingWhitespace)
+      "no_tabs" => Ok(NoTabs)
+      "final_newline" => Ok(FinalNewline)
+      "no_duplicate_lines" => Ok(NoDuplicateLines)
+      "no_empty_files" => Ok(NoEmptyFiles)
+      "no_bom" => Ok(NoBom)
+      _ => Err(ConfigError("unknown file check: \{key}"))
     }
   }
-  if obj.contains("max_line_length") {
-    return match obj.get("max_line_length") {
-      Some(v) =>
-        match v.as_number() {
-          Some(n) => Ok(MaxLineLength(n.to_int()))
-          None => Err(ConfigError("\"max_line_length\" must be a number"))
-        }
-      None => Err(ConfigError("\"max_line_length\" must be a number"))
-    }
-  }
-  if obj.contains("no_trailing_whitespace") {
-    return Ok(NoTrailingWhitespace)
-  }
-  if obj.contains("no_tabs") {
-    return Ok(NoTabs)
-  }
-  if obj.contains("final_newline") {
-    return Ok(FinalNewline)
-  }
-  if obj.contains("no_duplicate_lines") {
-    return Ok(NoDuplicateLines)
-  }
-  if obj.contains("file_naming") {
-    return match get_str(obj, "file_naming") {
-      Some(s) =>
-        match NamingStyle::parse(s) {
-          Some(style) => Ok(FileNaming(style))
-          None =>
-            Err(
-              ConfigError(
-                "\"file_naming\" must be one of: camelCase, PascalCase, snake_case, kebab-case",
-              ),
-            )
-        }
-      None => Err(ConfigError("\"file_naming\" must be a string"))
-    }
-  }
-  if obj.contains("max_file_size") {
-    return match obj.get("max_file_size") {
-      Some(v) =>
-        match v.as_number() {
-          Some(n) => Ok(MaxFileSize(n.to_int()))
-          None => Err(ConfigError("\"max_file_size\" must be a number"))
-        }
-      None => Err(ConfigError("\"max_file_size\" must be a number"))
-    }
-  }
-  if obj.contains("no_empty_files") {
-    return Ok(NoEmptyFiles)
-  }
-  if obj.contains("line_ending") {
-    return match get_str(obj, "line_ending") {
-      Some(s) =>
-        match LineEndingStyle::parse(s) {
-          Some(style) => Ok(LineEnding(style))
-          None => Err(ConfigError("\"line_ending\" must be one of: lf, crlf"))
-        }
-      None => Err(ConfigError("\"line_ending\" must be a string"))
-    }
-  }
-  if obj.contains("no_bom") {
-    return Ok(NoBom)
-  }
-  Err(
-    ConfigError(
-      "check needs one of: max_lines, max_line_length, no_trailing_whitespace, no_tabs, final_newline, no_duplicate_lines, file_naming, max_file_size, no_empty_files, line_ending, no_bom",
-    ),
-  )
+  Err(ConfigError("check must contain one check"))
 }
 
 ///|
@@ -639,22 +608,29 @@ fn parse_structural_rule(rj : Json) -> Result[StructuralRule, ConfigError] {
     Some(o) => o
     None => return Err(ConfigError("structural_rule must be an object"))
   }
+  match config_fields(obj, ["id", "severity", "message", "extensions", "include", "exclude", "check"], "parse_structural_rule") {
+    Some(message) => return Err(ConfigError(message))
+    None => ()
+  }
   let id = match get_str(obj, "id") {
     Some(s) => s
     None => return Err(ConfigError("structural_rule missing \"id\""))
   }
-  let severity = match get_str(obj, "severity") {
-    Some(s) => Severity::parse(s)
-    None => Severity::Warning
+  let severity = match config_severity(obj) {
+    Ok(severity) => severity
+    Err(error) => return Err(error)
   }
   let message = match get_str(obj, "message") {
     Some(s) => s
     None =>
       return Err(ConfigError("structural_rule \"\{id}\" missing \"message\""))
   }
-  let extensions = match get_str_array(obj, "extensions") {
-    Some(a) => a
-    None => []
+  if id.trim().to_owned() == "" || message.trim().to_owned() == "" {
+    return Err(ConfigError("rule id and message must be nonempty"))
+  }
+  let extensions = match config_extensions(obj) {
+    Ok(extensions) => extensions
+    Err(error) => return Err(error)
   }
   let scope = match parse_scope(obj, "structural_rule \"\{id}\"") {
     Ok(scope) => scope
@@ -677,52 +653,44 @@ fn parse_structural_rule(rj : Json) -> Result[StructuralRule, ConfigError] {
 /// Parse a structural check object: exactly one of the cross-file checks.
 fn parse_structural_check(cj : Json) -> Result[StructuralCheck, ConfigError] {
   let obj = match cj.as_object() {
-    Some(o) => o
+    Some(obj) => obj
     None => return Err(ConfigError("check must be an object"))
   }
-  if obj.contains("no_unused_imports") {
-    return Ok(NoUnusedImports)
-  }
-  if obj.contains("no_duplicate_imports") {
-    return Ok(NoDuplicateImports)
-  }
-  if obj.contains("no_unresolved_relative_imports") {
-    return Ok(NoUnresolvedRelativeImports)
-  }
-  if obj.contains("no_import_cycles") {
-    return Ok(NoImportCycles)
-  }
-  if obj.contains("no_default_export") {
-    return Ok(NoDefaultExport)
-  }
-  if obj.contains("no_deep_relative_imports") {
-    return match obj.get("no_deep_relative_imports") {
-      Some(v) =>
-        match v.as_number() {
-          Some(n) => Ok(NoDeepRelativeImports(n.to_int()))
-          None =>
-            Err(ConfigError("\"no_deep_relative_imports\" must be a number"))
-        }
-      None => Err(ConfigError("\"no_deep_relative_imports\" must be a number"))
+  let mut count = 0
+  for (_, _) in obj { count += 1 }
+  if count != 1 { return Err(ConfigError("check must contain exactly one check")) }
+  for (key, value) in obj {
+    if key == "no_deep_relative_imports" {
+      let n = match value.as_number() {
+        Some(n) => n
+        None => return Err(ConfigError("no_deep_relative_imports must be an integer"))
+      }
+      if n < 0.0 || n > 2147483647.0 || n.to_int().to_double() != n {
+        return Err(ConfigError("no_deep_relative_imports must be a non-negative integer"))
+      }
+      return Ok(NoDeepRelativeImports(n.to_int()))
+    }
+    if value.as_bool() != Some(true) {
+      return Err(ConfigError("check \{key} must be true"))
+    }
+    return match key {
+      "no_unused_imports" => Ok(NoUnusedImports)
+      "no_duplicate_imports" => Ok(NoDuplicateImports)
+      "no_unresolved_relative_imports" => Ok(NoUnresolvedRelativeImports)
+      "no_import_cycles" => Ok(NoImportCycles)
+      "no_default_export" => Ok(NoDefaultExport)
+      "no_require_imports" => Ok(NoRequireImports)
+      "no_unused_exports" => Ok(NoUnusedExports)
+      "moonbit_require_public_doc" => Ok(MoonbitRequirePublicDoc)
+      "moonbit_naming" => Ok(MoonbitNaming)
+      "moonbit_no_unwrap" => Ok(MoonbitNoUnwrap)
+      "moonbit_no_panic" => Ok(MoonbitNoPanic)
+      "moonbit_no_println" => Ok(MoonbitNoPrintln)
+      "moonbit_no_todo" => Ok(MoonbitNoTodo)
+      _ => Err(ConfigError("unknown structural check: \{key}"))
     }
   }
-  if obj.contains("no_require_imports") {
-    return Ok(NoRequireImports)
-  }
-  if obj.contains("no_unused_exports") {
-    return Ok(NoUnusedExports)
-  }
-  if obj.contains("moonbit_require_public_doc") {
-    return Ok(MoonbitRequirePublicDoc)
-  }
-  if obj.contains("moonbit_naming") {
-    return Ok(MoonbitNaming)
-  }
-  Err(
-    ConfigError(
-      "check needs one of: no_unused_imports, no_duplicate_imports, no_unresolved_relative_imports, no_import_cycles, no_default_export, no_deep_relative_imports, no_require_imports, no_unused_exports, moonbit_require_public_doc, moonbit_naming",
-    ),
-  )
+  Err(ConfigError("check must contain one check"))
 }
 
 ///|
@@ -739,6 +707,11 @@ fn parse_match_kind(mj : Json) -> Result[MatchKind, ConfigError] {
     Some(o) => o
     None => return Err(ConfigError("matcher must be an object"))
   }
+  match config_fields(obj, ["all", "any", "not", "regex", "contains", "prefix", "suffix", "equals", "word"], "matcher") {
+    Some(msg) => return Err(ConfigError(msg))
+    None => ()
+  }
+  match config_one_field(obj, "matcher") { Some(msg) => return Err(ConfigError(msg)); None => () }
   if obj.contains("all") {
     return match parse_matcher_array(obj, "all") {
       Ok(subs) => Ok(All(subs))

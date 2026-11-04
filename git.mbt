@@ -57,7 +57,7 @@ extern "C" fn native_result_free(result : NativeResult) -> Unit = "moonlint_nati
 
 ///|
 /// Private operations: root=0, lstat=1, stdin=2, changed=3, staged=4,
-/// blob=5, Git kind=6, atomic write=7.
+/// blob=5, Git kind=6, atomic write=7, snapshot=8, immutable blob=9, UTC date=10.
 #cfg(all(target="native", not(platform="windows")))
 fn native_operation(
   operation : Int32,

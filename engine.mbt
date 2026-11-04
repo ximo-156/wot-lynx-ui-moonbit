@@ -205,6 +205,11 @@ fn lint_selected_impl(
       }
     None => None
   }
+  let frozen : GitSnapshot? = match mode {
+    Changed(_) => Some(capture_git_snapshot(root, false))
+    Staged => Some(capture_git_snapshot(root, true))
+    _ => None
+  }
   let updated = Cache::new(fingerprint)
   let mut scanned = 0
   let mut skipped = 0
@@ -219,11 +224,7 @@ fn lint_selected_impl(
       continue
     }
     try {
-      let kind = match mode {
-        Changed(_) => git_source_kind(root, rel, false)
-        Staged => git_source_kind(root, rel, true)
-        _ => rooted_source_kind(root, rel)
-      }
+      let kind = match frozen { Some(snapshot) => snapshot.kind(rel); None => rooted_source_kind(root, rel) }
       if kind == 3 {
         skipped += 1
         skipped_files.push({ file: rel, reason: "not-a-regular-file", })
@@ -232,14 +233,8 @@ fn lint_selected_impl(
       if kind != 1 {
         raise Failure("source is missing or is not a regular file")
       }
-      let source = match mode {
-        Changed(_) => git_blob(root, rel, false)
-        Staged => git_blob(root, rel, true)
-        _ => read_source(join_path(root, rel))
-      }
-      if source.contains("\x00") {
-        raise Failure("binary source contains NUL bytes")
-      }
+      let source = match frozen { Some(snapshot) => snapshot.source(root, rel); None => read_source(join_path(root, rel)) }
+      if rel.has_suffix(".mbt") { validate_moonbit_source(source) }
       let hash = content_hash(source)
       // A cache hit means identical content under an identical rule set, so
       // the previous findings are still exactly right: reuse them instead of
@@ -260,7 +255,9 @@ fn lint_selected_impl(
           }
           if !structural_rules.is_empty() {
             project_sources.push((rel, source))
-            disable_maps.push((rel, parse_disable_comments(source)))
+            disable_maps.push((rel, parse_disable_comments(
+              if rel.has_suffix(".mbt") { moonbit_lex(source).comments } else { source },
+            )))
           }
           updated.put(rel, hash, entry.findings)
           scanned += 1
@@ -268,13 +265,18 @@ fn lint_selected_impl(
         }
         None => ()
       }
-      let disable_map = parse_disable_comments(source)
+      let disable_map = parse_disable_comments(
+        if rel.has_suffix(".mbt") { moonbit_lex(source).comments } else { source },
+      )
       let raw_lines = split_lines(source)
       let lines = split_lines(strip_comments(source, comment_mode_for(rel)))
+      let comment_lines = if rel.has_suffix(".mbt") {
+        split_lines(moonbit_code_and_comments(moonbit_lex(source)))
+      } else { raw_lines }
       // Per-file findings are collected separately so they can be stored in
       // the cache; the project pass appends its own afterwards.
       let file_findings : Array[Finding] = []
-      for finding in lint_lines(rel, lines, raw_lines, rules) {
+      for finding in lint_lines(rel, lines, comment_lines, rules) {
         if !disable_map.is_disabled(finding.rule_id, finding.line) {
           file_findings.push(finding)
         }
@@ -305,6 +307,14 @@ fn lint_selected_impl(
       }
     }
   }
+  let mut context_scanned = 0
+  let mut context_failed = 0
+  if structural_rules.any(rule => needs_project_context(rule.check)) {
+    let (count, failures, context_diagnostics) = add_project_context(root, project_sources, frozen)
+    context_scanned = count
+    context_failed = failures
+    for diagnostic in context_diagnostics { diagnostics.push(diagnostic) }
+  }
   // Project pass: one index over every scanned file, then every structural
   // rule. Findings honour inline disables like per-file findings do.
   if !structural_rules.is_empty() {
@@ -316,11 +326,12 @@ fn lint_selected_impl(
       !rel.has_suffix(".mbt")
     })
     let index = build_index(js_sources)
-    let structural_findings = analyze(index, structural_rules)
+    let structural_findings = if context_failed == 0 { analyze(index, structural_rules) } else { [] }
     for finding in analyze_moonbit(project_sources, structural_rules) {
       structural_findings.push(finding)
     }
     for finding in structural_findings {
+      if !selected.contains(finding.file) { continue }
       let suppressed = disable_maps.any(pair => {
         let (rel, map) = pair
         rel == finding.file && map.is_disabled(finding.rule_id, finding.line)
@@ -350,6 +361,9 @@ fn lint_selected_impl(
     files_skipped: skipped,
     files_failed: failed,
     files_out_of_scope: out_of_scope,
+    context_files_scanned: context_scanned,
+    context_files_failed: context_failed,
+    source_snapshot: frozen.map(snapshot => snapshot.revision),
     baseline_hits: 0,
     diagnostics,
     skipped_files,

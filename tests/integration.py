@@ -2197,6 +2197,9 @@ class DemoTests(FixtureCase):
         self.assertEqual(self.output(third), self.EXPECTED)
 
 
+from policies import make_policy_tests
+
+
 PHASES = {
     "repairs": RepairsTests,
     "git": GitSafetyTests,
@@ -2209,6 +2212,7 @@ PHASES = {
     "combinator": CombinatorTests,
     "demo": DemoTests,
     "moonbit": MoonbitTests,
+    "policies": make_policy_tests(FixtureCase, REPO_ROOT),
 }
 
 

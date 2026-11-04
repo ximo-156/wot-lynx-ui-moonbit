@@ -228,7 +228,7 @@ test "config: a malformed sub-matcher reports its index" {
     Err(ConfigError(message)) => message
   }
   assert_true(message.contains("\"any\": #1"))
-  assert_true(message.contains("matcher needs one of"))
+  assert_true(message.contains("unknown field 'nonsense'"))
 }
 
 ///|
@@ -374,7 +374,7 @@ test "config: an unknown structural check is rejected" {
     Ok(_) => "accepted"
     Err(ConfigError(m)) => m
   }
-  assert_true(message.contains("check needs one of"))
+  assert_true(message.contains("unknown structural check: no_such_check"))
 }
 
 ///|

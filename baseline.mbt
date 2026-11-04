@@ -1,7 +1,7 @@
 ///|
 /// Baseline support. Legacy array keys are line-sensitive: moving a finding
 /// changes its key. This format is retained for backwards compatibility; a
-/// future line-stable fingerprint must use an explicit version and migration.
+/// line-stable content fingerprint is provided separately by BaselineV2.
 
 ///|
 /// Compute the stable hash key for a finding.
@@ -16,7 +16,8 @@ pub fn finding_hash(f : Finding) -> String {
 }
 
 ///|
-/// FNV-1a 64-bit hash, rendered as 16 lowercase hex digits.
+/// Legacy FNV-style 64-bit checksum over Unicode scalar values, not UTF-8
+/// bytes. Keep this exact algorithm for old-baseline/cache compatibility.
 fn fnv1a_hex(input : String) -> String {
   let mut hash : UInt64 = 0xcbf29ce484222325
   let prime : UInt64 = 0x100000001b3

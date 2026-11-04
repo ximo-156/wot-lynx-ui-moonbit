@@ -10,7 +10,8 @@ import {
 // Errors
 
 // Types and methods
-type Format derive(Eq, @debug.Debug)
+#derive(Eq, @debug.Debug)
+type Format
 
 type Options
 

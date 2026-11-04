@@ -26,7 +26,7 @@
 
 ///|
 /// Cache format version. Bump whenever the entry layout changes.
-const CACHE_VERSION : Int32 = 1
+const CACHE_VERSION : Int32 = 2
 
 ///|
 /// One cached file: the digest of its content and the findings the rules
@@ -169,6 +169,10 @@ fn structural_check_signature(c : StructuralCheck) -> String {
     NoUnusedExports => "no_unused_exports"
     MoonbitRequirePublicDoc => "moonbit_require_public_doc"
     MoonbitNaming => "moonbit_naming"
+    MoonbitNoUnwrap => "moonbit_no_unwrap"
+    MoonbitNoPanic => "moonbit_no_panic"
+    MoonbitNoPrintln => "moonbit_no_println"
+    MoonbitNoTodo => "moonbit_no_todo"
   }
 }
 

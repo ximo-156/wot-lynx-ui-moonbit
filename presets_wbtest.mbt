@@ -307,34 +307,23 @@ test "merged presets deduplicate structural rule ids" {
 ///|
 test "moonbit preset ignores eprintln and CLI entry points" {
   let config = merge_presets(["moonbit"]).unwrap()
-  let mut print_rule : Rule? = None
-  for r in config.rules {
-    if r.id == "moonbit/no-println" {
-      print_rule = Some(r)
-    }
-  }
-  let rule = print_rule.unwrap()
-  assert_false(rule.match_.matches("  eprintln(\"debug\")"))
-  assert_true(rule.match_.matches("  println(\"output\")"))
-  assert_true(rule.scope.allows("src/lib.mbt"))
-  assert_false(rule.scope.allows("src/lib_test.mbt"))
-  assert_false(rule.scope.allows("cmd/main/main.mbt"))
+  let rules = config.structural_rules.filter(r => r.id == "moonbit/no-println")
+  assert_eq(rules.length(), 1)
+  assert_eq(analyze_moonbit([("src/lib.mbt", "fn run() -> Unit { eprintln(\"debug\") }")], rules).length(), 0)
+  assert_eq(analyze_moonbit([("src/lib.mbt", "fn run() -> Unit { println(\"output\") }")], rules).length(), 1)
+  assert_true(rules[0].scope.allows("src/lib.mbt"))
+  assert_false(rules[0].scope.allows("src/lib_test.mbt"))
+  assert_false(rules[0].scope.allows("cmd/main/main.mbt"))
 }
 
 ///|
 test "moonbit preset TODO rule ignores prose, strings and plurals" {
-  let config = merge_presets(["moonbit"]).unwrap()
-  let mut todo_rule : Rule? = None
-  for r in config.rules {
-    if r.id == "moonbit/no-todo-comment" {
-      todo_rule = Some(r)
-    }
+  let rules = merge_presets(["moonbit"]).unwrap().structural_rules.filter(r => r.id == "moonbit/no-todo-comment")
+  assert_eq(rules.length(), 1)
+  for src in ["// TODO: handle malformed input", "  // FIXME later"] {
+    assert_eq(analyze_moonbit([("a.mbt", src)], rules).length(), 1)
   }
-  let rule = todo_rule.unwrap()
-  assert_true(rule.match_comments)
-  assert_true(rule.match_.matches("// TODO: handle malformed input"))
-  assert_true(rule.match_.matches("  // FIXME later"))
-  assert_false(rule.match_.matches("/// a note about TODO markers"))
-  assert_false(rule.match_.matches("let s = \"// TODO: in a string\""))
-  assert_false(rule.match_.matches("// TODOS are plural"))
+  for src in ["/// a note about TODO markers", "let s = \"// TODO: in a string\"", "// TODOS are plural"] {
+    assert_eq(analyze_moonbit([("a.mbt", src)], rules).length(), 0)
+  }
 }

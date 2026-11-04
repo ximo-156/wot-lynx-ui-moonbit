@@ -157,7 +157,7 @@ fn rooted_source_kind(root : String, rel : String) -> Int32 raise {
 /// files. The engine records the diagnostic and returns exit code 2 in the CLI.
 fn read_source(path : String) -> String raise {
   let bytes = @fs.read_file_to_bytes(path)
-  let src = @utf8.decode(bytes) catch {
+  let src = @utf8.decode(bytes[:], ignore_bom=false) catch {
     _ => raise Failure("source is not valid UTF-8: \{path}")
   }
   if src.contains("\u{0}") {

@@ -1,0 +1,12 @@
+{
+  "version": 1,
+  "package_rules": [{
+    "id": "architecture/domain-no-ui",
+    "severity": "error",
+    "from": ["ximo-156/moonlint-policy-demo/domain"],
+    "deny": ["ximo-156/moonlint-policy-demo/ui"],
+    "kinds": ["source"],
+    "targets": ["native"],
+    "reason": "Domain packages must not depend on the UI layer"
+  }]
+}

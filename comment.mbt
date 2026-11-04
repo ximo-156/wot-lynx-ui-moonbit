@@ -13,6 +13,8 @@
 pub enum CommentMode {
   Js
   Plain
+  /// MoonBit literal/comment/interpolation-aware code view.
+  Moonbit
 } derive(Debug, Eq)
 
 ///|
@@ -39,6 +41,7 @@ fn strip_comments(src : String, mode : CommentMode) -> String {
   match mode {
     Js => strip_comments_js(src)
     Plain => strip_comments_plain(src)
+    Moonbit => moonbit_lex(src).code
   }
 }
 
@@ -282,6 +285,7 @@ fn slash() -> Char {
 /// Pick the comment syntax for a path: JavaScript/TypeScript-family sources get
 /// the template- and regex-aware scanner; everything else keeps the plain view.
 pub fn comment_mode_for(rel : String) -> CommentMode {
+  if rel.has_suffix(".mbt") { return Moonbit }
   let ext = match rel.rev_split_once(".") {
     Some((_, ext)) => ext.to_lower()
     None => return Plain

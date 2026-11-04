@@ -4,18 +4,18 @@ pub fn add(a : Int, b : Int) -> Int {
   a + b
 }
 
-pub fn BadName() -> Int {
+pub fn badName() -> Int {
   1
 }
 
 ///|
-pub struct point {
+pub struct Point {
   x : Int
 }
 
 ///|
 pub fn parse(text : String) -> Int {
-  let value = @json.parse(text).unwrap()
+  let value = Some(text.length()).unwrap()
   // TODO: handle malformed input
   value
 }
