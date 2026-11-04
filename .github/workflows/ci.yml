@@ -1,6 +1,5 @@
-# CI: every push must pass the full native suite before it can be submitted.
-# ubuntu-latest ships a C toolchain, so the native filesystem/Git bridge
-# (git_native.c) compiles here even though it cannot on machines without one.
+# CI uses the native filesystem/Git bridge on Linux. Installer is latest,
+# not pinned: record exact versions and fail on format/interface drift.
 name: CI
 
 on:
@@ -16,33 +15,31 @@ jobs:
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
-
-      - name: Set up MoonBit
+      - name: Install MoonBit
         run: |
           curl -fsSL https://cli.moonbitlang.com/install/unix.sh | bash
-          echo "$HOME/.moon/bin" >> $GITHUB_PATH
-
-      - name: Pin the toolchain
+          echo "$HOME/.moon/bin" >> "$GITHUB_PATH"
+      - name: Record toolchain versions (not pinned)
         run: moon version --all
-
-      - name: Type-check
-        run: moon check --target wasm-gc
-
-      - name: Unit tests (native)
-        run: moon test
-
-      - name: Refresh package interfaces
-        run: moon info
-
-      - name: Build CLI (native)
-        run: moon build --target native
-
-      - name: Integration tests (native CLI)
+      - name: Type-check native
+        run: moon check --target native
+      - name: Test native
+        run: moon test --target native
+      - name: Check generated interfaces and formatting
         run: |
-          BINARY="$(find _build -name main.exe -path '*cmd/main*' | head -1)"
-          if [ -z "$BINARY" ]; then
-            echo "native CLI binary not found under _build/" >&2
-            exit 1
-          fi
-          echo "testing $BINARY"
+          moon info && moon fmt
+          git diff --exit-code -- '*.mbt' '*.mbti'
+      - name: Build native CLI
+        run: moon build --target native
+      - name: Test native CLI
+        run: |
+          BINARY="$PWD/_build/native/debug/build/cmd/main/main.exe"
+          test -x "$BINARY"
           python3 tests/integration.py --binary "$BINARY" --phase all
+      - name: Build and test MoonBit examples
+        run: |
+          for module in examples/moonbit-demo examples/package-policy-demo examples/api-policy-demo/before examples/api-policy-demo/after; do
+            (cd "$module" && moon check --target native && moon test --target native && moon build --target native)
+          done
+      - name: Lint repository under its committed scope
+        run: _build/native/debug/build/cmd/main/main.exe .

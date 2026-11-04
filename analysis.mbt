@@ -25,6 +25,7 @@ fn resolution_extensions() -> Array[String] {
 
 ///|
 /// One parsed file in the project index.
+#derive(Debug)
 pub struct ProjectFile {
   /// Path relative to the scan root.
   rel : String
@@ -32,7 +33,7 @@ pub struct ProjectFile {
   source : String
   /// The structural model parsed from the source.
   model : FileModel
-} derive(Debug)
+}
 
 ///|
 /// The parsed project: every scanned file plus a membership set used for
@@ -186,7 +187,12 @@ pub fn analyze(
           check_unused_exports(
             rule, file, export_usage, namespace_used, findings,
           )
-        MoonbitRequirePublicDoc | MoonbitNaming | MoonbitNoUnwrap | MoonbitNoPanic | MoonbitNoPrintln | MoonbitNoTodo => ()
+        MoonbitRequirePublicDoc
+        | MoonbitNaming
+        | MoonbitNoUnwrap
+        | MoonbitNoPanic
+        | MoonbitNoPrintln
+        | MoonbitNoTodo => ()
       }
     }
   }

@@ -1,1 +1,3 @@
-import { "ximo-156/moonlint-policy-demo/ui" @ui }
+import {
+  "ximo-156/moonlint-policy-demo/ui",
+}

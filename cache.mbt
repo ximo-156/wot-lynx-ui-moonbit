@@ -31,19 +31,21 @@ const CACHE_VERSION : Int32 = 2
 ///|
 /// One cached file: the digest of its content and the findings the rules
 /// produced for it on the previous run.
+#derive(Debug)
 pub struct CacheEntry {
   hash : String
   findings : Array[Finding]
-} derive(Debug)
+}
 
 ///|
 /// The on-disk cache: a format version, a fingerprint of the effective
 /// configuration, and one entry per cached file.
+#derive(Debug)
 pub struct Cache {
   version : Int32
   fingerprint : String
   files : Map[String, CacheEntry]
-} derive(Debug)
+}
 
 ///|
 /// A fresh, empty cache for the given configuration fingerprint.

@@ -1,1 +1,3 @@
-import { "ximo-156/moonlint-policy-demo/domain" @domain }
+import {
+  "ximo-156/moonlint-policy-demo/domain",
+}

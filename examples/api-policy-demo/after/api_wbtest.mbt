@@ -1,2 +1,4 @@
 ///|
-test "greeting remains functional" { assert_eq(greeting(), "MoonBit") }
+test "greeting remains functional" {
+  assert_eq(greeting(), "MoonBit")
+}

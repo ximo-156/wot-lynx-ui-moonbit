@@ -41,3 +41,6 @@ __pycache__/
 
 # --- Rust-style target (harmless if unused) ---
 target/
+# Generated compiler graph / snapshot files used in example walkthroughs
+examples/**/graph.native.json
+examples/**/api.snapshot.json

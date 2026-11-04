@@ -53,6 +53,7 @@ fn run_json(result : LintResult, scan : ScanInfo) -> Json {
   driver.set("rules", Json::array(rules))
   tool.set("driver", Json::object(driver))
   obj.set("tool", Json::object(tool))
+  obj.set("columnKind", Json::string("unicodeCodePoints"))
   obj.set("results", results_json(result))
   Json::object(obj)
 }

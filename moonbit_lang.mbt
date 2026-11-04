@@ -11,6 +11,7 @@
 
 ///|
 /// The kind of a top-level MoonBit declaration.
+#derive(Debug, Eq)
 priv enum MoonbitDeclKind {
   MFn
   MStruct
@@ -25,10 +26,11 @@ priv enum MoonbitDeclKind {
   MExtern
   MUsing
   MExtend
-} derive(Debug, Eq)
+}
 
 ///|
 /// One top-level declaration found in a MoonBit source file.
+#derive(Debug)
 priv struct MoonbitDecl {
   kind : MoonbitDeclKind
   /// The declared name. Empty when the syntax does not expose a simple name
@@ -42,7 +44,7 @@ priv struct MoonbitDecl {
   is_pub : Bool
   /// Whether a `///|` doc block is attached to the declaration.
   has_doc : Bool
-} derive(Debug)
+}
 
 ///|
 /// Whether `c` can start a MoonBit identifier. Non-ASCII identifiers are not
@@ -268,9 +270,14 @@ fn moonbit_parse_decl(
       (MImpl, name)
     }
     "test" => (MTest, "")
-    "suberror" => { let (name, _) = moonbit_read_word(chars, i); (MSuberror, name) }
+    "suberror" => {
+      let (name, _) = moonbit_read_word(chars, i)
+      (MSuberror, name)
+    }
     "extern" => {
-      if moonbit_match_word(chars, i, "fn") { i = moonbit_skip_spaces(chars, i + 2) }
+      if moonbit_match_word(chars, i, "fn") {
+        i = moonbit_skip_spaces(chars, i + 2)
+      }
       let (name, _) = moonbit_read_word(chars, i)
       (MExtern, name)
     }
@@ -306,20 +313,36 @@ fn scan_moonbit_decls(src : String) -> Array[MoonbitDecl] {
       continue
     }
     if depth == 0 && code == "" && text.has_prefix("///") {
-      if text[3:].trim().to_owned() != "" { doc_active = true }
+      if text[3:].trim().to_owned() != "" {
+        doc_active = true
+      }
       continue
     }
     if depth == 0 && (code.has_prefix("#") || attribute_depth > 0) {
-      if code.contains("#doc(hidden)") { doc_active = true }
-      for c in code.iter() {
-        if c == '(' || c == '[' { attribute_depth += 1 }
-        else if (c == ')' || c == ']') && attribute_depth > 0 { attribute_depth -= 1 }
+      if code.contains("#doc(hidden)") {
+        doc_active = true
+      }
+      let prefix = match moonbit_public_offset(code) {
+        Some(offset) => String::from_array(code.to_array()[:offset])
+        None => code
+      }
+      for c in prefix.iter() {
+        if c == '(' || c == '[' {
+          attribute_depth += 1
+        } else if (c == ')' || c == ']') && attribute_depth > 0 {
+          attribute_depth -= 1
+        }
       }
       match moonbit_public_offset(code) {
-        Some(offset) if attribute_depth == 0 => code = String::from_array(code.to_array()[offset:])
+        Some(offset) if attribute_depth == 0 =>
+          code = String::from_array(code.to_array()[offset:])
         _ => {
           for c in code_line.iter() {
-            if c == '{' { depth += 1 } else if c == '}' && depth > 0 { depth -= 1 }
+            if c == '{' {
+              depth += 1
+            } else if c == '}' && depth > 0 {
+              depth -= 1
+            }
           }
           continue
         }
@@ -331,13 +354,21 @@ fn scan_moonbit_decls(src : String) -> Array[MoonbitDecl] {
     }
     if depth == 0 {
       match moonbit_parse_decl(code, lineno, doc_active) {
-        Some(decl) => { decls.push(decl); doc_active = false }
+        Some(decl) => {
+          decls.push(decl)
+          doc_active = false
+        }
         None => doc_active = false
       }
-    } else { doc_active = false }
+    } else {
+      doc_active = false
+    }
     for c in code_line.iter() {
-      if c == '{' { depth += 1 }
-      else if c == '}' && depth > 0 { depth -= 1 }
+      if c == '{' {
+        depth += 1
+      } else if c == '}' && depth > 0 {
+        depth -= 1
+      }
     }
   }
   decls
@@ -367,7 +398,15 @@ fn moonbit_kind_name(kind : MoonbitDeclKind) -> String {
 /// expected to carry a `///|` doc block when it is `pub`.
 fn moonbit_needs_doc(kind : MoonbitDeclKind) -> Bool {
   match kind {
-    MFn | MStruct | MEnum | MType | MTrait | MLet | MConst | MSuberror | MExtern => true
+    MFn
+    | MStruct
+    | MEnum
+    | MType
+    | MTrait
+    | MLet
+    | MConst
+    | MSuberror
+    | MExtern => true
     MImpl | MTest | MUsing | MExtend => false
   }
 }
@@ -549,12 +588,14 @@ fn analyze_moonbit(
               )
             }
           }
-        MoonbitNoUnwrap | MoonbitNoPanic | MoonbitNoPrintln => {
-          for finding in moonbit_call_findings(rel, source, view, rule) { findings.push(finding) }
-        }
-        MoonbitNoTodo => {
-          for finding in moonbit_todo_findings(rel, source, view, rule) { findings.push(finding) }
-        }
+        MoonbitNoUnwrap | MoonbitNoPanic | MoonbitNoPrintln =>
+          for finding in moonbit_call_findings(rel, source, view, rule) {
+            findings.push(finding)
+          }
+        MoonbitNoTodo =>
+          for finding in moonbit_todo_findings(rel, source, view, rule) {
+            findings.push(finding)
+          }
         _ => ()
       }
     }

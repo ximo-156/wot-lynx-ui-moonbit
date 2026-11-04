@@ -22,6 +22,7 @@
 
 ///|
 /// The lexical class of a token.
+#derive(Debug, Eq)
 pub enum TokenKind {
   /// An identifier or keyword; the parser separates the two.
   Ident
@@ -41,17 +42,18 @@ pub enum TokenKind {
   RegexLit
   /// Any other operator or punctuation character.
   Punct
-} derive(Debug, Eq)
+}
 
 ///|
 /// A token with its source position. `line` and `column` are 1-based and count
 /// characters; `text` is the exact source slice the token covers.
+#derive(Debug)
 pub struct Token {
   kind : TokenKind
   text : String
   line : Int32
   column : Int32
-} derive(Debug)
+}
 
 ///|
 /// Tokenize a whole source file. The scan never fails: malformed input (an

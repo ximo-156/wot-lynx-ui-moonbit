@@ -309,8 +309,20 @@ test "moonbit preset ignores eprintln and CLI entry points" {
   let config = merge_presets(["moonbit"]).unwrap()
   let rules = config.structural_rules.filter(r => r.id == "moonbit/no-println")
   assert_eq(rules.length(), 1)
-  assert_eq(analyze_moonbit([("src/lib.mbt", "fn run() -> Unit { eprintln(\"debug\") }")], rules).length(), 0)
-  assert_eq(analyze_moonbit([("src/lib.mbt", "fn run() -> Unit { println(\"output\") }")], rules).length(), 1)
+  assert_eq(
+    analyze_moonbit(
+      [("src/lib.mbt", "fn run() -> Unit { eprintln(\"debug\") }")],
+      rules,
+    ).length(),
+    0,
+  )
+  assert_eq(
+    analyze_moonbit(
+      [("src/lib.mbt", "fn run() -> Unit { println(\"output\") }")],
+      rules,
+    ).length(),
+    1,
+  )
   assert_true(rules[0].scope.allows("src/lib.mbt"))
   assert_false(rules[0].scope.allows("src/lib_test.mbt"))
   assert_false(rules[0].scope.allows("cmd/main/main.mbt"))
@@ -318,12 +330,17 @@ test "moonbit preset ignores eprintln and CLI entry points" {
 
 ///|
 test "moonbit preset TODO rule ignores prose, strings and plurals" {
-  let rules = merge_presets(["moonbit"]).unwrap().structural_rules.filter(r => r.id == "moonbit/no-todo-comment")
+  let rules = merge_presets(["moonbit"]).unwrap().structural_rules.filter(r => {
+    r.id == "moonbit/no-todo-comment"
+  })
   assert_eq(rules.length(), 1)
   for src in ["// TODO: handle malformed input", "  // FIXME later"] {
     assert_eq(analyze_moonbit([("a.mbt", src)], rules).length(), 1)
   }
-  for src in ["/// a note about TODO markers", "let s = \"// TODO: in a string\"", "// TODOS are plural"] {
+  for
+    src in [
+      "/// a note about TODO markers", "let s = \"// TODO: in a string\"", "// TODOS are plural",
+    ] {
     assert_eq(analyze_moonbit([("a.mbt", src)], rules).length(), 0)
   }
 }

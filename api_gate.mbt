@@ -105,7 +105,11 @@ pub fn check_api_snapshots(
   let mut changed = 0
   let mut added = 0
   for symbol in old_keys {
-    let old_decl = before.surface.exports.get(symbol).unwrap()
+    let old_decl = match before.surface.exports.get(symbol) {
+      Some(declaration) => declaration
+      None =>
+        return Err(ConfigError("inconsistent before snapshot export index"))
+    }
     match after.surface.exports.get(symbol) {
       None => {
         removed += 1

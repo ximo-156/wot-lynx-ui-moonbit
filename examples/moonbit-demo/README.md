@@ -1,26 +1,36 @@
-# MoonBit demo
+# MoonBit convention example
 
-A small MoonBit source file with five deliberate convention violations. It is
-lint input, not a buildable package: there is no `moon.mod` here on purpose.
+This is a real dependency-free MoonBit module. Its valid source intentionally
+fails six team checks: camelCase function name, three empty/missing public docs,
+one syntactic unwrap call, and one TODO comment. `Some(...).unwrap()` is safe
+here at runtime; the project rule is still an explicit no-unwrap name policy.
+The compiler already has optional W74 documentation checking.
+
+From the moonlint checkout root:
 
 ```bash
-moonlint --preset moonbit examples/moonbit-demo/src
+(cd examples/moonbit-demo && moon check --target native && moon test --target native && moon build --target native)
+_build/native/debug/build/cmd/main/main.exe --preset moonbit examples/moonbit-demo/src
+# Expect exit 1: four errors and two warnings.
 ```
 
-Expected output:
+Expected formatted-source output:
 
 ```text
-lib.mbt:7: [error] moonbit/naming — Name does not follow the MoonBit naming convention (fn 'BadName' should be snake_case)
-    pub fn BadName() -> Int {
-lib.mbt:7: [error] moonbit/require-public-doc — Public item is missing a ///| doc comment (public fn 'BadName' has no ///| doc comment)
-    pub fn BadName() -> Int {
-lib.mbt:12: [error] moonbit/naming — Name does not follow the MoonBit naming convention (struct 'point' should be PascalCase)
-    pub struct point {
-lib.mbt:18: [warning] moonbit/no-unwrap — unwrap() can panic; handle the error explicitly
-    let value = @json.parse(text).unwrap()
-lib.mbt:19: [warning] moonbit/no-todo-comment — TODO/FIXME comment left in code
+lib.mbt:8: [error] moonbit/naming — Name does not follow the MoonBit naming convention (fn 'badName' should be snake_case)
+    pub fn badName() -> Int32 {
+lib.mbt:8: [error] moonbit/require-public-doc — Public item is missing documentation (public fn 'badName' has no non-empty doc comment)
+    pub fn badName() -> Int32 {
+lib.mbt:13: [error] moonbit/require-public-doc — Public item is missing documentation (public struct 'Point' has no non-empty doc comment)
+    pub struct Point {
+lib.mbt:18: [error] moonbit/require-public-doc — Public item is missing documentation (public fn 'parse' has no non-empty doc comment)
+    pub fn parse(text : String) -> Int32 {
+lib.mbt:19: [warning] moonbit/no-unwrap — Method named unwrap() requires review; it may panic
+    let value = Some(text.length()).unwrap()
+lib.mbt:20: [warning] moonbit/no-todo-comment — TODO/FIXME comment left in code
     // TODO: handle malformed input
 ```
 
-The test files are excluded by the preset on purpose: `*_test.mbt` and
-`*_wbtest.mbt` may unwrap, panic and print.
+The preset recursively excludes test files. Empty block separators are not
+substantive documentation. The tests verify the module's actual functions;
+compiler success and the convention-policy failure are separate verdicts.

@@ -15,6 +15,9 @@ type Format
 
 type Options
 
+#derive(@debug.Debug)
+type ProjectMode
+
 // Type aliases
 
 // Traits

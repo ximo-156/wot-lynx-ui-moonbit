@@ -34,14 +34,21 @@ fn moonbit_lex(src : String) -> MoonbitLexView {
   let mut prefix = true
   while i < chars.length() {
     let c = chars[i]
-    if i == 0 && c == '\u{FEFF}' { i += 1; continue }
+    if i == 0 && c == '\u{FEFF}' {
+      i += 1
+      continue
+    }
     let state = stack[stack.length() - 1]
     if c == '\n' {
       match state {
         MLRaw(_) => ignore(stack.pop())
         MLQuote(_, _) | MLInterpolation(_) => {
-          issues.push((line, "unterminated string or interpolation at line end"))
-          while stack.length() > 1 { ignore(stack.pop()) }
+          issues.push(
+            (line, "unterminated string or interpolation at line end"),
+          )
+          while stack.length() > 1 {
+            ignore(stack.pop())
+          }
         }
         MLCode => ()
       }
@@ -61,7 +68,10 @@ fn moonbit_lex(src : String) -> MoonbitLexView {
             continue
           }
           // Escaped characters in $| remain literal, including an escaped slash.
-          if chars[i + 1] != '\n' { i += 2; continue }
+          if chars[i + 1] != '\n' {
+            i += 2
+            continue
+          }
         }
         i += 1
         continue
@@ -75,9 +85,14 @@ fn moonbit_lex(src : String) -> MoonbitLexView {
             i += 2
             continue
           }
-          if chars[i + 1] != '\n' { i += 2; continue }
+          if chars[i + 1] != '\n' {
+            i += 2
+            continue
+          }
         }
-        if c == quote { ignore(stack.pop()) }
+        if c == quote {
+          ignore(stack.pop())
+        }
         i += 1
         continue
       }
@@ -85,8 +100,11 @@ fn moonbit_lex(src : String) -> MoonbitLexView {
     }
     let in_literal = stack.length() > 1
     protected[i] = in_literal
-    if !in_literal && prefix && (c == '#' || c == '$') &&
-      i + 1 < chars.length() && chars[i + 1] == '|' {
+    if !in_literal &&
+      prefix &&
+      (c == '#' || c == '$') &&
+      i + 1 < chars.length() &&
+      chars[i + 1] == '|' {
       protected[i] = true
       protected[i + 1] = true
       stack.push(MLRaw(c == '$'))
@@ -113,27 +131,40 @@ fn moonbit_lex(src : String) -> MoonbitLexView {
       i += 2
       while i < chars.length() && depth > 0 {
         if i + 1 < chars.length() && chars[i] == '/' && chars[i + 1] == '*' {
-          comments[i] = '/'; comments[i + 1] = '*'
-          protected[i] = in_literal; protected[i + 1] = in_literal
-          depth += 1; i += 2
-        } else if i + 1 < chars.length() && chars[i] == '*' && chars[i + 1] == '/' {
-          comments[i] = '*'; comments[i + 1] = '/'
-          protected[i] = in_literal; protected[i + 1] = in_literal
-          depth -= 1; i += 2
+          comments[i] = '/'
+          comments[i + 1] = '*'
+          protected[i] = in_literal
+          protected[i + 1] = in_literal
+          depth += 1
+          i += 2
+        } else if i + 1 < chars.length() &&
+          chars[i] == '*' &&
+          chars[i + 1] == '/' {
+          comments[i] = '*'
+          comments[i + 1] = '/'
+          protected[i] = in_literal
+          protected[i + 1] = in_literal
+          depth -= 1
+          i += 2
         } else {
           comments[i] = chars[i]
           protected[i] = in_literal
-          if chars[i] == '\n' { line += 1 }
+          if chars[i] == '\n' {
+            line += 1
+          }
           i += 1
         }
       }
-      if depth != 0 { issues.push((opened, "unterminated block comment")) }
+      if depth != 0 {
+        issues.push((opened, "unterminated block comment"))
+      }
       prefix = false
       continue
     }
     if c == '"' || c == '\'' {
       protected[i] = true
-      let bytes = i > 0 && chars[i - 1] == 'b' &&
+      let bytes = i > 0 &&
+        chars[i - 1] == 'b' &&
         (i < 2 || !moonbit_is_ident_char(chars[i - 2]))
       stack.push(MLQuote(c, c == '"' && !bytes))
       prefix = false
@@ -148,25 +179,39 @@ fn moonbit_lex(src : String) -> MoonbitLexView {
           prefix = false
           continue
         }
-        if c == '{' { stack[stack.length() - 1] = MLInterpolation(depth + 1) }
-        else if c == '}' { stack[stack.length() - 1] = MLInterpolation(depth - 1) }
+        if c == '{' {
+          stack[stack.length() - 1] = MLInterpolation(depth + 1)
+        } else if c == '}' {
+          stack[stack.length() - 1] = MLInterpolation(depth - 1)
+        }
       }
       _ => ()
     }
     code[i] = c
-    if !in_literal { declarations[i] = c }
-    if c != ' ' && c != '\t' && c != '\r' { prefix = false }
+    if !in_literal {
+      declarations[i] = c
+    }
+    if c != ' ' && c != '\t' && c != '\r' {
+      prefix = false
+    }
     i += 1
   }
   if stack.length() > 1 {
     match stack[stack.length() - 1] {
       MLRaw(_) => ()
-      _ => issues.push((line, "unterminated string or interpolation at end of file"))
+      _ =>
+        issues.push(
+          (line, "unterminated string or interpolation at end of file"),
+        )
     }
   }
-  { declarations: String::from_array(declarations),
-    code: String::from_array(code), comments: String::from_array(comments),
-    protected, issues }
+  {
+    declarations: String::from_array(declarations),
+    code: String::from_array(code),
+    comments: String::from_array(comments),
+    protected,
+    issues,
+  }
 }
 
 ///|
@@ -174,7 +219,9 @@ fn moonbit_code_and_comments(view : MoonbitLexView) -> String {
   let code = view.code.to_array()
   let comments = view.comments.to_array()
   for i in 0..<code.length() {
-    if comments[i] != ' ' { code[i] = comments[i] }
+    if comments[i] != ' ' {
+      code[i] = comments[i]
+    }
   }
   String::from_array(code)
 }
@@ -186,8 +233,11 @@ pub fn validate_moonbit_source(source : String) -> Unit raise {
   let view = moonbit_lex(source)
   if !view.issues.is_empty() {
     let (line, message) = view.issues[0]
-    raise Failure("incomplete MoonBit lexical input at line \{line}: \{message}")
+    raise Failure(
+      "incomplete MoonBit lexical input at line \{line}: \{message}",
+    )
   }
+  moonbit_validate_public_coverage(view)
 }
 
 ///|
@@ -206,16 +256,21 @@ pub fn fix_moonbit_whitespace(
   let remove = Array::make(chars.length(), false)
   if trailing {
     let mut start = 0
-    for i in 0..=chars.length() {
+    for i in 0..<=chars.length() {
       if i == chars.length() || chars[i] == '\n' {
         let mut end = i
-        if end > start && chars[end - 1] == '\r' { end -= 1 }
+        if end > start && chars[end - 1] == '\r' {
+          end -= 1
+        }
         let mut last = end
-        while last > start && (chars[last - 1] == ' ' || chars[last - 1] == '\t') {
+        while last > start &&
+              (chars[last - 1] == ' ' || chars[last - 1] == '\t') {
           last -= 1
         }
         for j in last..<end {
-          if !view.protected[j] { remove[j] = true }
+          if !view.protected[j] {
+            remove[j] = true
+          }
         }
         start = i + 1
       }
@@ -223,16 +278,22 @@ pub fn fix_moonbit_whitespace(
   }
   let out = StringBuilder::new()
   for i in 0..<chars.length() {
-    if remove[i] { continue }
+    if remove[i] {
+      continue
+    }
     if chars[i] == '\t' && !view.protected[i] {
       match tab_width {
         Some(width) => {
-          if width < 1 { raise Failure("tab width must be positive") }
+          if width < 1 {
+            raise Failure("tab width must be positive")
+          }
           out.write_string(" ".repeat(width))
         }
         None => out.write_char(chars[i])
       }
-    } else { out.write_char(chars[i]) }
+    } else {
+      out.write_char(chars[i])
+    }
   }
   let fixed = out.to_string()
   if final_newline && !fixed.is_empty() && !fixed.has_suffix("\n") {

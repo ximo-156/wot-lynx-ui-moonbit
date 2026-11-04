@@ -47,7 +47,9 @@ pub fn render_summary(result : LintResult) -> String {
     "files selected: \{result.files_selected}  files scanned: \{result.files_scanned}  skipped: \{result.files_skipped}  failed: \{result.files_failed}  errors: \{errors}  warnings: \{warnings}  baseline-suppressed: \{result.baseline_hits}",
   )
   if result.context_files_scanned > 0 || result.context_files_failed > 0 {
-    lines.push("context scanned: \{result.context_files_scanned}  context failed: \{result.context_files_failed}")
+    lines.push(
+      "context scanned: \{result.context_files_scanned}  context failed: \{result.context_files_failed}",
+    )
   }
   lines.join("\n")
 }

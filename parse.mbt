@@ -16,6 +16,7 @@
 
 ///|
 /// How a module reference entered the file.
+#derive(Debug, Eq)
 pub enum ImportKind {
   /// `import ... from '...'` or `import '...'`
   Static
@@ -25,20 +26,22 @@ pub enum ImportKind {
   Require
   /// `export ... from '...'` (a re-export is also an import)
   ReExport
-} derive(Debug, Eq)
+}
 
 ///|
 /// One name introduced by an import: the local binding and the name as the
 /// imported module exports it (`"default"` for default imports, `"*"` for
 /// namespace imports).
+#derive(Debug)
 pub struct ImportName {
   local : String
   imported : String
-} derive(Debug)
+}
 
 ///|
 /// A module reference with its position (1-based, pointing at the `import`,
 /// `export` or `require` keyword that starts it).
+#derive(Debug)
 pub struct ImportSpec {
   kind : ImportKind
   /// The module specifier exactly as written, including quotes.
@@ -48,52 +51,57 @@ pub struct ImportSpec {
   column : Int32
   /// Whether this is a `import type` / `export type` (TypeScript).
   type_only : Bool
-} derive(Debug)
+}
 
 ///|
 /// A name this file exports. `"default"` marks a default export; `"*"` marks
 /// `export * from`. `source` is set for re-exports.
+#derive(Debug)
 pub struct ExportSpec {
   names : Array[String]
   source : String?
   line : Int32
   column : Int32
-} derive(Debug)
+}
 
 ///|
 /// The kind of a top-level binding.
+#derive(Debug, Eq)
 pub enum DeclKind {
   Var
   Function
   Class
-} derive(Debug, Eq)
+}
 
 ///|
 /// A declared binding name with its position.
+#derive(Debug)
 pub struct Decl {
   name : String
   kind : DeclKind
   line : Int32
   column : Int32
-} derive(Debug)
+}
 
 ///|
 /// An identifier read in code (not as part of an import statement), used to
 /// decide whether an imported binding is referenced.
+#derive(Debug)
 pub struct UsedIdent {
   name : String
   line : Int32
   column : Int32
-} derive(Debug)
+}
 
 ///|
 /// The structural model of one source file.
+#derive(Debug)
 pub struct FileModel {
   imports : Array[ImportSpec]
   exports : Array[ExportSpec]
   decls : Array[Decl]
   used : Array[UsedIdent]
-} derive(Debug)
+}
 
 ///|
 /// Parse a source string into a structural model.

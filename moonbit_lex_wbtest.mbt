@@ -8,7 +8,9 @@ test "MoonBit empty block marker is not documentation" {
   let decls = scan_moonbit_decls("///|\npub fn empty() -> Unit {}\n")
   assert_eq(decls.length(), 1)
   assert_false(decls[0].has_doc)
-  let documented = scan_moonbit_decls("///|\n/// Real docs.\npub fn good() -> Unit {}\n")
+  let documented = scan_moonbit_decls(
+    "///|\n/// Real docs.\npub fn good() -> Unit {}\n",
+  )
   assert_true(documented[0].has_doc)
 }
 
@@ -42,7 +44,10 @@ test "MoonBit literal call text and qualified user methods are not builtin calls
     #|fn Foo::unwrap(self : Foo) -> Unit {}
     #|fn call() -> Unit { Foo::panic(); Foo::println() }
   for check in [MoonbitNoPanic, MoonbitNoPrintln, MoonbitNoUnwrap] {
-    assert_eq(analyze_moonbit([("a.mbt", src)], moonbit_test_rules(check)).length(), 0)
+    assert_eq(
+      analyze_moonbit([("a.mbt", src)], moonbit_test_rules(check)).length(),
+      0,
+    )
   }
 }
 
@@ -55,9 +60,18 @@ test "MoonBit calls after strings and inside interpolations are found" {
     #|  let _ = "prefix"; value.unwrap()
     #|  "\{value.unwrap()}"
     #|}
-  assert_eq(analyze_moonbit([("a.mbt", src)], moonbit_test_rules(MoonbitNoPanic)).length(), 1)
-  assert_eq(analyze_moonbit([("a.mbt", src)], moonbit_test_rules(MoonbitNoPrintln)).length(), 1)
-  let findings = analyze_moonbit([("a.mbt", src)], moonbit_test_rules(MoonbitNoUnwrap))
+  assert_eq(
+    analyze_moonbit([("a.mbt", src)], moonbit_test_rules(MoonbitNoPanic)).length(),
+    1,
+  )
+  assert_eq(
+    analyze_moonbit([("a.mbt", src)], moonbit_test_rules(MoonbitNoPrintln)).length(),
+    1,
+  )
+  let findings = analyze_moonbit(
+    [("a.mbt", src)],
+    moonbit_test_rules(MoonbitNoUnwrap),
+  )
   assert_eq(findings.length(), 2)
   assert_eq(findings[0].line, 4)
   assert_eq(findings[1].line, 5)
@@ -76,7 +90,10 @@ test "MoonBit interpolations preserve nested code but not text for declarations"
   assert_true(view.code.contains("value.unwrap()"))
   assert_false(view.declarations.contains("value.unwrap()"))
   assert_eq(scan_moonbit_decls(src).length(), 2)
-  assert_eq(analyze_moonbit([("a.mbt", src)], moonbit_test_rules(MoonbitNoUnwrap)).length(), 1)
+  assert_eq(
+    analyze_moonbit([("a.mbt", src)], moonbit_test_rules(MoonbitNoUnwrap)).length(),
+    1,
+  )
 }
 
 ///|
@@ -84,10 +101,16 @@ test "MoonBit top-level test bodies are exempt from call policies" {
   let src =
     #|test "allowed" { panic(); println("output"); value.unwrap() }
     #|fn run() -> Unit { panic() }
-  let findings = analyze_moonbit([("a.mbt", src)], moonbit_test_rules(MoonbitNoPanic))
+  let findings = analyze_moonbit(
+    [("a.mbt", src)],
+    moonbit_test_rules(MoonbitNoPanic),
+  )
   assert_eq(findings.length(), 1)
   assert_eq(findings[0].line, 2)
-  assert_eq(analyze_moonbit([("a.mbt", src)], moonbit_test_rules(MoonbitNoPrintln)).length(), 0)
+  assert_eq(
+    analyze_moonbit([("a.mbt", src)], moonbit_test_rules(MoonbitNoPrintln)).length(),
+    0,
+  )
 }
 
 ///|
@@ -102,7 +125,10 @@ test "MoonBit TODO checks see actual inline comments not raw string text" {
     #|  /// a note about TODO markers
     #|  // TODOS are plural
     #|}
-  let findings = analyze_moonbit([("a.mbt", src)], moonbit_test_rules(MoonbitNoTodo))
+  let findings = analyze_moonbit(
+    [("a.mbt", src)],
+    moonbit_test_rules(MoonbitNoTodo),
+  )
   assert_eq(findings.length(), 2)
   assert_eq(findings[0].line, 5)
   assert_eq(findings[1].line, 6)
@@ -120,7 +146,13 @@ test "MoonBit suberror documentation and qualified receiver are indexed" {
   assert_eq(decls[0].kind, MSuberror)
   assert_eq(decls[1].receiver, "Foo")
   assert_true(decls[1].has_doc)
-  assert_eq(analyze_moonbit([("a.mbt", src)], moonbit_test_rules(MoonbitRequirePublicDoc)).length(), 1)
+  assert_eq(
+    analyze_moonbit(
+      [("a.mbt", src)],
+      moonbit_test_rules(MoonbitRequirePublicDoc),
+    ).length(),
+    1,
+  )
 }
 
 ///|
@@ -167,7 +199,10 @@ test "MoonBit safe fixes keep raw and interpolated literal bytes intact" {
 ///|
 test "MoonBit safe fixes preserve CRLF and skip final raw content newline" {
   let src = "let value = 1  \r\nlet other = 2"
-  assert_eq(fix_moonbit_whitespace(src, true, None, true), "let value = 1\r\nlet other = 2\r\n")
+  assert_eq(
+    fix_moonbit_whitespace(src, true, None, true),
+    "let value = 1\r\nlet other = 2\r\n",
+  )
   let raw = "let value =\n  #|payload  "
   assert_eq(fix_moonbit_whitespace(raw, true, None, true), raw)
 }

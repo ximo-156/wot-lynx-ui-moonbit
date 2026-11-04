@@ -961,7 +961,9 @@ fn moonbit_structural_rule(
 ///|
 /// MoonBit builtins use structural, lexical call/comment checks rather than
 /// regular expressions. Custom line rules remain available through JSON.
-fn moonbit_rules() -> Array[Rule] { [] }
+fn moonbit_rules() -> Array[Rule] {
+  []
+}
 
 ///|
 /// MoonBit declaration, code-call and actual-comment policies. The compiler's
@@ -969,15 +971,32 @@ fn moonbit_rules() -> Array[Rule] { [] }
 /// baseline integration and configurable project conventions.
 fn moonbit_structural_rules() -> Array[StructuralRule] {
   [
-    moonbit_structural_rule("moonbit/no-unwrap", Severity::warning(),
-      "Method named unwrap() requires review; it may panic", MoonbitNoUnwrap),
-    moonbit_structural_rule("moonbit/no-panic", Severity::warning(),
-      "panic() in regular code", MoonbitNoPanic),
-    moonbit_structural_rule("moonbit/no-todo-comment", Severity::warning(),
-      "TODO/FIXME comment left in code", MoonbitNoTodo),
-    { id: "moonbit/no-println", severity: Severity::warning(),
-      message: "println() left in library code", extensions: [".mbt"],
-      check: MoonbitNoPrintln, scope: moonbit_cli_scope() },
+    moonbit_structural_rule(
+      "moonbit/no-unwrap",
+      Severity::warning(),
+      "Method named unwrap() requires review; it may panic",
+      MoonbitNoUnwrap,
+    ),
+    moonbit_structural_rule(
+      "moonbit/no-panic",
+      Severity::warning(),
+      "panic() in regular code",
+      MoonbitNoPanic,
+    ),
+    moonbit_structural_rule(
+      "moonbit/no-todo-comment",
+      Severity::warning(),
+      "TODO/FIXME comment left in code",
+      MoonbitNoTodo,
+    ),
+    {
+      id: "moonbit/no-println",
+      severity: Severity::warning(),
+      message: "println() left in library code",
+      extensions: [".mbt"],
+      check: MoonbitNoPrintln,
+      scope: moonbit_cli_scope(),
+    },
     moonbit_structural_rule(
       "moonbit/require-public-doc",
       Severity::error(),

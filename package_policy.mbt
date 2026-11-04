@@ -679,8 +679,8 @@ fn package_policy_compare_issues(a : PolicyIssue, b : PolicyIssue) -> Int32 {
   for key in ["from", "to", "kind", "target", "alias"] {
     let order = a.details
       .get(key)
-      .unwrap()
-      .lexical_compare(b.details.get(key).unwrap())
+      .unwrap_or("")
+      .lexical_compare(b.details.get(key).unwrap_or(""))
     if order != 0 {
       return order
     }

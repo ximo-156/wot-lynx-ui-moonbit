@@ -14,12 +14,15 @@
 /// and standalone `**` path segments (see `glob_pattern_error`).
 
 ///|
+/// Compiled include/exclude filters for finding paths. An empty include allows
+/// all paths; every exclude wins. Project dependencies may still be read as context.
+#derive(Debug, Eq)
 pub struct Scope {
   /// Patterns a path must match to be in scope. Empty means "no restriction".
   includes : Array[GlobPattern]
   /// Patterns that take a path out of scope.
   excludes : Array[GlobPattern]
-} derive(Debug, Eq)
+}
 
 ///|
 /// A scope that places no restriction on paths.

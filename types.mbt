@@ -16,10 +16,11 @@
 
 ///|
 /// Severity of a rule violation.
+#derive(Debug, Eq)
 pub enum Severity {
   Error
   Warning
-} derive(Debug, Eq)
+}
 
 ///|
 /// Convenience constructors (pub so external packages can build values).
@@ -28,6 +29,7 @@ pub fn Severity::error() -> Severity {
 }
 
 ///|
+/// Construct a non-blocking warning severity for external rule definitions.
 pub fn Severity::warning() -> Severity {
   Warning
 }
@@ -56,6 +58,7 @@ pub fn Severity::parse(self : String) -> Severity {
 /// A rule pairs one `match` kind with an optional `unless` kind (a negative
 /// guard) to express "match X but not Y"; the combinators below express the
 /// rest — `all` / `any` / `not` nest arbitrarily deep.
+#derive(Debug, Eq)
 pub enum MatchKind {
   /// Line contains the substring.
   Contains(String)
@@ -75,10 +78,11 @@ pub enum MatchKind {
   Any(Array[MatchKind])
   /// The sub-matcher must not match.
   Not(MatchKind)
-} derive(Debug, Eq)
+}
 
 ///|
 /// A declarative lint rule.
+#derive(Debug)
 pub struct Rule {
   /// Stable identifier, e.g. `vue/import-from-vue`.
   id : String
@@ -100,10 +104,11 @@ pub struct Rule {
   /// targets comments themselves — a no-TODO rule, say — opts into the raw
   /// view instead. `false` keeps the historical stripped view.
   match_comments : Bool
-} derive(Debug)
+}
 
 ///|
 /// A single rule violation located in a file.
+#derive(Debug)
 pub struct Finding {
   rule_id : String
   severity : Severity
@@ -116,26 +121,29 @@ pub struct Finding {
   column : Int32
   /// The offending source line (trimmed).
   snippet : String
-} derive(Debug)
+}
 
 ///|
 /// A scan failure. These are operational errors, not lint findings.
+#derive(Debug)
 pub struct Diagnostic {
   file : String
   message : String
-} derive(Debug)
+}
 
 ///|
 /// A file that entered the scan but was not read.
+#derive(Debug)
 pub struct SkippedFile {
   /// Path relative to the scan root.
   file : String
   /// Why the file was not read, e.g. `no-applicable-rule`.
   reason : String
-} derive(Debug)
+}
 
 ///|
 /// Scan metadata attached to machine-readable reports.
+#derive(Debug)
 pub struct ScanInfo {
   /// Scan mode tag, e.g. `tree`, `staged`, `glob`.
   mode : String
@@ -143,7 +151,7 @@ pub struct ScanInfo {
   root : String
   /// Effective extension filter; an empty list means "all files".
   extensions : Array[String]
-} derive(Debug)
+}
 
 ///|
 /// Build the scan metadata carried by machine-readable reports.
@@ -157,6 +165,7 @@ pub fn ScanInfo::new(
 
 ///|
 /// A parsed configuration: the rule set plus the global file scope.
+#derive(Debug)
 pub struct LintConfig {
   /// The configured rules, in declaration order.
   rules : Array[Rule]
@@ -166,16 +175,17 @@ pub struct LintConfig {
   structural_rules : Array[StructuralRule]
   /// The global scope applied to every scan.
   scope : Scope
-} derive(Debug)
+}
 
 ///|
 /// Naming convention for file-level naming checks.
+#derive(Debug, Eq)
 pub enum NamingStyle {
   CamelCase
   PascalCase
   SnakeCase
   KebabCase
-} derive(Debug, Eq)
+}
 
 ///|
 /// Parse a naming style from its string tag.
@@ -191,12 +201,13 @@ pub fn NamingStyle::parse(s : String) -> NamingStyle? {
 
 ///|
 /// Line ending style for file-level checks.
+#derive(Debug, Eq)
 pub enum LineEndingStyle {
   /// Unix line endings (LF only).
   Lf
   /// Windows line endings (CRLF only).
   Crlf
-} derive(Debug, Eq)
+}
 
 ///|
 /// Parse a line ending style from its string tag.
@@ -210,6 +221,7 @@ pub fn LineEndingStyle::parse(s : String) -> LineEndingStyle? {
 
 ///|
 /// A file-level check evaluated once per file, not per line.
+#derive(Debug, Eq)
 pub enum FileCheck {
   /// File must not exceed N lines.
   MaxLines(Int32)
@@ -233,10 +245,11 @@ pub enum FileCheck {
   LineEnding(LineEndingStyle)
   /// File must not start with a UTF-8 BOM.
   NoBom
-} derive(Debug, Eq)
+}
 
 ///|
 /// A file-level lint rule.
+#derive(Debug)
 pub struct FileRule {
   /// Stable identifier, e.g. `file/max-lines`.
   id : String
@@ -249,12 +262,13 @@ pub struct FileRule {
   check : FileCheck
   /// Paths this rule applies to. An empty scope means "every file".
   scope : Scope
-} derive(Debug)
+}
 
 ///|
 /// A cross-file structural check evaluated over the whole parsed project
 /// index. Unlike line and file checks these require a second pass that sees
 /// every file at once, so they are expressed as project-level checks.
+#derive(Debug, Eq)
 pub enum StructuralCheck {
   /// An imported binding is never referenced in the importing file.
   NoUnusedImports
@@ -284,10 +298,11 @@ pub enum StructuralCheck {
   MoonbitNoPrintln
   /// A TODO/FIXME marker at the start of an actual comment.
   MoonbitNoTodo
-} derive(Debug, Eq)
+}
 
 ///|
 /// A project-level lint rule.
+#derive(Debug)
 pub struct StructuralRule {
   /// Stable identifier, e.g. `imports/no-unresolved-relative-imports`.
   id : String
@@ -300,11 +315,12 @@ pub struct StructuralRule {
   check : StructuralCheck
   /// Paths this rule applies to. An empty scope means "every file".
   scope : Scope
-} derive(Debug)
+}
 
 ///|
 /// Aggregate result. Selection is counted after path normalization, extension
 /// filtering and de-duplication; each selected file is scanned, skipped or failed.
+#derive(Debug)
 pub struct LintResult {
   findings : Array[Finding]
   /// Files that passed path, extension and scope filters.
@@ -327,7 +343,7 @@ pub struct LintResult {
   baseline_hits : Int32
   diagnostics : Array[Diagnostic]
   skipped_files : Array[SkippedFile]
-} derive(Debug)
+}
 
 ///|
 /// Backwards-compatible constructor for callers supplying successful findings.

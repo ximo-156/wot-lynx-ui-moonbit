@@ -167,6 +167,8 @@ fn read_source(path : String) -> String raise {
 }
 
 ///|
+/// Read strict UTF-8 source and return numbered, comment-masked lines.
+/// MoonBit literals are also masked; BOMs are preserved and binary NULs rejected.
 pub fn read_lines(path : String) -> Array[(Int32, String)] raise {
   split_lines(strip_comments(read_source(path), comment_mode_for(path)))
 }

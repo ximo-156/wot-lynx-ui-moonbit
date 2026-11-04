@@ -1,5 +1,6 @@
 ///|
 /// File selection. Git modes read immutable HEAD/index contents in the engine.
+#derive(Debug, Eq)
 pub enum ScanMode {
   Tree
   Changed(String)
@@ -7,39 +8,46 @@ pub enum ScanMode {
   Glob(String)
   Stdin
   Stdin0
-} derive(Debug, Eq)
+}
 
 ///|
+/// Select the working-tree directory recursively under the common path filters.
 pub fn ScanMode::tree() -> ScanMode {
   Tree
 }
 
 ///|
+/// Select committed changes since merge-base(git_ref, HEAD); the engine reads captured HEAD blobs.
 pub fn ScanMode::changed(git_ref : String) -> ScanMode {
   Changed(git_ref)
 }
 
 ///|
+/// Select index changes; the engine captures index blob ids and ignores unstaged source text.
 pub fn ScanMode::staged() -> ScanMode {
   Staged
 }
 
 ///|
+/// Select working-tree paths matching one root-relative glob, validated during selection.
 pub fn ScanMode::glob(pattern : String) -> ScanMode {
   Glob(pattern)
 }
 
 ///|
+/// Read newline-delimited working-tree paths from standard input.
 pub fn ScanMode::stdin() -> ScanMode {
   Stdin
 }
 
 ///|
+/// Read NUL-delimited working-tree paths, including names containing newlines.
 pub fn ScanMode::stdin0() -> ScanMode {
   Stdin0
 }
 
 ///|
+/// Return the stable lowercase scan-mode name used in machine reports.
 pub fn ScanMode::tag(self : ScanMode) -> String {
   match self {
     Tree => "tree"
@@ -147,11 +155,13 @@ pub fn glob_pattern_error(pattern : String) -> String? {
 ///|
 /// Match path segments separately: ** means zero or more complete segments,
 /// never part of a filename. Dynamic programming avoids exponential backtracking.
+#derive(Debug, Eq)
 pub struct GlobPattern {
   segments : Array[String]
-} derive(Debug, Eq)
+}
 
 ///|
+/// Split an already validated root-relative glob into path segments; call validate_glob for untrusted input.
 pub fn GlobPattern::new(pattern : String) -> GlobPattern {
   { segments: pattern.split("/").map(v => v.to_owned()).to_array(), }
 }
@@ -176,6 +186,7 @@ pub fn GlobPattern::matches_path(self : GlobPattern, path : String) -> Bool {
 }
 
 ///|
+/// Match the entire relative path; unlike matches_path, a directory match does not cover descendants.
 pub fn GlobPattern::matches(self : GlobPattern, path : String) -> Bool {
   let parts = path.split("/").map(v => v.to_owned()).to_array()
   let mut previous : Array[Bool] = Array::make(parts.length() + 1, false)

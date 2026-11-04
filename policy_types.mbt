@@ -29,6 +29,10 @@ pub fn PolicyReport::has_errors(self : PolicyReport) -> Bool {
 ///|
 /// Filter presentation without changing the project scan counters.
 pub fn PolicyReport::errors_only(self : PolicyReport) -> PolicyReport {
-  { mode: self.mode, metadata: self.metadata, counts: self.counts,
-    issues: self.issues.filter(issue => issue.severity == Severity::Error) }
+  {
+    mode: self.mode,
+    metadata: self.metadata,
+    counts: self.counts,
+    issues: self.issues.filter(issue => issue.severity == Severity::Error),
+  }
 }

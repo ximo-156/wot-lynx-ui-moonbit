@@ -58,6 +58,8 @@ fn rule_applies(rule : Rule, rel : String) -> Bool {
 }
 
 ///|
+/// Select and lint a directory tree under the supplied rules and global scope.
+/// Selection failures return Err; source/context read failures stay in diagnostics.
 pub fn lint_tree(
   root : String,
   rules : Array[Rule],
@@ -224,7 +226,10 @@ fn lint_selected_impl(
       continue
     }
     try {
-      let kind = match frozen { Some(snapshot) => snapshot.kind(rel); None => rooted_source_kind(root, rel) }
+      let kind = match frozen {
+        Some(snapshot) => snapshot.kind(rel)
+        None => rooted_source_kind(root, rel)
+      }
       if kind == 3 {
         skipped += 1
         skipped_files.push({ file: rel, reason: "not-a-regular-file", })
@@ -233,8 +238,13 @@ fn lint_selected_impl(
       if kind != 1 {
         raise Failure("source is missing or is not a regular file")
       }
-      let source = match frozen { Some(snapshot) => snapshot.source(root, rel); None => read_source(join_path(root, rel)) }
-      if rel.has_suffix(".mbt") { validate_moonbit_source(source) }
+      let source = match frozen {
+        Some(snapshot) => snapshot.source(root, rel)
+        None => read_source(join_path(root, rel))
+      }
+      if rel.has_suffix(".mbt") {
+        validate_moonbit_source(source)
+      }
       let hash = content_hash(source)
       // A cache hit means identical content under an identical rule set, so
       // the previous findings are still exactly right: reuse them instead of
@@ -255,9 +265,18 @@ fn lint_selected_impl(
           }
           if !structural_rules.is_empty() {
             project_sources.push((rel, source))
-            disable_maps.push((rel, parse_disable_comments(
-              if rel.has_suffix(".mbt") { moonbit_lex(source).comments } else { source },
-            )))
+            disable_maps.push(
+              (
+                rel,
+                parse_disable_comments(
+                  if rel.has_suffix(".mbt") {
+                    moonbit_lex(source).comments
+                  } else {
+                    source
+                  },
+                ),
+              ),
+            )
           }
           updated.put(rel, hash, entry.findings)
           scanned += 1
@@ -266,13 +285,19 @@ fn lint_selected_impl(
         None => ()
       }
       let disable_map = parse_disable_comments(
-        if rel.has_suffix(".mbt") { moonbit_lex(source).comments } else { source },
+        if rel.has_suffix(".mbt") {
+          moonbit_lex(source).comments
+        } else {
+          source
+        },
       )
       let raw_lines = split_lines(source)
       let lines = split_lines(strip_comments(source, comment_mode_for(rel)))
       let comment_lines = if rel.has_suffix(".mbt") {
         split_lines(moonbit_code_and_comments(moonbit_lex(source)))
-      } else { raw_lines }
+      } else {
+        raw_lines
+      }
       // Per-file findings are collected separately so they can be stored in
       // the cache; the project pass appends its own afterwards.
       let file_findings : Array[Finding] = []
@@ -310,10 +335,14 @@ fn lint_selected_impl(
   let mut context_scanned = 0
   let mut context_failed = 0
   if structural_rules.any(rule => needs_project_context(rule.check)) {
-    let (count, failures, context_diagnostics) = add_project_context(root, project_sources, frozen)
+    let (count, failures, context_diagnostics) = add_project_context(
+      root, project_sources, frozen,
+    )
     context_scanned = count
     context_failed = failures
-    for diagnostic in context_diagnostics { diagnostics.push(diagnostic) }
+    for diagnostic in context_diagnostics {
+      diagnostics.push(diagnostic)
+    }
   }
   // Project pass: one index over every scanned file, then every structural
   // rule. Findings honour inline disables like per-file findings do.
@@ -326,12 +355,18 @@ fn lint_selected_impl(
       !rel.has_suffix(".mbt")
     })
     let index = build_index(js_sources)
-    let structural_findings = if context_failed == 0 { analyze(index, structural_rules) } else { [] }
+    let structural_findings = if context_failed == 0 {
+      analyze(index, structural_rules)
+    } else {
+      []
+    }
     for finding in analyze_moonbit(project_sources, structural_rules) {
       structural_findings.push(finding)
     }
     for finding in structural_findings {
-      if !selected.contains(finding.file) { continue }
+      if !selected.contains(finding.file) {
+        continue
+      }
       let suppressed = disable_maps.any(pair => {
         let (rel, map) = pair
         rel == finding.file && map.is_disabled(finding.rule_id, finding.line)

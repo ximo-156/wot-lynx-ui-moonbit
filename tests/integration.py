@@ -1467,14 +1467,15 @@ class PresetTests(FixtureCase):
         )
         self.assert_exit(result, 0)
         config = json.loads((init_dir / "moonlint.json").read_text(encoding="utf-8"))
-        ids = [rule["id"] for rule in config["rules"]]
+        self.assertEqual(config["rules"], [])
+        ids = [rule["id"] for rule in config["structural_rules"]]
         self.assertIn("moonbit/no-todo-comment", ids)
         self.assertIn("moonbit/no-unwrap", ids)
         self.assertEqual(
             config["exclude"], ["**/*_test.mbt", "**/*_wbtest.mbt"]
         )
         (init_dir / "lib.mbt").write_text(
-            "pub fn BadName() -> Int {\n  1\n}\n", encoding="utf-8"
+            "pub fn badName() -> Int32 {\n  1\n}\n", encoding="utf-8"
         )
         result = subprocess.run(
             [str(BINARY), "."],
@@ -2003,21 +2004,17 @@ class MoonbitTests(FixtureCase):
     """The MoonBit source preset: declaration checks and test-file scope."""
 
     EXPECTED = (
-        "lib.mbt:7: [error] moonbit/naming — Name does not follow the "
-        "MoonBit naming convention (fn 'BadName' should be snake_case)\n"
-        "    pub fn BadName() -> Int {\n"
-        "lib.mbt:7: [error] moonbit/require-public-doc — Public item is "
-        "missing a ///| doc comment (public fn 'BadName' has no ///| doc "
-        "comment)\n"
-        "    pub fn BadName() -> Int {\n"
-        "lib.mbt:12: [error] moonbit/naming — Name does not follow the "
-        "MoonBit naming convention (struct 'point' should be PascalCase)\n"
-        "    pub struct point {\n"
-        "lib.mbt:18: [warning] moonbit/no-unwrap — unwrap() can panic; "
-        "handle the error explicitly\n"
-        "    let value = @json.parse(text).unwrap()\n"
-        "lib.mbt:19: [warning] moonbit/no-todo-comment — TODO/FIXME comment "
-        "left in code\n"
+        "lib.mbt:8: [error] moonbit/naming — Name does not follow the MoonBit naming convention (fn 'badName' should be snake_case)\n"
+        "    pub fn badName() -> Int32 {\n"
+        "lib.mbt:8: [error] moonbit/require-public-doc — Public item is missing documentation (public fn 'badName' has no non-empty doc comment)\n"
+        "    pub fn badName() -> Int32 {\n"
+        "lib.mbt:13: [error] moonbit/require-public-doc — Public item is missing documentation (public struct 'Point' has no non-empty doc comment)\n"
+        "    pub struct Point {\n"
+        "lib.mbt:18: [error] moonbit/require-public-doc — Public item is missing documentation (public fn 'parse' has no non-empty doc comment)\n"
+        "    pub fn parse(text : String) -> Int32 {\n"
+        "lib.mbt:19: [warning] moonbit/no-unwrap — Method named unwrap() requires review; it may panic\n"
+        "    let value = Some(text.length()).unwrap()\n"
+        "lib.mbt:20: [warning] moonbit/no-todo-comment — TODO/FIXME comment left in code\n"
         "    // TODO: handle malformed input\n"
     )
 
@@ -2198,6 +2195,7 @@ class DemoTests(FixtureCase):
 
 
 from policies import make_policy_tests
+from git_context import make_git_context_tests
 
 
 PHASES = {
@@ -2213,6 +2211,7 @@ PHASES = {
     "demo": DemoTests,
     "moonbit": MoonbitTests,
     "policies": make_policy_tests(FixtureCase, REPO_ROOT),
+    "git-context": make_git_context_tests(FixtureCase, REPO_ROOT),
 }
 
 

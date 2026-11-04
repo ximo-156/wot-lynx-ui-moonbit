@@ -1,9 +1,10 @@
 ///|
 /// Native filesystem and Git operations use fixed argv, never a shell.
 /// Source text is strict UTF-8 with BOMs and embedded NULs preserved.
+#derive(Debug)
 pub(all) suberror NativeError {
   NativeError(String)
-} derive(Debug)
+}
 
 ///|
 #deprecated

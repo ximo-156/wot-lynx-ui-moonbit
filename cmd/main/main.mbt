@@ -42,12 +42,13 @@ struct Options {
 ///|
 /// Stdout rendering format. `Text` is the human-readable default; `Json` and
 /// `Github` are the machine-readable reports used in CI.
+#derive(Debug, Eq)
 enum Format {
   Text
   Json
   Github
   Sarif
-} derive(Debug, Eq)
+}
 
 ///|
 fn main {
@@ -59,7 +60,9 @@ fn main {
     return
   }
   if opts.project_mode is Some(_) {
-    run_project_mode(opts) catch { error => die(@lib.error_message(error)) }
+    run_project_mode(opts) catch {
+      error => die(@lib.error_message(error))
+    }
     return
   }
   if opts.list_presets {
@@ -145,7 +148,11 @@ fn run(opts : Options) -> Unit raise {
       "--update-baseline requires a full tree scan without --ext or other scan modes",
     )
   }
-  if opts.fix && (opts.update_baseline || opts.audit_baseline) { raise Failure("--fix cannot be combined with baseline update/migration/audit") }
+  if opts.fix && (opts.update_baseline || opts.audit_baseline) {
+    raise Failure(
+      "--fix cannot be combined with baseline update/migration/audit",
+    )
+  }
   // --fix writes the working tree; Git-backed modes read blobs, so fixes would
   // never be reflected in the re-scan and the report would contradict disk.
   if opts.fix &&
@@ -189,7 +196,14 @@ fn run(opts : Options) -> Unit raise {
       @sys.exit(2)
       return
     }
-    apply_fixes(root, files, file_rules, config.scope, opts.fix_tab_width, opts.dry_run)
+    apply_fixes(
+      root,
+      files,
+      file_rules,
+      config.scope,
+      opts.fix_tab_width,
+      opts.dry_run,
+    )
     // A dry run leaves the working tree untouched, so re-scanning would
     // report the same findings again and suggest the fixes did nothing. The
     // pre-fix result is the honest answer: it is what the user still has.
@@ -294,7 +308,9 @@ fn apply_fixes(
 ) -> Unit raise {
   let mut fixed_count = 0
   for rel in files {
-    if !scope.allows(rel) { continue }
+    if !scope.allows(rel) {
+      continue
+    }
     // Only rules that genuinely apply to this path, including scope.
     let applicable = file_rules.filter(fr => fr.applies_to(rel))
     if applicable.is_empty() {
@@ -303,22 +319,35 @@ fn apply_fixes(
     let path = "\{root}/\{rel}"
     @lib.validate_fix_path(root, rel)
     let source = @lib.read_fix_source(root, rel)
-    let script_fix = [".js", ".mjs", ".cjs", ".ts", ".mts", ".cts", ".jsx", ".tsx"].any(ext => rel.has_suffix(ext)) && !source.contains("<")
+    let script_fix = [
+        ".js", ".mjs", ".cjs", ".ts", ".mts", ".cts", ".jsx", ".tsx",
+      ].any(ext => rel.has_suffix(ext)) &&
+      !source.contains("<")
     let crlf = source.contains("\r\n")
     let mut fixed = source
     let mut changed = false
     if rel.has_suffix(".mbt") {
-      fixed = @lib.fix_moonbit_whitespace(source,
+      fixed = @lib.fix_moonbit_whitespace(
+        source,
         applicable.any(fr => fr.check is @lib.FileCheck::NoTrailingWhitespace),
-        if applicable.any(fr => fr.check is @lib.FileCheck::NoTabs) { tab_width } else { None },
-        applicable.any(fr => fr.check is @lib.FileCheck::FinalNewline))
+        if applicable.any(fr => fr.check is @lib.FileCheck::NoTabs) {
+          tab_width
+        } else {
+          None
+        },
+        applicable.any(fr => fr.check is @lib.FileCheck::FinalNewline),
+      )
       changed = fixed != source
     }
     for fr in applicable {
-      if rel.has_suffix(".mbt") { continue }
+      if rel.has_suffix(".mbt") {
+        continue
+      }
       match fr.check {
         @lib.FileCheck::NoTrailingWhitespace => {
-          if !script_fix || source.contains("`") { continue }
+          if !script_fix || source.contains("`") {
+            continue
+          }
           let lines = fixed.split("\n")
           let new_lines : Array[String] = []
           for line_view in lines {
@@ -335,8 +364,12 @@ fn apply_fixes(
           // Tab replacement is opt-in: it silently changes indentation width.
           match tab_width {
             Some(width) =>
-              if script_fix && !source.contains("`") && !source.contains("\"") &&
-                !source.contains("'") && !source.contains("/") && fixed.contains("\t") {
+              if script_fix &&
+                !source.contains("`") &&
+                !source.contains("\"") &&
+                !source.contains("'") &&
+                !source.contains("/") &&
+                fixed.contains("\t") {
                 let parts = fixed.split("\t")
                 fixed = parts.join(" ".repeat(width))
                 changed = true
@@ -344,7 +377,10 @@ fn apply_fixes(
             None => ()
           }
         @lib.FileCheck::FinalNewline =>
-          if script_fix && !source.contains("`") && fixed.length() > 0 && !fixed.has_suffix("\n") {
+          if script_fix &&
+            !source.contains("`") &&
+            fixed.length() > 0 &&
+            !fixed.has_suffix("\n") {
             // Match the file's existing convention instead of forcing LF.
             fixed = fixed + (if crlf { "\r\n" } else { "\n" })
             changed = true
@@ -356,7 +392,9 @@ fn apply_fixes(
       if !dry_run {
         // Atomic replace: a crash mid-write must not truncate user source.
         @lib.validate_fix_path(root, rel)
-        if @lib.read_fix_source(root, rel) != source { raise Failure("source changed before fix: \{rel}") }
+        if @lib.read_fix_source(root, rel) != source {
+          raise Failure("source changed before fix: \{rel}")
+        }
         @lib.write_atomic_text(path, fixed)
       }
       fixed_count += 1
@@ -377,11 +415,11 @@ fn apply_fixes(
 fn trim_trailing_ws(s : String) -> String {
   let chars = s.to_array()
   let has_cr = chars.length() > 0 && chars[chars.length() - 1] == '\r'
-  let mut end = chars.length() - if has_cr { 1 } else { 0 }
+  let mut end = chars.length() - (if has_cr { 1 } else { 0 })
   while end > 0 && (chars[end - 1] == ' ' || chars[end - 1] == '\t') {
     end -= 1
   }
-  String::from_array(chars[:end]) + if has_cr { "\r" } else { "" }
+  String::from_array(chars[:end]) + (if has_cr { "\r" } else { "" })
 }
 
 ///|
@@ -576,13 +614,23 @@ fn parse_args(args : Array[String]) -> Options raise {
         let after = option_value(args, i, arg)
         set_project_mode(opts, ApiCheck(before, after))
       }
-      "--api-toolchain" => { i += 1; opts.api_toolchain = Some(option_value(args, i, arg)) }
-      "--api-backend" => { i += 1; opts.api_backend = Some(option_value(args, i, arg)) }
-      "--api-module-version" => { i += 1; opts.api_module_version = Some(option_value(args, i, arg)) }
+      "--api-toolchain" => {
+        i += 1
+        opts.api_toolchain = Some(option_value(args, i, arg))
+      }
+      "--api-backend" => {
+        i += 1
+        opts.api_backend = Some(option_value(args, i, arg))
+      }
+      "--api-module-version" => {
+        i += 1
+        opts.api_module_version = Some(option_value(args, i, arg))
+      }
       "--api-version-policy" => {
         i += 1
         opts.api_version_policy = option_value(args, i, arg)
-        if opts.api_version_policy != "none" && opts.api_version_policy != "semver" {
+        if opts.api_version_policy != "none" &&
+          opts.api_version_policy != "semver" {
           raise Failure("--api-version-policy expects none or semver")
         }
       }
@@ -613,12 +661,26 @@ fn parse_args(args : Array[String]) -> Options raise {
         i += 1
         opts.baseline_format = option_value(args, i, arg)
         opts.baseline_format_set = true
-        if opts.baseline_format != "legacy" && opts.baseline_format != "v2" { raise Failure("--baseline-format expects legacy or v2") }
+        if opts.baseline_format != "legacy" && opts.baseline_format != "v2" {
+          raise Failure("--baseline-format expects legacy or v2")
+        }
       }
-      "--baseline-reason" => { i += 1; opts.baseline_reason = Some(option_value(args, i, arg)) }
-      "--baseline-owner" => { i += 1; opts.baseline_owner = Some(option_value(args, i, arg)) }
-      "--baseline-expires" => { i += 1; opts.baseline_expires = Some(option_value(args, i, arg)) }
-      "--baseline-today" => { i += 1; opts.baseline_today = Some(option_value(args, i, arg)) }
+      "--baseline-reason" => {
+        i += 1
+        opts.baseline_reason = Some(option_value(args, i, arg))
+      }
+      "--baseline-owner" => {
+        i += 1
+        opts.baseline_owner = Some(option_value(args, i, arg))
+      }
+      "--baseline-expires" => {
+        i += 1
+        opts.baseline_expires = Some(option_value(args, i, arg))
+      }
+      "--baseline-today" => {
+        i += 1
+        opts.baseline_today = Some(option_value(args, i, arg))
+      }
       "--audit-baseline" => opts.audit_baseline = true
       "--migrate-baseline" => {
         opts.migrate_baseline = true
@@ -693,18 +755,42 @@ fn parse_args(args : Array[String]) -> Options raise {
     }
     i += 1
   }
-  if opts.project_mode is None && (opts.api_toolchain is Some(_) || opts.api_backend is Some(_) ||
-    opts.api_module_version is Some(_) || opts.api_version_policy != "none") {
+  if opts.project_mode is None &&
+    (
+      opts.api_toolchain is Some(_) ||
+      opts.api_backend is Some(_) ||
+      opts.api_module_version is Some(_) ||
+      opts.api_version_policy != "none"
+    ) {
     raise Failure("API metadata/version options require an API policy mode")
   }
-  if opts.fix_tab_width is Some(_) && !opts.fix { raise Failure("--fix-tab-width requires --fix") }
+  if opts.fix_tab_width is Some(_) && !opts.fix {
+    raise Failure("--fix-tab-width requires --fix")
+  }
   if !opts.help {
-    if opts.audit_baseline && (opts.baseline is None || opts.update_baseline) { raise Failure("--audit-baseline requires --baseline and cannot update it") }
-    if opts.migrate_baseline && (opts.baseline is None || opts.baseline_format != "v2") { raise Failure("--migrate-baseline requires a named legacy baseline and v2 format") }
-    if opts.baseline_format_set && !opts.update_baseline { raise Failure("--baseline-format only applies to baseline writes") }
-    if (opts.baseline_reason is Some(_) || opts.baseline_owner is Some(_) || opts.baseline_expires is Some(_)) &&
-      (!opts.update_baseline || opts.baseline_format != "v2") { raise Failure("exception metadata requires a v2 baseline write") }
-    if opts.baseline_today is Some(_) && opts.baseline is None { raise Failure("--baseline-today requires --baseline") }
+    if opts.audit_baseline && (opts.baseline is None || opts.update_baseline) {
+      raise Failure("--audit-baseline requires --baseline and cannot update it")
+    }
+    if opts.migrate_baseline &&
+      (opts.baseline is None || opts.baseline_format != "v2") {
+      raise Failure(
+        "--migrate-baseline requires a named legacy baseline and v2 format",
+      )
+    }
+    if opts.baseline_format_set && !opts.update_baseline {
+      raise Failure("--baseline-format only applies to baseline writes")
+    }
+    if (
+        opts.baseline_reason is Some(_) ||
+        opts.baseline_owner is Some(_) ||
+        opts.baseline_expires is Some(_)
+      ) &&
+      (!opts.update_baseline || opts.baseline_format != "v2") {
+      raise Failure("exception metadata requires a v2 baseline write")
+    }
+    if opts.baseline_today is Some(_) && opts.baseline is None {
+      raise Failure("--baseline-today requires --baseline")
+    }
   }
   opts
 }
@@ -736,12 +822,10 @@ fn print_help() -> Unit {
       "Incremental caching re-lints only changed files; Watch is not implemented.",
       "", "Project policies (read pre-generated compiler output; no implicit build):",
       "  --package-graph <json> --config <policy.json>   Check moon tree schema v3",
-      "  --api-snapshot <mbti> --api-toolchain <id> --api-backend <target>",
-      "                  --api-module-version <version>   Write snapshot JSON",
+      "  --api-snapshot <mbti> --api-toolchain <id> --api-backend <target>", "                  --api-module-version <version>   Write snapshot JSON",
       "  --api-check <before.json> <after.json>           Compare public interfaces",
       "  --api-version-policy none|semver                Opt-in release policy",
-      "", "Versioned exceptions (baseline loading is always explicit):",
-      "  --update-baseline --baseline-format v2 --baseline-reason <reason>",
+      "", "Versioned exceptions (baseline loading is always explicit):", "  --update-baseline --baseline-format v2 --baseline-reason <reason>",
       "                  --baseline-owner <owner> [--baseline-expires YYYY-MM-DD]",
       "  --audit-baseline --baseline <v2.json>    Audit a full tree and count budgets",
       "  --migrate-baseline --baseline <legacy.json> --baseline-reason R --baseline-owner O",

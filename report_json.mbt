@@ -14,6 +14,7 @@
 /// Rendering never raises: a report is always produced from a completed scan.
 
 ///|
+/// Render source findings, scan/context counters and diagnostics as version-1 JSON.
 pub fn render_json(result : LintResult, scan : ScanInfo) -> String {
   let root : Map[String, Json] = Map([])
   root.set("tool", Json::string("moonlint"))
@@ -38,7 +39,10 @@ fn scan_json(result : LintResult, scan : ScanInfo) -> Json {
   obj.set("files_out_of_scope", number_json(result.files_out_of_scope))
   obj.set("context_files_scanned", number_json(result.context_files_scanned))
   obj.set("context_files_failed", number_json(result.context_files_failed))
-  obj.set("source_snapshot", Json::string(result.source_snapshot.unwrap_or("working-tree")))
+  obj.set(
+    "source_snapshot",
+    Json::string(result.source_snapshot.unwrap_or("working-tree")),
+  )
   obj.set("baseline_suppressed", number_json(result.baseline_hits))
   obj.set("skipped_files", skipped_json(result.skipped_files))
   Json::object(obj)

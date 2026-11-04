@@ -13,11 +13,12 @@
 /// root so the annotations link to the right files.
 
 ///|
+/// Render escaped workflow annotations at recorded source positions and a scan summary.
 pub fn render_github(result : LintResult) -> String {
   let lines : Array[String] = []
   for f in result.findings {
     lines.push(
-      "::\{f.severity.tag()} file=\{escape_property(f.file)},line=\{f.line},col=1,title=\{escape_property(f.rule_id)}::\{escape_data(f.message)}",
+      "::\{f.severity.tag()} file=\{escape_property(f.file)},line=\{f.line},col=\{f.column},title=\{escape_property(f.rule_id)}::\{escape_data(f.message)}",
     )
   }
   for d in result.diagnostics {

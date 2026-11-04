@@ -10,12 +10,13 @@
 /// regex literals, so `//` inside a multi-line template string (a stringified
 /// script, a URL fragment) is *not* treated as a comment; `Plain` treats quotes
 /// as opaque and knows nothing about regex literals.
+#derive(Debug, Eq)
 pub enum CommentMode {
   Js
   Plain
   /// MoonBit literal/comment/interpolation-aware code view.
   Moonbit
-} derive(Debug, Eq)
+}
 
 ///|
 /// Entries of the JavaScript line-terminator set. `\n`, `\r`, U+2028 and U+2029
@@ -285,7 +286,9 @@ fn slash() -> Char {
 /// Pick the comment syntax for a path: JavaScript/TypeScript-family sources get
 /// the template- and regex-aware scanner; everything else keeps the plain view.
 pub fn comment_mode_for(rel : String) -> CommentMode {
-  if rel.has_suffix(".mbt") { return Moonbit }
+  if rel.has_suffix(".mbt") {
+    return Moonbit
+  }
   let ext = match rel.rev_split_once(".") {
     Some((_, ext)) => ext.to_lower()
     None => return Plain

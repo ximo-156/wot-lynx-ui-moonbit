@@ -1,0 +1,15 @@
+// Generated using `moon info`, DON'T EDIT IT
+package "ximo-156/moonlint-api-demo"
+
+// Values
+pub fn greeting() -> String
+
+pub fn old_api() -> Int32
+
+// Errors
+
+// Types and methods
+
+// Type aliases
+
+// Traits

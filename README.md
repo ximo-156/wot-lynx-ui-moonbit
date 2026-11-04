@@ -6,35 +6,40 @@ presets for mixed repositories, but MoonBit is the primary target.
 
 ## Why this exists
 
-`moon check` proves types and `moon fmt` fixes layout. Neither enforces the
-conventions a MoonBit package still needs in review: `///|` documentation on
-public items, naming, `unwrap()` / `panic()` in library code, or leftover TODO
-markers. The `moon` toolchain has no built-in configurable lint subcommand.
-ESLint and Biome parse JavaScript/TypeScript; neither parses MoonBit.
+`moon check` checks compilation and includes the optional W74 `missing_doc`
+warning (disabled by default); `moon fmt` formats code. moonlint does not
+replace either. It puts project conventions, exception budgets, package-layer
+constraints and historical public-interface review into explicit CI checks.
+ESLint and Biome's supplied JS/TS parsers do not parse MoonBit; their JS/TS
+checks remain useful in mixed repositories.
 
-moonlint fills that gap. It is a MoonBit binary, reads JSON rules, and emits
-text, JSON, GitHub Actions annotations or SARIF for CI. The language front end
-and the rule engine are separate, so a new check does not require a new
-executable.
+The source frontend is a lexical/declaration scanner, not a complete AST or
+binding/type resolver. A clean lint result is not proof that source compiles.
+Always run `moon check` separately.
 
 ## Origin
 
 moonlint began as a MoonBit rewrite of the review-lint script in
-[`ximo-156/wot-lynx-ui`](https://github.com/ximo-156/wot-lynx-ui)
-(`scripts/review-lint.mjs`, MIT © ximo-156), a Vue Lynx component library by
-the same author. The original script enforces that project's conventions with
-line-by-line pattern matching. This repository kept the script's rule catalogue
-as a compatibility layer and built a MoonBit front end, a JSON rule engine,
-cross-file analysis and an incremental cache around it. The MoonBit sources
-are original work; nothing is vendored or generated from the JavaScript
-original. moonlint is distributed under the Apache License 2.0 (see `LICENSE`).
+[`ximo-156/wot-lynx-ui`](https://github.com/ximo-156/wot-lynx-ui), a Vue Lynx
+component library. The referenced script is `scripts/review-lint.mjs`; its
+MIT notice names **2026 wot-lynx-ui contributors**. The rule catalogue informed
+the compatibility presets. This is a reference/porting relationship, not an
+independently proven absence of copied code. This repository declares
+Apache-2.0 in [LICENSE](<LICENSE>); see [third-party attribution](<THIRD_PARTY_NOTICES.md>).
+
+The local manifest now targets **0.3.0** because public result fields and
+structural-check variants changed. The tested result is the current working tree, not a published release. During
+this work HEAD / the local origin/main tracking ref moved to intermediate commit
+4bebde5; subsequent fixes remain uncommitted. This session issued no project
+commit, push or release command.
 
 ## What it does
 
 `moonlint` scans a directory tree, applies declarative rules to each source
 file, and reports violations. Rules are loaded from JSON, so the same engine
 can enforce any project's conventions. MoonBit files are read by a declaration
-scanner that attaches `///|` blocks to top-level items. JS/TS files are read by
+scanner that associates non-empty `///` documentation with top-level items;
+`///|` alone is only a block separator. JS/TS files are read by
 the tokenizer and import-graph layers.
 
 ## Features
@@ -48,14 +53,16 @@ the tokenizer and import-graph layers.
   file-level checks and cross-file import checks; activate with
   `--preset <name>`
 - **Regex + substring matching** — `contains`, `prefix`, `suffix`, `regex`, `equals` and `word` matchers
-- **Matcher combinators** — `all` / `any` / `not` nest arbitrarily deep, so `match` expresses any boolean formula over the leaf matchers
+- **Matcher combinators** — `all` / `any` / `not` nest within bounded parser limits, so `match` expresses any boolean formula over the leaf matchers
 - **Negative guards** — `unless` field to suppress false positives (e.g. "import from 'vue' but not 'vue-lynx'")
 - **Comment-aware** — `//` and `/* */` comments are blanked out before matching, preserving line numbers and columns; in JS/TS/JSX files the scanner understands template literals, `${}` interpolations, strings and regex literals, so a `//` inside a template string is text, not a comment. Rules that *target* comments opt in with `"match_comments": true`
 - **Cross-file structural rules** — a JS/TS tokenizer + parser builds a project-wide import graph, powering unused imports, duplicate imports, unresolved relative imports, import cycles, deep relative imports, `require()` usage, `export default` and dead exports (`--preset imports`)
-- **Baseline support** — hash-based exemption for existing violations, enabling incremental adoption; `--update-baseline` refreshes it atomically from a full scan
+- **Baseline v2** — explicit, count-limited content exemptions with reason, owner, expiry and full-tree unused-budget audits; legacy arrays remain readable
+- **Package policies** — direct dependency constraints over supplied compiler v3 package graphs, with separate source/test/wbtest kinds and backend selection
+- **API review gate** — historical `.mbti` declaration snapshots identify removals and conservative shape changes; optional semver policy records intentional breaking releases
 - **Incremental caching** — `--incremental` re-lints only files whose content hash changed, invalidated automatically when the effective config changes
 - **Severity levels** — `error` and `warning`, with exit code 1 on any error-severity finding
-- **Scoped rules** — global and per-rule `include`/`exclude` glob patterns decide which files are read and which rules see them
+- **Scoped findings** — global and per-rule `include`/`exclude` control reports; unselected/excluded dependency files may still be read as explicitly counted project context
 - **CI output** — machine-readable JSON reports, GitHub Actions annotations and SARIF 2.1.0, with read / failure / skip metadata
 - **Honest counters** — every selected file is reported as scanned, skipped (with a reason) or failed; a scan never silently degrades to "clean"
 - **Summary mode** — per-rule tally plus read/skip/failure counts
@@ -66,7 +73,7 @@ the tokenizer and import-graph layers.
 # Clone and build
 git clone https://github.com/ximo-156/wot-lynx-ui-moonbit
 cd wot-lynx-ui-moonbit
-moon build
+moon build --target native
 ```
 
 ## Usage
@@ -144,7 +151,7 @@ usage error (exit code 2).
 
 | Preset | Extensions | Rules | Focus |
 |--------|-----------|-------|-------|
-| `moonbit` | `.mbt` | 4 line + 2 structural rules | MoonBit: require-public-doc, naming, no-unwrap, no-panic, no-println, no-todo-comment |
+| `moonbit` | `.mbt` | 6 structural rules | MoonBit: require-public-doc, naming, no-unwrap, no-panic, no-println, no-todo-comment |
 | `common` | `.js` `.jsx` `.ts` `.tsx` `.mjs` `.cjs` `.vue` `.svelte` `.astro` | 6 | Framework-agnostic hygiene: no-console-log, no-debugger, no-alert, no-eval, no-var, no-todo-comment |
 | `react` | `.jsx` `.tsx` | 20 | React/JSX: no-danger, no-string-refs, jsx-key, self-closing, target-blank, button-type, ... |
 | `vue` | `.vue` `.js` `.ts` | 11 | Vue 3: no-v-html, require-v-for-key, no-v-if-with-v-for, require-scoped-style, ... |
@@ -173,10 +180,10 @@ moon run cmd/main -- --config presets/react.json /path/to/project
 > **Note:** The framework presets are line-oriented — they match one source line
 > at a time, after comments have been blanked out. Rules that need an AST
 > (unused variables, hook dependencies, prop types) are intentionally absent
-> from those presets; the `imports` preset instead runs real cross-file program
+> from those presets; the `imports` preset instead uses best-effort cross-file import
 > analysis (see [Cross-File Structural Rules](#cross-file-structural-rules)).
 > The `moonbit` preset goes through a declaration scanner instead of the JS/TS
-> parser; it reads `///|` blocks and top-level items, and it skips
+> parser; it reads non-empty documentation and top-level items, and it skips
 > `*_test.mbt` / `*_wbtest.mbt` because tests may unwrap, panic and print.
 
 ## Matcher Types
@@ -193,7 +200,7 @@ A matcher object has exactly one of:
 ### Matcher combinators
 
 Any matcher — including `unless` — may instead be a boolean combination of
-matchers, nested arbitrarily deep:
+matchers, nested within bounded parser limits:
 
 - `{ "all": [ … ] }` — every sub-matcher must match (an empty list matches every line)
 - `{ "any": [ … ] }` — at least one sub-matcher must match (an empty list matches no line)
@@ -296,9 +303,10 @@ The `rules` array is optional when `file_rules` is present.
 
 ## Cross-File Structural Rules
 
-Line and file rules see one file at a time. Structural rules see the whole
-project at once: moonlint tokenizes and parses every JS/TS file into an import
-graph, then evaluates checks that are impossible per-line.
+Line and file rules see one file at a time. JS/TS structural rules use a
+best-effort tokenizer/declaration/import model, not a complete JS/TS AST or
+Node module/type resolver. Cross-file checks load additional dependency context
+and report findings only for selected paths; context read failures return exit 2.
 
 ```json
 {
@@ -330,12 +338,12 @@ Or activate the whole set with `--preset imports`.
 |-------|------|-------------|
 | `no_unused_imports` | `{ "no_unused_imports": true }` | An imported binding is never referenced in the importing file |
 | `no_duplicate_imports` | `{ "no_duplicate_imports": true }` | The same module is imported by more than one import statement |
-| `no_unresolved_relative_imports` | `{ "no_unresolved_relative_imports": true }` | A relative import cannot be resolved to any scanned file |
+| `no_unresolved_relative_imports` | `{ "no_unresolved_relative_imports": true }` | A relative import cannot be resolved in the supplied project/context membership |
 | `no_import_cycles` | `{ "no_import_cycles": true }` | The file takes part in a cycle of relative imports (reported per file) |
 | `no_default_export` | `{ "no_default_export": true }` | `export default` is used |
 | `no_deep_relative_imports` | `{ "no_deep_relative_imports": 2 }` | A relative import climbs more than N directories with `../` |
 | `no_require_imports` | `{ "no_require_imports": true }` | `require()` is used in an ES module codebase |
-| `no_unused_exports` | `{ "no_unused_exports": true }` | An exported name is never imported by any other scanned file |
+| `no_unused_exports` | `{ "no_unused_exports": true }` | An exported name is never imported by the available project/context files |
 
 The `rules` array is optional when `structural_rules` is present. Structural
 findings respect inline `// moonlint-disable <rule-id>` comments and rule
@@ -387,8 +395,11 @@ on id conflicts, which is the intended overriding mechanism.
 
 Cyclic `extends` chains (`a.json` → `b.json` → `a.json`) are detected and
 reported as a config error (exit 2) rather than recursing indefinitely.
-Duplicate rule ids **within a single file** are rejected, since the later rule
-would otherwise be silently shadowed.
+Duplicate ids within a file, including across rule kinds, are rejected.
+Same-kind ids may deliberately override inherited rules. Unknown fields,
+ignored `scope` objects (use top-level `include`/`exclude`), invalid severities,
+empty extension entries, duplicate JSON keys and ambiguous match/check objects
+are errors rather than silently ignored configuration.
 
 ## Auto-Fix
 
@@ -405,7 +416,16 @@ moonlint --preset file --fix --fix-tab-width 4 /path/to/project
 moonlint --preset file --fix --dry-run /path/to/project
 ```
 
-Auto-fixable checks: `no_trailing_whitespace`, `final_newline`, and `no_tabs`.
+Candidate checks: `no_trailing_whitespace`, `final_newline`, and `no_tabs`.
+MoonBit fixes protect quoted/raw/interpolated literal spans and preserve BOM,
+Unicode and CRLF. File checks still inspect original literal whitespace, so
+unfixable literal properties remain findings; fixes never suppress them. A final
+raw-content line is conservatively left without an inserted newline.
+
+Non-MoonBit fixes are deliberately narrower: simple script sources only;
+templates/markup remain untouched, and tab replacement is skipped when quote or
+regex-like spans could carry values. Other languages are not automatically
+rewritten. A remaining finding is not a successful repair.
 Properties that make `--fix` safe to run on a real tree:
 
 | Behaviour | Detail |
@@ -413,7 +433,7 @@ Properties that make `--fix` safe to run on a real tree:
 | Scope-aware | A rule's `include`/`exclude` and `extensions` are honoured, so excluded trees (e.g. `vendor/**`) are never written |
 | Line-ending preserving | `final_newline` appends `\r\n` to a CRLF file, never a bare `\n` |
 | Tab opt-in | Tabs change indentation width and can alter semantics (Python, YAML, Makefiles), so `no_tabs` is only fixed with an explicit `--fix-tab-width` |
-| Atomic writes | Files are replaced atomically; an interrupted fix cannot truncate source |
+| Safe target / atomic writes | Reject symlink targets/ancestors, reread before replacement and refuse an observed content change; this is not a filesystem compare-and-swap transaction |
 | stderr messages | Progress goes to stderr, keeping `--format json`/`sarif` stdout parseable |
 | Working tree only | `--fix` is rejected together with `--changed`/`--staged`, which read Git blobs rather than the working tree |
 | Dry run | `--dry-run` reports `would fix <file>` and writes nothing; findings are reported as they still are, since the tree is unchanged |
@@ -486,6 +506,112 @@ scope-filtered. `--glob` may be repeated; the patterns form a union.
 - Git failures (not a repository, unknown ref, unmerged index) exit 2 instead of
   producing an empty, apparently clean scan.
 
+## Package dependency policies
+
+Generate the official graph in the owning module, then pass it to moonlint:
+
+```bash
+(cd examples/package-policy-demo && moon tree --package --json --target native > graph.native.json)
+moonlint --package-graph examples/package-policy-demo/graph.native.json \
+  --config examples/package-policy-demo/policy.json --format json
+# Expected exit 1: the acyclic domain -> ui edge violates the team rule.
+```
+
+[The example](<examples/package-policy-demo/README.md>) compiles and tests before
+the policy gate. Policy v1 requires `package_rules` with stable id, severity,
+`from`, exactly one of `allow`/`deny`, `kinds` (`source`, `test`, `wbtest`),
+optional `targets`, and a reason. Empty `allow` denies every applicable edge;
+empty `deny` is invalid. Graph v3 validation is strict. The gate covers direct
+selected-root edges to supplied non-stdlib nodes, not transitive dependencies
+or stdlib edges. Zero applicability is explicitly reported, not presented as
+proof that every target was checked. No compiler build/download is triggered.
+
+## Historical public-interface gate
+
+```bash
+# First generate each interface with the intended compiler/backend.
+moon info
+moonlint --api-snapshot pkg.generated.mbti \
+  --api-toolchain "moon 0.1.20261102; moonc v0.10.19+bee578715" \
+  --api-backend native --api-module-version 0.3.0 > api.snapshot.json
+moonlint --api-check before.snapshot.json after.snapshot.json --format sarif
+# Opt in to an intentional breaking 0.x minor / stable major release:
+moonlint --api-check before.snapshot.json after.snapshot.json --api-version-policy semver
+```
+
+Snapshots record package, toolchain, backend and module version. Metadata is
+caller-supplied, **not compiler provenance attestation**: use the same actual
+compiler/backend before and after. Different contexts, malformed data and
+unsupported declaration syntax are inconclusive (exit 2). Removals and shape
+changes block by default, even if the version changed. Opt-in `semver` changes
+review findings to warnings only after a sufficient version increment;
+prerelease/build versions are explicitly unsupported by that policy.
+
+This compares supported historical public declarations/symbols, not just
+interface text or export count. It is conservative review evidence, not an ABI,
+type-assignability or behavioral-compatibility proof. Bodies/docs/private or
+hidden exports are outside the snapshot surface; member additions may require
+review. See [the compiling before/after example](<examples/api-policy-demo/README.md>).
+
+Package/API/audit reports use `mode`, `metadata`, `counts`, `findings` and
+identity details, not fabricated `scan` counters or source coordinates. SARIF
+results have no `locations` for those project findings; GitHub annotations omit
+file/line properties. `--report` writes the same project JSON schema.
+
+## Baseline v2 and exception auditing
+
+A baseline is never discovered implicitly. A write registers debt and returns
+write-mode 0; it is **not a successful lint/CI verdict**.
+
+```bash
+moonlint --preset moonbit --update-baseline --baseline-format v2 \
+  --baseline debt.json --baseline-reason "existing review debt" \
+  --baseline-owner "package-maintainer" --baseline-expires 2026-12-31 .
+moonlint --preset moonbit --baseline debt.json .
+moonlint --preset moonbit --baseline debt.json --changed origin/main .
+# Full-tree audit, with reproducible UTC-date override if needed:
+moonlint --preset moonbit --audit-baseline --baseline debt.json \
+  --baseline-today 2026-11-04 --format json .
+# Convert only still-matching old exemptions, not newly introduced errors:
+moonlint --preset moonbit --migrate-baseline --baseline legacy.json \
+  --baseline-reason "reviewed legacy debt" --baseline-owner "package-maintainer" .
+```
+
+V2 fingerprints omit line/column, retain rule/file/severity/message and the
+end-trimmed snippet, and preserve internal/literal whitespace. Each entry has a
+positive occurrence budget, nonempty reason/owner, and nullable expiry. The
+expiry day itself is valid; earlier expiry never suppresses. Default date is
+host UTC. Audit errors identify expired, unused and partially unused budgets;
+`unused_occurrences` totals the unused quota. Normal lint warns about audit
+issues but does not silently turn normal suppression into an audit gate.
+
+This is a **non-cryptographic content-identity MVP**, not ancestor or semantic
+identity. Identical replacement within the stored count is indistinguishable;
+rename, message/severity or snippet changes lose the exemption. Full-tree audits
+must not be narrowed by `--changed`, `--staged`, `--glob`, stdin or `--ext`.
+Migration returns 1 when unsuppressed errors remain; it never approves newly
+introduced debt. Update/migration/audit cannot combine with fixes/project modes.
+Legacy arrays remain explicit, line-sensitive inputs; overwriting a v2 baseline
+requires an explicit v2 write and metadata rather than downgrading it silently.
+
+### Frontend limits
+
+MoonBit source checks share code/declaration/comment/literal views. Nonempty
+documentation is required; comment-looking raw text and an empty separator are
+not docs. Calls after literals and within supported single-line interpolations
+are visible; definitions and test bodies are not mistaken for ordinary calls.
+These are syntactic name policies, not binding resolution (a local bare `panic`
+can still be a name-policy match). Qualified user `Foo::panic`/`println` are not
+assumed to be builtin calls. Unknown public-declaration forms and unfinished
+lexical input are inconclusive. Cross-physical-line interpolation is currently
+unsupported and rejected, not counted as successfully parsed source.
+
+Git modes capture immutable blob-id maps for selected/context sources; replace
+refs are disabled. Selection precedes capture, so concurrent changes **during
+selection** are not an atomic repository snapshot. Avoid concurrent Git edits
+when selecting files. Tree/glob/stdin context is likewise a live-tree read, not
+a filesystem transaction. Context counters/failures disclose these extra reads.
+
 ### Incremental caching
 
 `--incremental` keeps a content-hash cache of per-file results, so a repeated
@@ -503,10 +629,10 @@ Properties that make the cache safe:
 
 | Behaviour | Detail |
 |-----------|--------|
-| Content-keyed | Each entry is keyed by a hash of the file's exact bytes; an edit, even whitespace, re-lints that file |
+| Content-keyed | Each entry is keyed by a non-cryptographic hash of strictly decoded source (BOM/Unicode preserved); an edit, even whitespace, re-lints that file |
 | Config-aware | The cache stores a fingerprint of the effective rules, file rules, structural rules and scopes; any change invalidates every entry |
 | Self-healing | A missing, corrupt or version-mismatched cache file degrades to a full scan with a warning, never a wrong result |
-| Structural-safe | Cached runs still collect project sources for cross-file checks, so structural findings stay correct |
+| Structural-safe | Cached runs still collect project sources for cross-file checks, and refresh full dependency context under the same rules; context failures block the verdict |
 | Opt-in | Without `--incremental` no cache file is read or written |
 
 ### Glob syntax
@@ -579,7 +705,7 @@ patterns using the syntax above; a leading `./` is accepted.
 - An empty `include` list means "no restriction"; any `exclude` match wins over
   `include`.
 - The **global** scope is applied first: rejected files are counted in
-  `files_out_of_scope` and are never read.
+  `files_out_of_scope` and receive no findings. They can still be read as dependency context for cross-file checks.
 - A **rule** scope only decides which rules see an already-selected file. It
   cannot widen the global scan set. A selected file that no rule applies to is
   counted in `files_skipped` with the reason `no-applicable-rule`.
@@ -626,6 +752,9 @@ A versioned document (`"version": 1`):
     "files_skipped": 1,
     "files_failed": 1,
     "files_out_of_scope": 3,
+    "context_files_scanned": 2,
+    "context_files_failed": 0,
+    "source_snapshot": "working-tree",
     "baseline_suppressed": 0,
     "skipped_files": [{ "file": "docs/notes.md", "reason": "no-applicable-rule" }]
   },
@@ -650,7 +779,7 @@ after multi-byte text points at the right place. `column` is the first character
 of the match: for `contains`, `prefix` and `whole-word` rules that is where the
 pattern text appears, for `suffix` rules the start of the trailing text, and for
 `regex` rules the first non-space character (the match offset is not recoverable
-from the pattern alone). SARIF `startColumn` uses the same value.
+from the pattern alone). SARIF `startColumn` uses the same value with `columnKind: unicodeCodePoints`.
 
 `files_selected` is counted after path normalization, extension filtering and
 de-duplication. Every selected file is either scanned, skipped (with a reason in
@@ -665,7 +794,7 @@ to whatever goes to stdout; it is also written when the scan fails.
 Emits GitHub Actions workflow commands:
 
 ```
-::error file=src/app.ts,line=12,col=1,title=vue/import-from-vue::Must import from 'vue-lynx', not 'vue'
+::error file=src/app.ts,line=12,col=22,title=vue/import-from-vue::Must import from 'vue-lynx', not 'vue'
 ::error file=src/broken.ts,title=moonlint/scan-failed::source is not valid UTF-8
 ::notice file=docs/notes.md,title=moonlint/skipped::no-applicable-rule
 ::notice title=moonlint::files selected: 12, scanned: 10, skipped: 1, failed: 1, …
@@ -735,37 +864,40 @@ moonlint/
 
 The MoonBit front end is a declaration scanner: it blanks comments and
 literals, tracks brace depth to separate top-level items from bodies, attaches
-`///|` blocks, and evaluates the public-doc and naming checks. The JS/TS
+non-empty documentation, and evaluates public-doc, naming and syntactic call checks. The JS/TS
 compatibility path is the tokenizer → parser → project index/import graph.
 Both share the line/file layers, rule engine, cache and reporters. The
 implementation is pure MoonBit except for the native filesystem/Git bridge in
 `git_native.c`, and each layer is unit-tested in isolation.
 
-## Development
+## Development and verification
+
+The executable requires the **native backend on macOS/Linux** for filesystem,
+Git and UTC-date operations. Building it requires MoonBit plus a C toolchain;
+using the built executable does not require a Node.js or Rust toolchain.
 
 ```bash
-moon info          # refresh .mbti interfaces
-moon fmt           # format
-moon test          # unit tests (native target)
+moon check --target native
+moon test --target native
 moon build --target native
 python3 tests/integration.py \
   --binary "$PWD/_build/native/debug/build/cmd/main/main.exe" --phase all
+moon info && moon fmt
+# Review generated interface/source diffs, then rerun affected gates.
 ```
 
-CI (`.github/workflows/ci.yml`) runs the full gate on every push:
-`moon check` → `moon test` (native) → `moon info` → native build → all
-integration phases. On toolchains without a native C toolchain, the unit suite
-also runs on the wasm-gc target (`moon test --target wasm-gc`); the only
-expected failures there are the handful of tests that exercise the native
-filesystem/Git bridge, which wasm cannot provide.
+[CI](<.github/workflows/ci.yml>) runs explicit native gates and compiles the
+examples. Its installer fetches latest, **not a pinned toolchain**; versions are
+recorded and interface/format drift is checked. Remote CI was not verified in
+this session. Current local evidence and known limits are in
+[verification notes](<docs/verification.md>); historical wasm failures are not
+claimed fixed. The JS/TS legacy line matcher still sees literal text in two
+known expected-failure cases; they are not counted as repaired behavior.
 
-Current baseline: 283 whitebox unit tests pass on the native target; on
-wasm-gc 279 of 284 pass (the 5 failures are native filesystem/Git-FFI tests
-that wasm cannot provide), and 170 CLI integration test methods cover 11
-phases. The repository also lints itself: `moonlint .` uses
-`moonlint.json`, which extends `presets/moonbit.json` and excludes the
-intentional violations under `examples/`.
+`moonlint .` uses [the repository config](<moonlint.json>), which deliberately
+excludes the negative examples. No new blanket baseline was added to hide
+missing public documentation.
 
 ## License
 
-Apache-2.0
+Apache-2.0; [LICENSE](<LICENSE>) and [third-party attribution](<THIRD_PARTY_NOTICES.md>).

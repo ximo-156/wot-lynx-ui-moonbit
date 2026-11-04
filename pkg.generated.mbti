@@ -10,9 +10,13 @@ import {
 // Values
 pub fn analyze(ProjectIndex, Array[StructuralRule]) -> Array[Finding]
 
+pub fn baseline_audit_with_findings(PolicyReport, LintResult) -> PolicyReport
+
 pub fn build_index(Array[(String, String)]) -> ProjectIndex
 
 pub fn canonical_root(String) -> String raise NativeError
+
+pub fn check_api_snapshots(String, String, String) -> Result[PolicyReport, ConfigError]
 
 pub fn check_package_graph(String, Array[PackagePolicyRule]) -> Result[PolicyReport, ConfigError]
 
@@ -54,6 +58,8 @@ pub fn lint_selected_cached(String, ScanMode, Array[String], Array[Rule], Array[
 
 pub fn lint_tree(String, Array[Rule], Array[FileRule], Array[StructuralRule], Array[String], Scope) -> Result[LintResult, Error]
 
+pub fn make_api_snapshot(String, String, String, String) -> Result[String, ConfigError]
+
 pub fn merge_presets(Array[String]) -> Result[LintConfig, ConfigError]
 
 pub fn parse_config(String) -> Result[LintConfig, ConfigError]
@@ -72,6 +78,8 @@ pub fn preset_by_name(String) -> Preset?
 
 pub fn preset_names() -> Array[String]
 
+pub fn read_fix_source(String, String) -> String raise
+
 pub fn read_lines(String) -> Array[(Int32, String)] raise
 
 pub fn read_stdin_text() -> String raise NativeError
@@ -81,6 +89,14 @@ pub fn render_detail(Array[Finding]) -> String
 pub fn render_github(LintResult) -> String
 
 pub fn render_json(LintResult, ScanInfo) -> String
+
+pub fn render_policy_github(PolicyReport) -> String
+
+pub fn render_policy_json(PolicyReport) -> String
+
+pub fn render_policy_sarif(PolicyReport) -> String
+
+pub fn render_policy_text(PolicyReport, summary? : Bool) -> String
 
 pub fn render_preset_list() -> String
 
@@ -95,6 +111,10 @@ pub fn source_path_kind(String) -> Int32 raise NativeError
 pub fn spec_source(ImportSpec) -> String
 
 pub fn tokenize(String) -> Array[Token]
+
+pub fn utc_date() -> String raise NativeError
+
+pub fn validate_fix_path(String, String) -> Unit raise
 
 pub fn validate_glob(String) -> Unit raise
 
@@ -127,6 +147,14 @@ pub fn Baseline::load(String) -> Self
 pub fn Baseline::parse(String) -> Self raise
 pub fn Baseline::partition(Self, Array[Finding]) -> (Array[Finding], Array[Finding])
 pub fn Baseline::render(Array[Finding]) -> String
+
+pub struct BaselineV2 {
+  // private fields
+}
+pub fn BaselineV2::capture(Array[Finding], String, String, String?) -> Result[Self, ConfigError]
+pub fn BaselineV2::parse(String) -> Result[Self, ConfigError]
+pub fn BaselineV2::partition(Self, Array[Finding], String) -> Result[(Array[Finding], Array[Finding], PolicyReport), ConfigError]
+pub fn BaselineV2::render(Self) -> String
 
 #derive(@debug.Debug)
 pub struct Cache {
@@ -320,6 +348,9 @@ pub struct LintResult {
   files_skipped : Int32
   files_failed : Int32
   files_out_of_scope : Int32
+  context_files_scanned : Int32
+  context_files_failed : Int32
+  source_snapshot : String?
   baseline_hits : Int32
   diagnostics : Array[Diagnostic]
   skipped_files : Array[SkippedFile]
@@ -373,6 +404,9 @@ pub struct PackagePolicyRule {
   targets : Array[String]?
   reason : String
 }
+pub fn PackagePolicyRule::equal(Self, Self) -> Bool
+pub fn PackagePolicyRule::not_equal(Self, Self) -> Bool
+pub fn PackagePolicyRule::to_repr(Self) -> @debug.Repr
 
 #derive(@debug.Debug)
 pub struct PolicyIssue {
