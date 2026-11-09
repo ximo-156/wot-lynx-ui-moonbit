@@ -419,12 +419,10 @@ test "config: aliases parse into ordered prefix-target pairs" {
 test "config: aliases reject escaping targets and malformed entries" {
   for
     json in [
-      "{\"rules\":[],\"aliases\":{\"@\":\"/abs\"}}",
-      "{\"rules\":[],\"aliases\":{\"@\":\"../outside\"}}",
-      "{\"rules\":[],\"aliases\":{\"@\":1}}",
-      "{\"rules\":[],\"aliases\":{\"../x\":\"src\"}}",
+      "{\"rules\":[],\"aliases\":{\"@\":\"/abs\"}}", "{\"rules\":[],\"aliases\":{\"@\":\"../outside\"}}",
+      "{\"rules\":[],\"aliases\":{\"@\":1}}", "{\"rules\":[],\"aliases\":{\"../x\":\"src\"}}",
       "{\"rules\":[],\"aliases\":[]}",
     ] {
-    assert_true(parse_config(json) is Err(_),)
+    assert_true(parse_config(json) is Err(_))
   }
 }

@@ -3,16 +3,18 @@
 
 ///|
 fn vue_sample() -> String {
-  #|<template>
-  #|  <wd-img :src="logoQuan" />
-  #|  <view v-if="canCancel(item)" @click="onTap">{{ label }}</view>
-  #|  <view class="static-text">plain</view>
-  #|</template>
-  #|<script setup lang="ts">
-  #|import logoQuan from './logo.png'
-  #|const label = 'x'
-  #|</script>
-  #|
+  (
+    #|<template>
+    #|  <wd-img :src="logoQuan" />
+    #|  <view v-if="canCancel(item)" @click="onTap">{{ label }}</view>
+    #|  <view class="static-text">plain</view>
+    #|</template>
+    #|<script setup lang="ts">
+    #|import logoQuan from './logo.png'
+    #|const label = 'x'
+    #|</script>
+    #|
+  )
 }
 
 ///|
@@ -57,8 +59,7 @@ test "a binding used only in a template is not an unused import" {
   ]
   let files : Array[(String, String)] = [
     (
-      "src/Page.vue",
-      "<template>\n<wd-img :src=\"logoQuan\" />\n</template>\n<script setup lang=\"ts\">\nimport logoQuan from './logo.png'\n</script>\n",
+      "src/Page.vue", "<template>\n<wd-img :src=\"logoQuan\" />\n</template>\n<script setup lang=\"ts\">\nimport logoQuan from './logo.png'\n</script>\n",
     ),
   ]
   assert_eq(analyze(build_index(files), rules).length(), 0)

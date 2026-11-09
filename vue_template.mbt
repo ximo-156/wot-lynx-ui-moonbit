@@ -220,10 +220,5 @@ pub fn parse_source_for(rel : String, src : String) -> FileModel {
   for u in extra {
     used.push(u)
   }
-  {
-    imports: model.imports,
-    exports: model.exports,
-    decls: model.decls,
-    used,
-  }
+  { imports: model.imports, exports: model.exports, decls: model.decls, used, }
 }

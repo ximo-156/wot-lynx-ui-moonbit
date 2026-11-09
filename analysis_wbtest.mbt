@@ -243,18 +243,21 @@ fn test_index_with_aliases(
 
 ///|
 test "aliases resolve a bare specifier to a root-relative path" {
-  let index = test_index_with_aliases([
-    ("src/api/ka.ts", "export const getKa = 1;\n"),
-    ("src/app.ts", "import { getKa } from '@/api/ka';\nconsole.log(getKa);\n"),
-  ], [("@", "src")])
+  let index = test_index_with_aliases(
+    [
+      ("src/api/ka.ts", "export const getKa = 1;\n"),
+      ("src/app.ts", "import { getKa } from '@/api/ka';\nconsole.log(getKa);\n"),
+    ],
+    [("@", "src")],
+  )
   assert_eq(index.resolve("src/app.ts", "@/api/ka"), Some("src/api/ka.ts"))
   // A `@scope/pkg` package import must not match the `@` alias.
   assert_true(index.resolve("src/app.ts", "@scope/pkg") is None)
   // A `@/` prefix form works too.
-  let index2 = test_index_with_aliases([
-    ("src/api/ka.ts", ""),
-    ("src/app.ts", ""),
-  ], [("@/", "src")])
+  let index2 = test_index_with_aliases(
+    [("src/api/ka.ts", ""), ("src/app.ts", "")],
+    [("@/", "src")],
+  )
   assert_eq(index2.resolve("src/app.ts", "@/api/ka"), Some("src/api/ka.ts"))
 }
 
@@ -278,9 +281,9 @@ test "aliased imports keep an export from being reported unused" {
 
 ///|
 test "a longer alias prefix wins over a shorter one" {
-  let index = test_index_with_aliases([
-    ("src/lib/x.ts", ""),
-    ("other/lib/x.ts", ""),
-  ], [("@", "src"), ("@/lib", "other/lib")])
+  let index = test_index_with_aliases(
+    [("src/lib/x.ts", ""), ("other/lib/x.ts", "")],
+    [("@", "src"), ("@/lib", "other/lib")],
+  )
   assert_eq(index.resolve("a.ts", "@/lib/x"), Some("other/lib/x.ts"))
 }

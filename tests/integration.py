@@ -1945,6 +1945,35 @@ class StructuralRuleTests(FixtureCase):
         result = self.invoke()
         self.assert_findings(result, 0, rule_id="imports/no-unused-imports")
 
+    def test_aliases_resolve_imports_for_unused_exports(self):
+        # `@/api/ka` is a path alias for src/api/ka. Without the alias the
+        # import cannot be resolved, so `getKa` looks dead; the `aliases`
+        # config makes it resolvable and the export used.
+        self.write_config(rules=[], aliases={"@": "src"}, structural_rules=[
+            {"id": "imports/no-unused-exports", "severity": "error",
+             "message": "unused export", "extensions": [".ts"],
+             "check": {"no_unused_exports": True}},
+        ])
+        self.write_file("src/api/ka.ts", "export const getKa = 1;\n")
+        self.write_file("src/app.ts",
+                        "import { getKa } from '@/api/ka';\nconsole.log(getKa);\n")
+        self.assert_findings(self.invoke(), 0, rule_id="imports/no-unused-exports")
+
+    def test_vue_template_binding_is_a_usage(self):
+        # A binding used only in `:src="logo"` lives inside an HTML attribute
+        # string, but it is still a usage of the imported binding.
+        self.write_config(rules=[], structural_rules=[
+            {"id": "imports/no-unused-imports", "severity": "error",
+             "message": "unused import", "extensions": [".vue"],
+             "check": {"no_unused_imports": True}},
+        ])
+        self.write_file(
+            "src/Page.vue",
+            "<template>\n  <wd-img :src=\"logo\" />\n</template>\n"
+            "<script setup lang=\"ts\">\nimport logo from './logo.png'\n</script>\n",
+        )
+        self.assert_findings(self.invoke(), 0, rule_id="imports/no-unused-imports")
+
 
 class CombinatorTests(FixtureCase):
     """The all/any/not matcher DSL, as the CLI applies it."""

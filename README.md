@@ -388,6 +388,31 @@ The `rules` array is optional when `structural_rules` is present. Structural
 findings respect inline `// moonlint-disable <rule-id>` comments and rule
 scopes, exactly like line findings.
 
+### Path aliases
+
+Bare specifiers that go through a path alias (`@/api/ka`, `~/utils/date`) do
+not resolve on their own, so `no_unused_exports` would count every
+alias-imported export as dead. Declare the aliases so the cross-file pass can
+follow them:
+
+```json
+{
+  "aliases": { "@": "src", "~": "." },
+  "structural_rules": [
+    { "id": "imports/no-unused-exports", "severity": "warning", "message": "dead export", "extensions": [], "check": { "no_unused_exports": true } }
+  ]
+}
+```
+
+Alias targets are **relative to the scan root** (the directory being linted),
+so a config used with `moonlint src` maps `@` to `.`, while one used with
+`moonlint .` maps `@` to `src`. A prefix matches on a segment boundary — `@`
+matches `@/x` but not the package `@scope/pkg` — and a longer prefix wins over
+a shorter one (`@/lib` before `@`). Absolute targets, `..` escapes and
+non-string values are configuration errors (exit 2). Aliases also make
+`no_unused_imports` no longer necessary for template bindings: a `.vue`
+binding such as `:src="logo"` is already counted as a usage.
+
 ## Inline Disable Comments
 
 Suppress findings without editing the config:
@@ -644,6 +669,13 @@ can still be a name-policy match). Qualified user `Foo::panic`/`println` are not
 assumed to be builtin calls. Unknown public-declaration forms and unfinished
 lexical input are inconclusive. Cross-physical-line interpolation is currently
 unsupported and rejected, not counted as successfully parsed source.
+
+The JS/TS front end is a tokenizer and structural parser, not a Vue SFC
+compiler. For `.vue` files it reads the script for imports/exports and
+extracts the template's binding expressions (`:prop`, `v-*`, `@event`) as
+identifier reads, so a binding used only in a template still counts as a
+usage. It does not evaluate template control flow, resolve component
+registration, or follow aliases unless they are declared in `aliases`.
 
 Git modes capture immutable blob-id maps for selected/context sources; replace
 refs are disabled. Selection precedes capture, so concurrent changes **during

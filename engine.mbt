@@ -172,7 +172,14 @@ pub fn lint_selected(
   scope : Scope,
 ) -> LintResult raise {
   lint_selected_with(
-    root, mode, files, rules, file_rules, structural_rules, scope, [],
+    root,
+    mode,
+    files,
+    rules,
+    file_rules,
+    structural_rules,
+    scope,
+    [],
   )
 }
 
@@ -217,7 +224,15 @@ pub fn lint_selected_cached(
   cache : Cache?,
 ) -> (LintResult, Cache) raise {
   lint_selected_cached_with(
-    root, mode, files, rules, file_rules, structural_rules, scope, cache, [],
+    root,
+    mode,
+    files,
+    rules,
+    file_rules,
+    structural_rules,
+    scope,
+    cache,
+    [],
   )
 }
 
@@ -238,7 +253,6 @@ pub fn lint_selected_cached_with(
     root, mode, files, rules, file_rules, structural_rules, scope, aliases, cache,
   )
 }
-
 
 ///|
 /// The scan core, shared by the plain and cache-aware entry points. `cache`

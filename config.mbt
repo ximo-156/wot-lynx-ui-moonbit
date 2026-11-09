@@ -49,8 +49,8 @@ pub fn parse_config(src : String) -> Result[LintConfig, ConfigError] {
     config_fields(
       obj,
       [
-        "rules", "file_rules", "structural_rules", "include", "exclude",
-        "extends", "aliases",
+        "rules", "file_rules", "structural_rules", "include", "exclude", "extends",
+        "aliases",
       ],
       "config",
     ) {
@@ -134,7 +134,8 @@ fn parse_aliases(
     }
     let target = match value.as_string() {
       Some(s) => s
-      None => return Err(ConfigError("alias \"\{key}\" target must be a string"))
+      None =>
+        return Err(ConfigError("alias \"\{key}\" target must be a string"))
     }
     if target.contains("\u{0}") ||
       target.has_prefix("/") ||

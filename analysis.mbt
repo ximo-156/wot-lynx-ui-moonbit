@@ -192,10 +192,7 @@ pub fn ProjectIndex::resolve(
 /// root-relative path. A prefix matches on its own (`@` for `@`) or on a
 /// following `/` (`@` for `@/x`, `@/` for `@/x`), never on a partial segment
 /// (`@scope` must not match the `@` alias).
-fn alias_expand(
-  aliases : Array[(String, String)],
-  spec : String,
-) -> String? {
+fn alias_expand(aliases : Array[(String, String)], spec : String) -> String? {
   for pair in aliases {
     let (prefix, target) = pair
     let rest : String? = if spec == prefix {

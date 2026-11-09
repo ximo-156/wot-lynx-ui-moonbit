@@ -6,6 +6,25 @@ All notable changes to this project are documented in this file.
 
 ### Added
 
+- **`aliases` config option** — an object mapping a bare-specifier prefix to a
+  root-relative directory (`{"aliases": {"@": "src", "~": "."}}`), so path
+  aliases such as `@/api/ka` resolve during cross-file analysis. Without it
+  `no_unused_exports` treated every alias-imported export as dead; on a real
+  Vue/TS project this cut the finding count from 628 to 247 with only ~15
+  residual false positives (mostly TS type imports), and resolved 929 alias
+  imports. Alias targets are relative to the scan root; prefixes match on a
+  segment boundary (`@` matches `@/x` but not `@scope/pkg`), longer prefixes
+  win, and escaping/absolute targets are rejected as config errors. Alias
+  resolution is threaded through new `*_with` scan entry points; the original
+  public signatures remain as wrappers with an empty alias set.
+- **Vue template bindings count as usages** (`vue_template.mbt`) — a `.vue`
+  file keeps expressions inside HTML attribute strings (`:src="logo"`,
+  `v-if="canRun(item)"`, `@click="onTap"`). The JS tokenizer sees a string
+  literal, so a binding used only in a template looked unused. The scanner now
+  extracts those binding values (nested `<template>` supported, `<script>` and
+  `<style>` blocks masked) and adds their identifier reads to the file's usage
+  list. On the real project this removed every remaining `no_unused_imports`
+  false positive (19 → 0).
 - **`match_literals` rule option** — the default code view now blanks the
   contents of string, template and regex literals in JavaScript/TypeScript/JSX
   sources (delimiters and `${...}` interpolations preserved), so a line rule
