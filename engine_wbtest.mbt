@@ -12,6 +12,7 @@ fn test_rule(id : String, match_ : MatchKind, unless : MatchKind?) -> Rule {
     unless,
     scope: Scope::empty(),
     match_comments: false,
+    match_literals: false,
   }
 }
 
@@ -22,10 +23,16 @@ fn test_comment_rule(id : String, match_ : MatchKind) -> Rule {
 }
 
 ///|
+/// A rule that opted into the literal view (literal text intact).
+fn test_literal_rule(id : String, match_ : MatchKind) -> Rule {
+  Rule::{ ..test_rule(id, match_, None), match_literals: true, }
+}
+
+///|
 test "lint_lines finds violations" {
   let rules = [test_rule("no-foo", Contains("foo"), None)]
   let lines = [(1, "let x = 1"), (2, "let y = foo"), (3, "let z = 3")]
-  let findings = lint_lines("test.ts", lines, lines, rules)
+  let findings = lint_lines("test.ts", lines, lines, lines, rules)
   assert_eq(findings.length(), 1)
   assert_eq(findings[0].line, 2)
   assert_eq(findings[0].rule_id, "no-foo")
@@ -44,7 +51,7 @@ test "lint_lines respects unless guard" {
     (1, "import { x } from 'vue'"),
     (2, "import { y } from 'vue-lynx'"),
   ]
-  let findings = lint_lines("test.ts", lines, lines, rules)
+  let findings = lint_lines("test.ts", lines, lines, lines, rules)
   assert_eq(findings.length(), 1)
   assert_eq(findings[0].line, 1)
 }
@@ -54,10 +61,10 @@ test "lint_lines respects extensions" {
   let rules = [test_rule("no-foo", Contains("foo"), None)]
   let lines = [(1, "foo")]
   // Rule applies to .ts, file is .ts
-  let findings_ts = lint_lines("test.ts", lines, lines, rules)
+  let findings_ts = lint_lines("test.ts", lines, lines, lines, rules)
   assert_eq(findings_ts.length(), 1)
   // Rule applies to .ts, file is .vue — should not match
-  let findings_vue = lint_lines("test.vue", lines, lines, rules)
+  let findings_vue = lint_lines("test.vue", lines, lines, lines, rules)
   assert_eq(findings_vue.length(), 0)
 }
 
@@ -73,11 +80,15 @@ test "lint_lines respects a rule-level scope" {
     unless: None,
     scope,
     match_comments: false,
+    match_literals: false,
   }
   let lines = [(1, "foo")]
-  assert_eq(lint_lines("src/app.ts", lines, lines, [rule]).length(), 1)
-  assert_eq(lint_lines("lib/app.ts", lines, lines, [rule]).length(), 0)
-  assert_eq(lint_lines("src/legacy/app.ts", lines, lines, [rule]).length(), 0)
+  assert_eq(lint_lines("src/app.ts", lines, lines, lines, [rule]).length(), 1)
+  assert_eq(lint_lines("lib/app.ts", lines, lines, lines, [rule]).length(), 0)
+  assert_eq(
+    lint_lines("src/legacy/app.ts", lines, lines, lines, [rule]).length(),
+    0,
+  )
 }
 
 ///|
@@ -91,9 +102,10 @@ test "lint_lines with empty extensions matches all" {
     unless: None,
     scope: Scope::empty(),
     match_comments: false,
+    match_literals: false,
   }
   let lines = [(1, "foo")]
-  let findings = lint_lines("test.js", lines, lines, [rule])
+  let findings = lint_lines("test.js", lines, lines, lines, [rule])
   assert_eq(findings.length(), 1)
 }
 
@@ -104,7 +116,7 @@ test "a code-view rule never sees a line comment" {
   let stripped = split_lines(strip_comments(source, CommentMode::Js))
   let raw = split_lines(source)
   let rule = test_rule("no-todo", Word("TODO"), None)
-  assert_eq(lint_lines("test.ts", stripped, raw, [rule]).length(), 0)
+  assert_eq(lint_lines("test.ts", stripped, stripped, raw, [rule]).length(), 0)
 }
 
 ///|
@@ -113,7 +125,7 @@ test "match_comments opts a rule into the raw view" {
   let stripped = split_lines(strip_comments(source, CommentMode::Js))
   let raw = split_lines(source)
   let rule = test_comment_rule("no-todo", Word("TODO"))
-  let findings = lint_lines("test.ts", stripped, raw, [rule])
+  let findings = lint_lines("test.ts", stripped, stripped, raw, [rule])
   assert_eq(findings.length(), 1)
   assert_eq(findings[0].line, 2)
   // The snippet quotes the comment as written, positions intact.
@@ -130,7 +142,7 @@ test "match_comments sees block comments and honours the unless guard" {
     severity: Severity::warning(),
     unless: Some(Contains("moonlint-ok")),
   }
-  let findings = lint_lines("test.ts", stripped, raw, [rule])
+  let findings = lint_lines("test.ts", stripped, stripped, raw, [rule])
   assert_eq(findings.length(), 2)
   assert_eq(findings[0].line, 1)
   assert_eq(findings[1].line, 3)
@@ -138,12 +150,56 @@ test "match_comments sees block comments and honours the unless guard" {
 
 ///|
 test "a TODO inside a template literal is text, not a comment" {
-  // The Js scanner keeps template bodies intact, so even the code view sees
-  // this TODO — a stringified script is not a comment.
-  let source = "const s = `// TODO: not a comment`\n"
-  let stripped = split_lines(strip_comments(source, CommentMode::Js))
-  let rule = test_rule("no-todo", Word("TODO"), None)
-  assert_eq(lint_lines("test.ts", stripped, stripped, [rule]).length(), 1)
+  // The code view blanks the template body, so a stringified script is not
+  // code at all; the literal view keeps it for rules that opted in.
+  let bt = char_from(96)
+  let source = "const s = \{bt}// TODO: not a comment\{bt}\n"
+  let code = split_lines(strip_comments_code(source, CommentMode::Js))
+  let literal = split_lines(strip_comments(source, CommentMode::Js))
+  assert_eq(
+    lint_lines("test.ts", code, literal, literal, [
+      test_rule("no-todo", Word("TODO"), None),
+    ]).length(),
+    0,
+  )
+  assert_eq(
+    lint_lines("test.ts", code, literal, literal, [
+      test_literal_rule("no-todo", Word("TODO")),
+    ]).length(),
+    1,
+  )
+}
+
+///|
+test "the code view blanks string template and regex literal contents" {
+  let bt = char_from(96)
+  let blank = " ".repeat("FORBIDDEN".length())
+  let source = "const q = \"FORBIDDEN\";\nconst t = \{bt}FORBIDDEN\{bt};\nconst r = /FORBIDDEN/; FORBIDDEN\n"
+  let code = split_lines(strip_comments_code(source, CommentMode::Js))
+  let literal = split_lines(strip_comments(source, CommentMode::Js))
+  // The code view hides all three literal values; the code token survives.
+  assert_false(code[0].1.contains("FORBIDDEN"))
+  assert_false(code[1].1.contains("FORBIDDEN"))
+  assert_true(code[2].1.contains("FORBIDDEN"))
+  // Delimiters and positions are preserved, so `ref="` still matches.
+  assert_eq(code[0].1, "const q = \"\{blank}\";")
+  assert_eq(code[1].1, "const t = \{bt}\{blank}\{bt};")
+  assert_eq(code[2].1, "const r = /\{blank}/; FORBIDDEN")
+  assert_eq(code.length(), literal.length())
+  // The literal view is the historical behaviour, unchanged.
+  assert_true(literal[0].1.contains("FORBIDDEN"))
+  assert_true(literal[1].1.contains("FORBIDDEN"))
+}
+
+///|
+test "an interpolation is code in both views" {
+  let bt = char_from(96)
+  // `${...}` is an expression, not a literal value: it survives the code view,
+  // and a comment inside it is blanked like any other code comment.
+  let source = "const t = \{bt}${FORBIDDEN} // note\{bt}\n"
+  let code = split_lines(strip_comments_code(source, CommentMode::Js))
+  assert_true(code[0].1.contains("FORBIDDEN"))
+  assert_false(code[0].1.contains("note"))
 }
 
 ///|

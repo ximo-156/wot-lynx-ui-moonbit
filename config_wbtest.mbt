@@ -264,6 +264,25 @@ test "config: match_comments must be a boolean" {
 }
 
 ///|
+test "config: match_literals defaults to false and parses when present" {
+  let off = "{\"rules\":[{\"id\":\"r1\",\"message\":\"m\",\"match\":{\"contains\":\"FORBIDDEN\"}}]}"
+  let on = "{\"rules\":[{\"id\":\"r1\",\"message\":\"m\",\"match\":{\"contains\":\"FORBIDDEN\"},\"match_literals\":true}]}"
+  assert_eq(parse_config(off).unwrap().rules[0].match_literals, false)
+  assert_eq(parse_config(on).unwrap().rules[0].match_literals, true)
+}
+
+///|
+test "config: match_literals must be a boolean" {
+  let json = "{\"rules\":[{\"id\":\"r1\",\"message\":\"m\",\"match\":{\"contains\":\"x\"},\"match_literals\":1}]}"
+  let message = match parse_config(json) {
+    Ok(_) => "accepted"
+    Err(ConfigError(message)) => message
+  }
+  assert_true(message.contains("match_literals"))
+  assert_true(message.contains("boolean"))
+}
+
+///|
 test "config parses file_rules with max_lines" {
   let json = "{\"rules\":[],\"file_rules\":[{\"id\":\"file/max-lines\",\"message\":\"too long\",\"extensions\":[\".ts\"],\"check\":{\"max_lines\":100}}]}"
   let config = parse_config(json).unwrap()
@@ -384,4 +403,28 @@ test "collect_extensions unions structural rule extensions" {
     collect_extensions([], [], parse_config(json).unwrap().structural_rules),
     [".ts", ".vue"],
   )
+}
+
+///|
+test "config: aliases parse into ordered prefix-target pairs" {
+  let json = "{\"rules\":[],\"aliases\":{\"@\":\"src\",\"~\":\".\"}}"
+  let config = parse_config(json).unwrap()
+  assert_eq(config.aliases.length(), 2)
+  let prefixes = config.aliases.map(pair => pair.0)
+  assert_true(prefixes.contains("@"))
+  assert_true(prefixes.contains("~"))
+}
+
+///|
+test "config: aliases reject escaping targets and malformed entries" {
+  for
+    json in [
+      "{\"rules\":[],\"aliases\":{\"@\":\"/abs\"}}",
+      "{\"rules\":[],\"aliases\":{\"@\":\"../outside\"}}",
+      "{\"rules\":[],\"aliases\":{\"@\":1}}",
+      "{\"rules\":[],\"aliases\":{\"../x\":\"src\"}}",
+      "{\"rules\":[],\"aliases\":[]}",
+    ] {
+    assert_true(parse_config(json) is Err(_),)
+  }
 }

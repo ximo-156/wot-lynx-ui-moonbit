@@ -16,6 +16,7 @@ fn cache_test_rule(
     unless,
     scope: Scope::empty(),
     match_comments: false,
+    match_literals: false,
   }
 }
 
@@ -110,6 +111,17 @@ test "config fingerprint changes when any rule input changes" {
     [],
     Scope::empty(),
   )
+  let by_match_literals = config_fingerprint(
+    [
+      Rule::{
+        ..cache_test_rule("no-foo", Contains("foo"), None),
+        match_literals: true,
+      },
+    ],
+    [],
+    [],
+    Scope::empty(),
+  )
   let by_structural = config_fingerprint(
     [cache_test_rule("no-foo", Contains("foo"), None)],
     [],
@@ -133,6 +145,7 @@ test "config fingerprint changes when any rule input changes" {
   assert_true(base != by_global_scope)
   assert_true(base != by_structural)
   assert_true(base != by_match_comments)
+  assert_true(base != by_match_literals)
 }
 
 ///|

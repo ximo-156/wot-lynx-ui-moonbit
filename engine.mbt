@@ -4,13 +4,17 @@
 /// Each matcher is compiled once per rule (see `MatchKind::prepare`), then
 /// reused for every line — compiling per line dominates scan time otherwise.
 ///
-/// Two views of the file are passed in: `lines` is the comment-stripped view
-/// (see `comment.mbt`) and `raw_lines` is the file exactly as written. A rule
-/// matches against `lines` unless it sets `match_comments`, in which case it
-/// sees `raw_lines` — the opt-in a comment-targeting rule needs.
+/// Three views of the file are passed in: `code_lines` is the code view
+/// (comments blanked, and literal contents blanked for the JS/TS family — see
+/// `comment.mbt`), `literal_lines` is the comment-stripped view with literal
+/// text intact, and `raw_lines` is the file exactly as written. A rule matches
+/// against `code_lines` by default; `match_literals` selects `literal_lines`
+/// for rules whose target only exists as a literal value, and `match_comments`
+/// selects `raw_lines` — the opt-in a comment-targeting rule needs.
 pub fn lint_lines(
   rel : String,
-  lines : Array[(Int32, String)],
+  code_lines : Array[(Int32, String)],
+  literal_lines : Array[(Int32, String)],
   raw_lines : Array[(Int32, String)],
   rules : Array[Rule],
 ) -> Array[Finding] {
@@ -24,7 +28,13 @@ pub fn lint_lines(
       None => None
       Some(unless_) => Some(unless_.prepare())
     }
-    let view = if rule.match_comments { raw_lines } else { lines }
+    let view = if rule.match_comments {
+      raw_lines
+    } else if rule.match_literals {
+      literal_lines
+    } else {
+      code_lines
+    }
     for (lineno, text) in view {
       if matcher.matches(text) {
         let skip = match unless {
@@ -68,11 +78,26 @@ pub fn lint_tree(
   exts : Array[String],
   scope : Scope,
 ) -> Result[LintResult, Error] {
+  lint_tree_with(root, rules, file_rules, structural_rules, exts, scope, [])
+}
+
+///|
+/// Alias-aware variant of `lint_tree`. `aliases` are `(prefix, target)` pairs
+/// used to resolve path-aliased imports during the structural pass.
+pub fn lint_tree_with(
+  root : String,
+  rules : Array[Rule],
+  file_rules : Array[FileRule],
+  structural_rules : Array[StructuralRule],
+  exts : Array[String],
+  scope : Scope,
+  aliases : Array[(String, String)],
+) -> Result[LintResult, Error] {
   try {
     let absolute = canonical_root(root)
     let files = select_files(Tree, absolute, exts)
     Ok(
-      lint_selected(
+      lint_selected_with(
         absolute,
         Tree,
         files,
@@ -80,6 +105,7 @@ pub fn lint_tree(
         file_rules,
         structural_rules,
         scope,
+        aliases,
       ),
     )
   } catch {
@@ -98,7 +124,21 @@ pub fn lint_files(
   structural_rules : Array[StructuralRule],
   scope : Scope,
 ) -> LintResult raise {
-  lint_selected(
+  lint_files_with(root, files, rules, file_rules, structural_rules, scope, [])
+}
+
+///|
+/// Alias-aware variant of `lint_files`.
+pub fn lint_files_with(
+  root : String,
+  files : Array[String],
+  rules : Array[Rule],
+  file_rules : Array[FileRule],
+  structural_rules : Array[StructuralRule],
+  scope : Scope,
+  aliases : Array[(String, String)],
+) -> LintResult raise {
+  lint_selected_with(
     canonical_root(root),
     Tree,
     files,
@@ -106,6 +146,7 @@ pub fn lint_files(
     file_rules,
     structural_rules,
     scope,
+    aliases,
   )
 }
 
@@ -130,6 +171,23 @@ pub fn lint_selected(
   structural_rules : Array[StructuralRule],
   scope : Scope,
 ) -> LintResult raise {
+  lint_selected_with(
+    root, mode, files, rules, file_rules, structural_rules, scope, [],
+  )
+}
+
+///|
+/// Alias-aware variant of `lint_selected`.
+pub fn lint_selected_with(
+  root : String,
+  mode : ScanMode,
+  files : Array[String],
+  rules : Array[Rule],
+  file_rules : Array[FileRule],
+  structural_rules : Array[StructuralRule],
+  scope : Scope,
+  aliases : Array[(String, String)],
+) -> LintResult raise {
   lint_selected_impl(
     root,
     mode,
@@ -138,6 +196,7 @@ pub fn lint_selected(
     file_rules,
     structural_rules,
     scope,
+    aliases,
     None,
   ).0
 }
@@ -157,10 +216,29 @@ pub fn lint_selected_cached(
   scope : Scope,
   cache : Cache?,
 ) -> (LintResult, Cache) raise {
-  lint_selected_impl(
-    root, mode, files, rules, file_rules, structural_rules, scope, cache,
+  lint_selected_cached_with(
+    root, mode, files, rules, file_rules, structural_rules, scope, cache, [],
   )
 }
+
+///|
+/// Alias-aware variant of `lint_selected_cached`.
+pub fn lint_selected_cached_with(
+  root : String,
+  mode : ScanMode,
+  files : Array[String],
+  rules : Array[Rule],
+  file_rules : Array[FileRule],
+  structural_rules : Array[StructuralRule],
+  scope : Scope,
+  cache : Cache?,
+  aliases : Array[(String, String)],
+) -> (LintResult, Cache) raise {
+  lint_selected_impl(
+    root, mode, files, rules, file_rules, structural_rules, scope, aliases, cache,
+  )
+}
+
 
 ///|
 /// The scan core, shared by the plain and cache-aware entry points. `cache`
@@ -174,6 +252,7 @@ fn lint_selected_impl(
   file_rules : Array[FileRule],
   structural_rules : Array[StructuralRule],
   scope : Scope,
+  aliases : Array[(String, String)],
   cache : Cache?,
 ) -> (LintResult, Cache) raise {
   let candidates : Array[String] = []
@@ -198,6 +277,11 @@ fn lint_selected_impl(
   let fingerprint = config_fingerprint(
     rules, file_rules, structural_rules, scope,
   )
+  // Rules that opted into literal text need the literal view built per file;
+  // `match_comments` rules already see the raw view, so they do not count.
+  let wants_literal_view = rules.any(rule => {
+    rule.match_literals && !rule.match_comments
+  })
   let reusable : Cache? = match cache {
     Some(previous) =>
       if previous.is_current(fingerprint) {
@@ -292,7 +376,17 @@ fn lint_selected_impl(
         },
       )
       let raw_lines = split_lines(source)
-      let lines = split_lines(strip_comments(source, comment_mode_for(rel)))
+      let mode = comment_mode_for(rel)
+      // The code view blanks literal contents (JS/TS family); the literal view
+      // keeps them for rules that opted in with `match_literals`. It is only
+      // built when such a rule exists, and for `Plain`/MoonBit sources the two
+      // views are identical anyway.
+      let lines = split_lines(strip_comments_code(source, mode))
+      let literal_lines = if wants_literal_view {
+        split_lines(strip_comments(source, mode))
+      } else {
+        lines
+      }
       let comment_lines = if rel.has_suffix(".mbt") {
         split_lines(moonbit_code_and_comments(moonbit_lex(source)))
       } else {
@@ -301,7 +395,7 @@ fn lint_selected_impl(
       // Per-file findings are collected separately so they can be stored in
       // the cache; the project pass appends its own afterwards.
       let file_findings : Array[Finding] = []
-      for finding in lint_lines(rel, lines, comment_lines, rules) {
+      for finding in lint_lines(rel, lines, literal_lines, comment_lines, rules) {
         if !disable_map.is_disabled(finding.rule_id, finding.line) {
           file_findings.push(finding)
         }
@@ -354,7 +448,7 @@ fn lint_selected_impl(
       let (rel, _) = pair
       !rel.has_suffix(".mbt")
     })
-    let index = build_index(js_sources)
+    let index = build_index_with_aliases(js_sources, aliases)
     let structural_findings = if context_failed == 0 {
       analyze(index, structural_rules)
     } else {

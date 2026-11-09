@@ -57,14 +57,16 @@
       "severity": "warning",
       "message": "Use shorthand for true attributes (:disabled instead of :disabled=\"true\")",
       "extensions": [".vue", ".js", ".ts"],
-      "match": { "regex": ":[[:alpha:]\\-]+=\"true\"" }
+      "match": { "regex": ":[[:alpha:]\\-]+=\"true\"" },
+      "match_literals": true
     },
     {
       "id": "vue/no-useless-mustaches",
       "severity": "warning",
       "message": "Remove unnecessary mustaches around string literals",
       "extensions": [".vue", ".js", ".ts"],
-      "match": { "regex": "\\{\\{[[:space:]]*\"[^\"]*\"[[:space:]]*\\}\\}" }
+      "match": { "regex": "\\{\\{[[:space:]]*\"[^\"]*\"[[:space:]]*\\}\\}" },
+      "match_literals": true
     },
     {
       "id": "vue/no-v-text",
@@ -79,7 +81,8 @@
       "message": "target=\"_blank\" without rel=\"noopener\" is a security risk",
       "extensions": [".vue", ".js", ".ts"],
       "match": { "regex": "target=\"_blank\"" },
-      "unless": { "regex": "noopener" }
+      "unless": { "regex": "noopener" },
+      "match_literals": true
     }
   ]
 }

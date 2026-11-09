@@ -55,7 +55,7 @@ the tokenizer and import-graph layers.
 - **Regex + substring matching** — `contains`, `prefix`, `suffix`, `regex`, `equals` and `word` matchers
 - **Matcher combinators** — `all` / `any` / `not` nest within bounded parser limits, so `match` expresses any boolean formula over the leaf matchers
 - **Negative guards** — `unless` field to suppress false positives (e.g. "import from 'vue' but not 'vue-lynx'")
-- **Comment-aware** — `//` and `/* */` comments are blanked out before matching, preserving line numbers and columns; in JS/TS/JSX files the scanner understands template literals, `${}` interpolations, strings and regex literals, so a `//` inside a template string is text, not a comment. Rules that *target* comments opt in with `"match_comments": true`
+- **Comment-aware** — `//` and `/* */` comments are blanked out before matching, preserving line numbers and columns; in JS/TS/JSX files the scanner understands template literals, `${}` interpolations, strings and regex literals, so a `//` inside a template string is text, not a comment. The default code view also blanks literal *contents*, so `const q = "FORBIDDEN"` is not code; rules whose target only exists as a literal value opt in with `"match_literals": true`, and rules that *target* comments opt in with `"match_comments": true`
 - **Cross-file structural rules** — a JS/TS tokenizer + parser builds a project-wide import graph, powering unused imports, duplicate imports, unresolved relative imports, import cycles, deep relative imports, `require()` usage, `export default` and dead exports (`--preset imports`)
 - **Baseline v2** — explicit, count-limited content exemptions with reason, owner, expiry and full-tree unused-budget audits; legacy arrays remain readable
 - **Package policies** — direct dependency constraints over supplied compiler v3 package graphs, with separate source/test/wbtest kinds and backend selection
@@ -247,6 +247,45 @@ rule, say — opts into the raw view instead:
 exactly as written — line and block comments included, but strings and
 template literals too, since those are also "raw". The `unless` guard and
 inline `// moonlint-disable` comments apply as usual.
+
+### Matching inside literals
+
+The default view — the *code view* — blanks the contents of string, template
+and regex literals in JavaScript/TypeScript/JSX sources, so
+`const q = "FORBIDDEN"` is not code and no rule matches it. This aligns the
+JS/TS line matcher with the MoonBit front end, which has always blanked
+literal contents. Deliberately preserved: the delimiters (`"`, `'`, `` ` ``,
+`/`), so attribute-shaped matches such as `ref="` still work, and `${...}`
+interpolations, because an interpolation is an expression, not a value.
+Line and column positions are unchanged. `.vue`, `.svelte`, `.astro` and
+unknown extensions have no literal-aware scanner, so their view is the
+comment-stripped one, as before.
+
+A rule whose target only exists as a literal value — an attribute value such
+as `target="_blank"`, a module specifier such as `from 'react'`, a URL —
+opts into the *literal view*, which is the historical comment-stripped view
+with literal text intact:
+
+```json
+{
+  "id": "react/jsx-no-target-blank",
+  "severity": "warning",
+  "message": "target=\"_blank\" without rel=\"noopener\" is a security risk",
+  "extensions": [".jsx", ".tsx"],
+  "match": { "regex": "target=\"_blank\"" },
+  "unless": { "regex": "noopener" },
+  "match_literals": true
+}
+```
+
+`match_literals` is per-rule and defaults to `false`. The `unless` guard sees
+the same view as the matcher. It is ignored when `match_comments` is set,
+because the raw view already contains literal text. The shipped presets use
+it for the rules that need it (`react/jsx-no-target-blank`,
+`next/google-font-display`, `angular/relative-url-prefix`, …), and
+`presets/*.json` carry the same flag. View selection takes part in the
+incremental cache fingerprint, so toggling either flag invalidates cached
+results.
 
 ## File-Level Rules
 
@@ -677,6 +716,8 @@ Rules are defined in a JSON file (default: `moonlint.json`):
 | `extensions` | string[] | File extensions to check (empty = all files) |
 | `match` | object | Primary matcher (see below) |
 | `unless` | object | Optional negative guard |
+| `match_comments` | bool | Match the raw view (comments included). Default `false` |
+| `match_literals` | bool | Match the literal view (string/template/regex contents intact). Default `false`; ignored when `match_comments` is set |
 | `include` | string[] | Optional paths this rule applies to |
 | `exclude` | string[] | Optional paths this rule never applies to |
 

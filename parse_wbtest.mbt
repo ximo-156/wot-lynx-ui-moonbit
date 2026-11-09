@@ -140,6 +140,22 @@ test "property names are not identifier reads" {
 }
 
 ///|
+test "spread is a read, not a property access" {
+  // The tokenizer emits one Punct per character, so `...foo` has a `.` right
+  // before `foo` just like `.foo` does. Treating it as a property name made
+  // every spread-only import look unused.
+  let m = parse_source(
+    "import a from './a';\nimport { b } from './b';\nconst o = { ...a, ...b };",
+  )
+  let names = m.used.map(u => u.name)
+  assert_eq(names.contains("a"), true)
+  assert_eq(names.contains("b"), true)
+  // A real property read stays excluded.
+  let m2 = parse_source("import c from './c';\nconst o = { x: c.y };")
+  assert_eq(m2.used.map(u => u.name).contains("y"), false)
+}
+
+///|
 test "keywords are not identifier reads" {
   let m = parse_source("const x = typeof y;")
   let names = m.used.map(u => u.name)

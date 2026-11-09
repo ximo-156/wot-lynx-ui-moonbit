@@ -70,6 +70,7 @@ fn rule(
     unless: None,
     scope: Scope::empty(),
     match_comments: false,
+    match_literals: false,
   }
 }
 
@@ -92,6 +93,7 @@ fn guarded_rule(
     unless: Some(unless),
     scope: Scope::empty(),
     match_comments: false,
+    match_literals: false,
   }
 }
 
@@ -114,6 +116,58 @@ fn comment_rule(
     unless: None,
     scope: Scope::empty(),
     match_comments: true,
+    match_literals: false,
+  }
+}
+
+///|
+/// Shorthand constructor for a rule whose target exists only as literal text
+/// — an attribute value such as `target="_blank"`, or a module specifier such
+/// as `from 'react'`. Such a rule matches the literal view (literal contents
+/// intact) instead of the default code view, where those values are blanked.
+fn literal_rule(
+  id : String,
+  severity : Severity,
+  message : String,
+  extensions : Array[String],
+  match_ : MatchKind,
+) -> Rule {
+  Rule::{
+    id,
+    severity,
+    message,
+    extensions,
+    match_,
+    unless: None,
+    scope: Scope::empty(),
+    match_comments: false,
+    match_literals: true,
+  }
+}
+
+///|
+/// Shorthand constructor for a literal-view rule with an `unless` guard. The
+/// guard sees the same literal view as the matcher, so an exemption written
+/// against literal text (for example `display=swap` inside an href) keeps
+/// working.
+fn literal_guarded_rule(
+  id : String,
+  severity : Severity,
+  message : String,
+  extensions : Array[String],
+  match_ : MatchKind,
+  unless : MatchKind,
+) -> Rule {
+  Rule::{
+    id,
+    severity,
+    message,
+    extensions,
+    match_,
+    unless: Some(unless),
+    scope: Scope::empty(),
+    match_comments: false,
+    match_literals: true,
   }
 }
 
@@ -252,7 +306,7 @@ fn react_rules() -> Array[Rule] {
       jsx,
       Regex("></[[:alpha:]][[:alnum:]]*>"),
     ),
-    guarded_rule(
+    literal_guarded_rule(
       "react/jsx-no-target-blank",
       Severity::warning(),
       "target=\"_blank\" without rel=\"noopener\" is a security risk",
@@ -260,7 +314,7 @@ fn react_rules() -> Array[Rule] {
       Regex("target=\"_blank\""),
       Regex("noopener"),
     ),
-    rule(
+    literal_rule(
       "react/jsx-no-script-url",
       Severity::error(),
       "Avoid javascript: URLs in href",
@@ -395,14 +449,14 @@ fn vue_rules() -> Array[Rule] {
       vue_exts,
       Regex("(^|[[:space:]])style=\""),
     ),
-    rule(
+    literal_rule(
       "vue/prefer-true-attribute-shorthand",
       Severity::warning(),
       "Use shorthand for true attributes (:disabled instead of :disabled=\"true\")",
       vue_exts,
       Regex(":[[:alpha:]\\-]+=\"true\""),
     ),
-    rule(
+    literal_rule(
       "vue/no-useless-mustaches",
       Severity::warning(),
       "Remove unnecessary mustaches around string literals",
@@ -416,7 +470,7 @@ fn vue_rules() -> Array[Rule] {
       vue_exts,
       Contains("v-text"),
     ),
-    guarded_rule(
+    literal_guarded_rule(
       "vue/no-target-blank",
       Severity::warning(),
       "target=\"_blank\" without rel=\"noopener\" is a security risk",
@@ -493,7 +547,7 @@ fn angular_rules() -> Array[Rule] {
       ts,
       Regex("@Attribute\\("),
     ),
-    guarded_rule(
+    literal_guarded_rule(
       "angular/relative-url-prefix",
       Severity::error(),
       "Relative templateUrl/styleUrls must start with ./",
@@ -586,7 +640,7 @@ fn svelte_rules() -> Array[Rule] {
 fn next_rules() -> Array[Rule] {
   let next_exts = [".jsx", ".tsx", ".js", ".ts"]
   [
-    rule(
+    literal_rule(
       "next/no-html-link-for-pages",
       Severity::warning(),
       "Use <Link> instead of <a> for internal pages",
@@ -607,7 +661,7 @@ fn next_rules() -> Array[Rule] {
       next_exts,
       Regex("<head"),
     ),
-    rule(
+    literal_rule(
       "next/no-css-tags",
       Severity::warning(),
       "Use CSS imports instead of <link rel=\"stylesheet\">",
@@ -622,7 +676,7 @@ fn next_rules() -> Array[Rule] {
       Regex("<script[^>]*src="),
       Regex("async|defer"),
     ),
-    guarded_rule(
+    literal_guarded_rule(
       "next/google-font-display",
       Severity::warning(),
       "Google Fonts links must include &display=swap",
@@ -630,7 +684,7 @@ fn next_rules() -> Array[Rule] {
       Regex("fonts.googleapis.com"),
       Regex("display=swap"),
     ),
-    rule(
+    literal_rule(
       "next/no-unwanted-polyfillio",
       Severity::error(),
       "polyfill.io is a security risk; remove it",
@@ -676,7 +730,7 @@ fn solid_rules() -> Array[Rule] {
       solid_exts,
       Regex("\\?[[:space:]]*<"),
     ),
-    rule(
+    literal_rule(
       "solid/no-react-imports",
       Severity::error(),
       "Do not import from 'react' in a Solid project",
@@ -770,7 +824,7 @@ fn nuxt_rules() -> Array[Rule] {
       nuxt_exts,
       Regex("\\b(window|document)\\."),
     ),
-    rule(
+    literal_rule(
       "nuxt/prefer-auto-imports",
       Severity::warning(),
       "Use Nuxt auto-imports instead of explicit imports from 'vue'",
@@ -1190,7 +1244,13 @@ pub fn merge_presets(names : Array[String]) -> Result[LintConfig, ConfigError] {
       }
     }
   }
-  Ok({ rules, file_rules, structural_rules, scope: Scope::empty(), })
+  Ok({
+    rules,
+    file_rules,
+    structural_rules,
+    scope: Scope::empty(),
+    aliases: [],
+  })
 }
 
 ///|

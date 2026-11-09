@@ -69,14 +69,16 @@
       "message": "target=\"_blank\" without rel=\"noopener\" is a security risk",
       "extensions": [".jsx", ".tsx"],
       "match": { "regex": "target=\"_blank\"" },
-      "unless": { "regex": "noopener" }
+      "unless": { "regex": "noopener" },
+      "match_literals": true
     },
     {
       "id": "react/jsx-no-script-url",
       "severity": "error",
       "message": "Avoid javascript: URLs in href",
       "extensions": [".jsx", ".tsx"],
-      "match": { "regex": "href=\"javascript:" }
+      "match": { "regex": "href=\"javascript:" },
+      "match_literals": true
     },
     {
       "id": "react/style-prop-object",

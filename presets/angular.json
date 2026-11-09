@@ -62,7 +62,8 @@
       "message": "Relative templateUrl/styleUrls must start with ./",
       "extensions": [".ts"],
       "match": { "regex": "templateUrl:|styleUrls?:" },
-      "unless": { "regex": "(templateUrl|styleUrls?):[[:space:]]*\\[?[[:space:]]*['\"]\\./" }
+      "unless": { "regex": "(templateUrl|styleUrls?):[[:space:]]*\\[?[[:space:]]*['\"]\\./" },
+      "match_literals": true
     }
   ]
 }

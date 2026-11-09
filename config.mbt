@@ -49,7 +49,8 @@ pub fn parse_config(src : String) -> Result[LintConfig, ConfigError] {
     config_fields(
       obj,
       [
-        "rules", "file_rules", "structural_rules", "include", "exclude", "extends",
+        "rules", "file_rules", "structural_rules", "include", "exclude",
+        "extends", "aliases",
       ],
       "config",
     ) {
@@ -59,6 +60,10 @@ pub fn parse_config(src : String) -> Result[LintConfig, ConfigError] {
   let scope = match parse_scope(obj, "config") {
     Ok(scope) => scope
     Err(message) => return Err(ConfigError(message))
+  }
+  let aliases = match parse_aliases(obj) {
+    Ok(a) => a
+    Err(ConfigError(msg)) => return Err(ConfigError(msg))
   }
   let rules : Array[Rule] = []
   match obj.get("rules") {
@@ -97,7 +102,55 @@ pub fn parse_config(src : String) -> Result[LintConfig, ConfigError] {
     Some(message) => return Err(ConfigError(message))
     None => ()
   }
-  Ok({ rules, file_rules, structural_rules, scope, })
+  Ok({ rules, file_rules, structural_rules, scope, aliases, })
+}
+
+///|
+/// Parse the optional `aliases` object: a map from a specifier prefix (such as
+/// `@` or `@/`) to a root-relative directory. Order is preserved so a longer,
+/// more specific prefix can win over a shorter one via the caller's lookup.
+fn parse_aliases(
+  obj : Map[String, Json],
+) -> Result[Array[(String, String)], ConfigError] {
+  let aliases : Array[(String, String)] = []
+  let json = match obj.get("aliases") {
+    None => return Ok(aliases)
+    Some(j) => j
+  }
+  let entries = match json.as_object() {
+    Some(o) => o
+    None => return Err(ConfigError("\"aliases\" must be an object"))
+  }
+  for key, value in entries {
+    if key == "" || key.contains("\u{0}") {
+      return Err(ConfigError("alias prefix must be a nonempty string"))
+    }
+    // A prefix is matched literally and joined with `/`, so a leading `./`,
+    // `../` or `/` would make it escape the scan root.
+    if key.has_prefix("./") || key.has_prefix("../") || key.has_prefix("/") {
+      return Err(
+        ConfigError("alias prefix \"\{key}\" must not start with ./ ../ or /"),
+      )
+    }
+    let target = match value.as_string() {
+      Some(s) => s
+      None => return Err(ConfigError("alias \"\{key}\" target must be a string"))
+    }
+    if target.contains("\u{0}") ||
+      target.has_prefix("/") ||
+      target == ".." ||
+      target.has_prefix("../") ||
+      target.contains("/../") {
+      return Err(
+        ConfigError(
+          "alias \"\{key}\" target must be a root-relative directory without ..",
+        ),
+      )
+    }
+    let clean_target = if target == "." { "" } else { target }
+    aliases.push((key, clean_target))
+  }
+  Ok(aliases)
 }
 
 ///|
@@ -205,6 +258,7 @@ fn parse_config_with_extends_impl(
   let base_rules : Array[Rule] = []
   let base_file_rules : Array[FileRule] = []
   let base_structural_rules : Array[StructuralRule] = []
+  let base_aliases : Array[(String, String)] = []
   let mut base_scope = Scope::empty()
   for path in extends_paths {
     let full_path = join_path_parts(config_dir, path)
@@ -235,6 +289,9 @@ fn parse_config_with_extends_impl(
     for sr in ext_config.structural_rules {
       base_structural_rules.push(sr)
     }
+    for pair in ext_config.aliases {
+      base_aliases.push(pair)
+    }
     if !ext_config.scope.is_empty() {
       base_scope = ext_config.scope
     }
@@ -243,6 +300,10 @@ fn parse_config_with_extends_impl(
   let scope = match parse_scope(obj, "config") {
     Ok(scope) => scope
     Err(message) => return Err(ConfigError(message))
+  }
+  let current_aliases = match parse_aliases(obj) {
+    Ok(a) => a
+    Err(ConfigError(msg)) => return Err(ConfigError(msg))
   }
   let current_rules : Array[Rule] = []
   match obj.get("rules") {
@@ -329,11 +390,29 @@ fn parse_config_with_extends_impl(
   }
   // Use current scope if non-empty, otherwise base scope
   let final_scope = if scope.is_empty() { base_scope } else { scope }
+  // Current aliases win over inherited ones for the same prefix.
+  let merged_aliases : Array[(String, String)] = []
+  let seen_alias : Set[String] = Set([])
+  for pair in current_aliases {
+    let (prefix, _) = pair
+    if !seen_alias.contains(prefix) {
+      seen_alias.add(prefix)
+      merged_aliases.push(pair)
+    }
+  }
+  for pair in base_aliases {
+    let (prefix, _) = pair
+    if !seen_alias.contains(prefix) {
+      seen_alias.add(prefix)
+      merged_aliases.push(pair)
+    }
+  }
   Ok({
     rules: merged_rules,
     file_rules: merged_file_rules,
     structural_rules: merged_structural_rules,
     scope: final_scope,
+    aliases: merged_aliases,
   })
 }
 
@@ -422,7 +501,7 @@ fn parse_rule(rj : Json) -> Result[Rule, ConfigError] {
       obj,
       [
         "id", "severity", "message", "extensions", "include", "exclude", "match",
-        "unless", "match_comments",
+        "unless", "match_comments", "match_literals",
       ],
       "parse_rule",
     ) {
@@ -474,6 +553,11 @@ fn parse_rule(rj : Json) -> Result[Rule, ConfigError] {
     Some(Ok(b)) => b
     Some(Err(message)) => return Err(ConfigError("rule \"\{id}\": \{message}"))
   }
+  let match_literals = match get_bool_field(obj, "match_literals") {
+    None => false
+    Some(Ok(b)) => b
+    Some(Err(message)) => return Err(ConfigError("rule \"\{id}\": \{message}"))
+  }
   Ok({
     id,
     severity,
@@ -483,6 +567,7 @@ fn parse_rule(rj : Json) -> Result[Rule, ConfigError] {
     unless,
     scope,
     match_comments,
+    match_literals,
   })
 }
 

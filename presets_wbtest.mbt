@@ -219,6 +219,38 @@ test "the common preset's TODO rule opts into the raw view" {
 }
 
 ///|
+test "literal-dependent preset rules opt into the literal view" {
+  // Rules whose target only exists as literal text — an attribute value such
+  // as target="_blank", a module specifier such as from 'react', a URL — must
+  // see the literal view, because the default code view blanks literal
+  // contents. Every other preset rule matches the code view.
+  let expected : Set[String] = Set::from_iter(
+    [
+      "angular/relative-url-prefix", "next/google-font-display", "next/no-css-tags",
+      "next/no-html-link-for-pages", "next/no-unwanted-polyfillio", "nuxt/prefer-auto-imports",
+      "react/jsx-no-script-url", "react/jsx-no-target-blank", "solid/no-react-imports",
+      "vue/no-target-blank", "vue/no-useless-mustaches", "vue/prefer-true-attribute-shorthand",
+    ].iter(),
+  )
+  let found : Set[String] = Set::from_iter([].iter())
+  for name in preset_names() {
+    let config = merge_presets([name]).unwrap()
+    for r in config.rules {
+      if r.match_literals {
+        if !expected.contains(r.id) {
+          fail("unexpected literal-view rule \{r.id}")
+        }
+        found.add(r.id)
+      }
+      // The raw view already contains literal text, so a comment-targeting
+      // rule never needs the literal view as well.
+      assert_false(r.match_comments && r.match_literals)
+    }
+  }
+  assert_eq(found.length(), expected.length())
+}
+
+///|
 test "file preset has expected file rule count" {
   let config = merge_presets(["file"]).unwrap()
   assert_eq(config.file_rules.length(), 6)

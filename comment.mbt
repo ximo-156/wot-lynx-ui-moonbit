@@ -37,10 +37,34 @@ fn backtick_ch() -> Char {
 /// Blank comments without changing line or character positions.
 ///
 /// `Js` keeps quotes, template literals and regex literals intact; `Plain` is
-/// the quote-only view used for sources without regex literals.
+/// the quote-only view used for sources without regex literals. This is the
+/// *literal* view: line rules that must see literal text opt in with
+/// `match_literals` and match against it (see `strip_comments_code`).
 fn strip_comments(src : String, mode : CommentMode) -> String {
   match mode {
-    Js => strip_comments_js(src)
+    Js => strip_comments_js(src, false)
+    Plain => strip_comments_plain(src)
+    Moonbit => moonbit_lex(src).code
+  }
+}
+
+///|
+/// The *code* view: comments blanked as in `strip_comments`, and — for the
+/// JavaScript/TypeScript family — the contents of string, template and regex
+/// literals blanked as well, so a line rule never matches literal text.
+///
+/// Deliberately preserved: the literal delimiters (`"`, `'`, `` ` ``, `/`), so
+/// attribute-shaped matches such as `ref="` still work, and `${...}`
+/// interpolations, because an interpolation is code. Line breaks inside
+/// multi-line templates and strings are preserved, so line and column
+/// positions still line up with the raw source.
+///
+/// `Plain` sources (`.vue`, `.svelte`, `.astro`, unknown extensions) have no
+/// literal-aware scanner, so their code view equals their literal view; the
+/// MoonBit front end already blanks literals in its own `code` view.
+pub fn strip_comments_code(src : String, mode : CommentMode) -> String {
+  match mode {
+    Js => strip_comments_js(src, true)
     Plain => strip_comments_plain(src)
     Moonbit => moonbit_lex(src).code
   }
@@ -89,10 +113,16 @@ priv enum ResumeMode {
 ///
 /// A small state machine drives the scan. `Template` marks a template-literal
 /// body, where comment openers are text; `InterpolationOpen` marks the `{` that
-/// follows a `$`, which re-enters the template body. `depths` counts the braces
-/// of each open interpolation, and `regex_ok` records whether the previous
-/// token may be followed by a regex literal.
-fn strip_comments_js(src : String) -> String {
+/// follows a `$`, which opens an interpolation body — *code*, scanned in `Code`
+/// state, where comments, strings and nested templates are recognised and the
+/// matching `}` returns to the template body. `depths` counts the braces of
+/// each open interpolation, and `regex_ok` records whether the previous token
+/// may be followed by a regex literal.
+///
+/// With `blank_literals`, the contents of string, template and regex literals
+/// are blanked in place (delimiters and interpolations preserved), producing
+/// the code view a line rule matches against by default.
+fn strip_comments_js(src : String, blank_literals : Bool) -> String {
   let chars = src.to_array()
   let out : Array[Char] = []
   let n = chars.length()
@@ -107,7 +137,9 @@ fn strip_comments_js(src : String) -> String {
     match state {
       Template => {
         // A template body runs to the next unescaped backtick; until then
-        // every character is copied as text, except that `${` opens code.
+        // every character is text, except that `${` opens code. In the code
+        // view the body is blanked: template text is a literal value, not
+        // something a line rule should match against.
         if i + 1 < n && c == DOLLAR && chars[i + 1] == '{' {
           out.push(c)
           i += 1
@@ -125,18 +157,21 @@ fn strip_comments_js(src : String) -> String {
           escaped = false
           continue
         }
-        out.push(c)
+        out.push(if blank_literals && !is_js_line_break(c) { ' ' } else { c })
         escaped = !escaped && c == BS
         i += 1
       }
       InterpolationOpen => {
-        // The `{` just opened by `${` returns to the template body. Any other
-        // character is a stray `$`, so treat it as code again.
+        // The `{` just opened by `${` starts an interpolation body, which is
+        // code: comments, strings and nested templates inside it are scanned
+        // as code, and the matching `}` (handled in `Code`) returns to the
+        // template body. Any other character is a stray `$`, so the scan
+        // continues as code again.
         if c == '{' {
           depths.push(0)
           out.push(c)
           i += 1
-          state = Template
+          state = Code
           escaped = false
           continue
         }
@@ -170,8 +205,21 @@ fn strip_comments_js(src : String) -> String {
             }
             continue
           }
-          if regex_ok && regex_literal_ends_at(chars, i) is Some(end) {
-            for k in i..<=end {
+          if (regex_ok || regex_allowed_before(chars, i)) &&
+            regex_literal_ends_at(chars, i) is Some(close) {
+            // The delimiters and flags stay; the body between the slashes is
+            // blanked in the code view, so a rule never matches literal text.
+            let mut end = close
+            while end + 1 < n &&
+                  is_ident_char(chars[end + 1]) &&
+                  !(chars[end + 1] >= '0' && chars[end + 1] <= '9') {
+              end += 1
+            }
+            out.push(chars[i])
+            for k in (i + 1)..<close {
+              out.push(if blank_literals { ' ' } else { chars[k] })
+            }
+            for k in close..<=end {
               out.push(chars[k])
             }
             i = end + 1
@@ -219,7 +267,16 @@ fn strip_comments_js(src : String) -> String {
           let mut closed = false
           while j < n && !closed {
             let inner = chars[j]
-            out.push(inner)
+            // The delimiters and line breaks stay; the value between them is
+            // blanked in the code view, so a rule never matches literal text.
+            let closing = !quote_escape && inner == c
+            out.push(
+              if blank_literals && !closing && !is_js_line_break(inner) {
+                ' '
+              } else {
+                inner
+              },
+            )
             if quote_escape {
               quote_escape = false
             } else if inner == BS {
@@ -417,8 +474,34 @@ fn regex_ok_after_keyword(word : String) -> Bool {
 ///|
 
 ///|
+/// Whether a `/` at `start` can open a regex literal, judged by the previous
+/// significant character: after an operand — an identifier, a quoted string, a
+/// template, `)` or `]` — a slash is division; after an operator or at the
+/// start of a line it can only be a regex. The keyword-based `regex_ok` flag
+/// alone misses the common `const re = /x/` shape, because the last identifier
+/// before the `=` is still buffered when the slash arrives.
+fn regex_allowed_before(chars : Array[Char], start : Int32) -> Bool {
+  let mut j = start - 1
+  while j >= 0 && (chars[j] == ' ' || chars[j] == '\t' || chars[j] == '\r') {
+    j -= 1
+  }
+  if j < 0 || chars[j] == '\n' {
+    return true
+  }
+  let c = chars[j]
+  !(is_ident_char(c) ||
+  c == '"' ||
+  c == '\'' ||
+  c == backtick_ch() ||
+  c == ')' ||
+  c == ']' ||
+  c == '*' ||
+  c == slash())
+}
+
+///|
 /// If a regex literal starts at `start` (the opening `/`), the index of its
-/// closing `/` including any flags. Returns `None` at a line break, so `/` in
+/// closing `/`, excluding any flags. Returns `None` at a line break, so `/` in
 /// `a / b` is left as division.
 fn regex_literal_ends_at(chars : Array[Char], start : Int32) -> Int32? {
   let n = chars.length()
@@ -440,13 +523,7 @@ fn regex_literal_ends_at(chars : Array[Char], start : Int32) -> Int32? {
     } else if c == '[' {
       in_class = true
     } else if c == slash() {
-      let mut j = i + 1
-      while j < n &&
-            is_ident_char(chars[j]) &&
-            !(chars[j] >= '0' && chars[j] <= '9') {
-        j += 1
-      }
-      return Some(j - 1)
+      return Some(i)
     }
     i += 1
   }

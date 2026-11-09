@@ -189,14 +189,30 @@ pub fn parse_tokens(tokens : Array[Token]) -> FileModel {
     if in_spans(import_spans, idx) {
       continue
     }
-    if idx > 0 &&
-      tokens[idx - 1].kind == TokenKind::Punct &&
-      tokens[idx - 1].text == "." {
+    if is_property_name(tokens, idx) {
       continue
     }
     used.push({ name: tok.text, line: tok.line, column: tok.column, })
   }
   { imports, exports, decls, used, }
+}
+
+///|
+/// Whether the identifier at `idx` is a property name (`.foo`) rather than a
+/// variable read. The tokenizer emits one `Punct` per character, so a spread
+/// `...foo` also has a `.` immediately before `foo`; the second dot before
+/// that one tells the two apart. Without this, an identifier used only as
+/// `...foo` looks unused.
+fn is_property_name(tokens : Array[Token], idx : Int32) -> Bool {
+  if idx == 0 || tokens[idx - 1].kind != TokenKind::Punct {
+    return false
+  }
+  if tokens[idx - 1].text != "." {
+    return false
+  }
+  !(idx > 1 &&
+  tokens[idx - 2].kind == TokenKind::Punct &&
+  tokens[idx - 2].text == ".")
 }
 
 ///|
@@ -717,8 +733,20 @@ fn parse_var_decl(
       j += 1
       let mut d = 0
       let mut stop = false
+      let mut ended = false
       while j < n {
         let u = tokens[j]
+        // Automatic semicolon insertion: a declaration may end at a line
+        // break. Only the binding names matter here, never the initializer's
+        // extent, so a new line at bracket depth 0 ends the walk instead of
+        // swallowing the next statement. Without this, a semicolon-less
+        // `export const a = 1` followed by `export const b = 2` yields one
+        // export, and the swallowed tokens can even be reported as bogus
+        // export names.
+        if d == 0 && j > 0 && u.line > tokens[j - 1].line {
+          ended = true
+          break
+        }
         if u.kind == TokenKind::Ident &&
           (u.text == "import" || u.text == "require") &&
           j + 1 < n &&
@@ -743,6 +771,11 @@ fn parse_var_decl(
       }
       if stop {
         break
+      }
+      // The declaration ended at a line break; let the caller resume at the
+      // next statement rather than consuming it as part of this one.
+      if ended {
+        return j
       }
       continue
     }

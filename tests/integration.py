@@ -1760,21 +1760,48 @@ class ObservableTests(FixtureCase):
         self.assertIn("moonlint: fixed", self.text_of(result))
         self.assertEqual(path.read_text(encoding="utf-8"), "const a = 1;\n")
 
-    @unittest.expectedFailure
     def test_template_literal_text_is_not_code(self):
-        """Known defect: the compiled binary treats template text as code.
+        """A template body is a literal value, not code a line rule should see.
 
-        `strip_comments` returns this input unchanged in unit tests, yet the
-        native executable reports the token inside the template body.
+        The default code view blanks it; a rule that must match literal text
+        opts in with `match_literals` (see the literal-view test below).
         """
         self.write_file("src/a.ts", "const t = `" + TOKEN + "`;\n")
         self.assert_findings(self.invoke(), 0)
 
-    @unittest.expectedFailure
     def test_string_literal_text_is_not_code(self):
-        """Known defect: same divergence for ordinary string literals."""
+        """A string's contents are a literal value, not code."""
         self.write_file("src/a.ts", 'const q = "' + TOKEN + '";\n')
         self.assert_findings(self.invoke(), 0)
+
+    def test_regex_literal_text_is_not_code(self):
+        """A regex body is a literal value too, delimiters aside."""
+        self.write_file("src/a.ts", "const re = /" + TOKEN + "/; const ok = 1;\n")
+        self.assert_findings(self.invoke(), 0)
+
+    def test_interpolation_text_is_code(self):
+        """`${...}` is an expression, so the token inside it is still matched."""
+        self.write_file("src/a.ts", "const t = `${" + TOKEN + "}`;\n")
+        self.assert_findings(self.invoke(), 1)
+
+    def test_match_literals_opts_a_rule_into_the_literal_view(self):
+        self.write_config(rules=[
+            {"id": "test/forbidden", "severity": "error", "message": "m",
+             "extensions": [".ts"], "match": {"contains": TOKEN},
+             "match_literals": True},
+        ])
+        self.write_file("src/a.ts", 'const q = "' + TOKEN + '";\n')
+        self.assert_findings(self.invoke(), 1)
+
+    def test_preset_rules_still_see_attribute_values(self):
+        """react/jsx-no-target-blank targets text that only exists inside a
+        string literal, so the preset opts that rule into the literal view."""
+        (self.root / "a.tsx").write_text(
+            '<a target="_blank">x</a>\n', encoding="utf-8")
+        result = self.run_cli(["--preset", "react", str(self.root)])
+        self.assert_exit(result, 0)  # warning severity only
+        self.assertEqual(
+            self.output(result).count("react/jsx-no-target-blank"), 1)
 
     def test_dry_run_requires_fix(self):
         result = self.invoke("--dry-run")

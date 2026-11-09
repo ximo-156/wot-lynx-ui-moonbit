@@ -232,3 +232,55 @@ test "structural rule extensions filter which files are checked" {
   assert_eq(findings.length(), 1)
   assert_eq(findings[0].file, "src/b.js")
 }
+
+///|
+fn test_index_with_aliases(
+  files : Array[(String, String)],
+  aliases : Array[(String, String)],
+) -> ProjectIndex {
+  build_index_with_aliases(files, aliases)
+}
+
+///|
+test "aliases resolve a bare specifier to a root-relative path" {
+  let index = test_index_with_aliases([
+    ("src/api/ka.ts", "export const getKa = 1;\n"),
+    ("src/app.ts", "import { getKa } from '@/api/ka';\nconsole.log(getKa);\n"),
+  ], [("@", "src")])
+  assert_eq(index.resolve("src/app.ts", "@/api/ka"), Some("src/api/ka.ts"))
+  // A `@scope/pkg` package import must not match the `@` alias.
+  assert_true(index.resolve("src/app.ts", "@scope/pkg") is None)
+  // A `@/` prefix form works too.
+  let index2 = test_index_with_aliases([
+    ("src/api/ka.ts", ""),
+    ("src/app.ts", ""),
+  ], [("@/", "src")])
+  assert_eq(index2.resolve("src/app.ts", "@/api/ka"), Some("src/api/ka.ts"))
+}
+
+///|
+test "aliased imports keep an export from being reported unused" {
+  let rules = [
+    structural_rule("imports/no-unused-exports", NoUnusedExports, [".ts"]),
+  ]
+  let files : Array[(String, String)] = [
+    ("src/api/ka.ts", "export const getKa = 1;\n"),
+    ("src/app.ts", "import { getKa } from '@/api/ka';\nconsole.log(getKa);\n"),
+  ]
+  // Without aliases the import cannot be resolved, so the export looks dead.
+  assert_eq(analyze(test_index(files), rules).length(), 1)
+  // With the alias configured, the export is seen as used.
+  assert_eq(
+    analyze(test_index_with_aliases(files, [("@", "src")]), rules).length(),
+    0,
+  )
+}
+
+///|
+test "a longer alias prefix wins over a shorter one" {
+  let index = test_index_with_aliases([
+    ("src/lib/x.ts", ""),
+    ("other/lib/x.ts", ""),
+  ], [("@", "src"), ("@/lib", "other/lib")])
+  assert_eq(index.resolve("a.ts", "@/lib/x"), Some("other/lib/x.ts"))
+}

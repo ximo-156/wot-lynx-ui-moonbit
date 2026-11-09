@@ -59,21 +59,36 @@ test "JS mode still strips real comments after a template literal" {
 
 ///|
 test "JS mode leaves template bodies alone across lines" {
-  // A literal backtick followed by `$` would start an interpolation in the
-  // MoonBit source of this test, so the opener is built at run time.
-  let opened = template_source(["a", "// still text", "b", "`;", ""])
-  let stripped = strip_comments(opened, Js)
-  // Nothing inside a template body is a comment, so the source is unchanged.
-  assert_eq(stripped, opened)
+  // A multi-line template body is text: the `//` inside it is not a comment.
+  // The opener is a bare backtick, because a `${` would make what follows an
+  // interpolation — code — rather than template body.
+  let bt = char_from(96)
+  let lines : Array[String] = [
+    "const s = \{bt}",
+    "a",
+    "// still text",
+    "b",
+    "\{bt};",
+    "",
+  ]
+  let source = lines.join("\u{A}")
+  let stripped = strip_comments(source, Js)
+  assert_eq(stripped, source)
 }
 
 ///|
 test "JS mode keeps comment openers inside a template body" {
-  let opened = template_source([
-    "a", "/* not a comment */ // neither is this", "b", "`;", "",
-  ])
-  let stripped = strip_comments(opened, Js)
-  assert_eq(stripped, opened)
+  let bt = char_from(96)
+  let lines : Array[String] = [
+    "const s = \{bt}",
+    "a",
+    "/* not a comment */ // neither is this",
+    "b",
+    "\{bt};",
+    "",
+  ]
+  let source = lines.join("\u{A}")
+  assert_eq(strip_comments(source, Js), source)
 }
 
 ///|
@@ -87,6 +102,8 @@ test "JS mode blanks a comment inside an interpolation" {
   assert_eq(stripped.to_array().length(), opened.to_array().length())
   assert_eq(split_lines(stripped).length(), split_lines(opened).length())
   assert_true(stripped.contains("const after = FORBIDDEN"))
+  // The comment text itself is gone: it was code, not template body.
+  assert_false(stripped.contains("HIDDEN"))
 }
 
 ///|
@@ -147,6 +164,89 @@ test "comment mode is chosen from the extension" {
   assert_eq(comment_mode_for("src/app.mts"), Js)
   assert_eq(comment_mode_for("src/Button.vue"), Plain)
   assert_eq(comment_mode_for("LICENSE"), Plain)
+}
+
+///|
+test "the code view blanks string contents but keeps the delimiters" {
+  let blank = " ".repeat("FORBIDDEN".length())
+  let source = "const q = \"FORBIDDEN\"; const r = 'FORBIDDEN';\n"
+  let code = strip_comments_code(source, Js)
+  // Literal values are not code; the quotes stay, so attribute-shaped
+  // matches such as `ref="` keep working.
+  assert_false(code.contains("FORBIDDEN"))
+  assert_eq(code, "const q = \"\{blank}\"; const r = '\{blank}';\n")
+  assert_eq(code.to_array().length(), source.to_array().length())
+}
+
+///|
+test "the code view blanks template bodies but keeps interpolations" {
+  let bt = char_from(96)
+  let source = "const t = \{bt}text FORBIDDEN ${FORBIDDEN} more\{bt};\n"
+  let code = strip_comments_code(source, Js)
+  // An interpolation is code and survives; the surrounding body is blanked.
+  assert_true(code.contains("${FORBIDDEN}"))
+  assert_false(code.contains("text FORBIDDEN"))
+  assert_false(code.contains("more"))
+  assert_eq(code.to_array().length(), source.to_array().length())
+}
+
+///|
+test "the code view blanks a comment inside an interpolation" {
+  // `${...}` is an expression: a comment inside it is a code comment and is
+  // blanked, and the code after the closed template is still code.
+  let bt = char_from(96)
+  let source = "const s = \{bt}${a // HIDDEN\n}\{bt};\nconst after = FORBIDDEN\n"
+  let code = strip_comments_code(source, Js)
+  assert_false(code.contains("HIDDEN"))
+  assert_true(code.contains("const after = FORBIDDEN"))
+  assert_eq(code.to_array().length(), source.to_array().length())
+}
+
+///|
+test "the code view blanks regex bodies but keeps delimiters and flags" {
+  let blank = " ".repeat("FORBIDDEN".length())
+  let source = "const re = /FORBIDDEN/gi; const ok = 1;\n"
+  let code = strip_comments_code(source, Js)
+  assert_false(code.contains("FORBIDDEN"))
+  assert_true(code.contains("/\{blank}/gi"))
+  assert_eq(code.to_array().length(), source.to_array().length())
+}
+
+///|
+test "division after an identifier is not mistaken for a regex" {
+  // The previous significant character decides: an operand before the slash
+  // means division, so the code after it stays visible.
+  let source = "const half = total / 2; const y = a / b;\n"
+  let code = strip_comments_code(source, Js)
+  assert_eq(code, source)
+}
+
+///|
+test "the code view preserves line numbers inside a multi-line template" {
+  let bt = char_from(96)
+  let lines : Array[String] = [
+    "const s = \{bt}",
+    "FORBIDDEN",
+    "\{bt};",
+    "const after = FORBIDDEN",
+    "",
+  ]
+  let source = lines.join("\u{A}")
+  let code_lines = split_lines(strip_comments_code(source, Js))
+  assert_eq(code_lines.length(), split_lines(source).length())
+  assert_false(code_lines[1].1.contains("FORBIDDEN"))
+  assert_true(code_lines[3].1.contains("FORBIDDEN"))
+}
+
+///|
+test "the code view leaves Plain and MoonBit sources unchanged" {
+  // `.vue` and friends have no literal-aware scanner, and the MoonBit front
+  // end already blanks literals in its own code view.
+  let html = "<a target=\"_blank\">x</a>\n"
+  assert_eq(strip_comments_code(html, Plain), html)
+  let mbt = "///|\n/// Doc.\npub fn f() -> Int32 {\n  let s = \"FORBIDDEN\"\n  s\n}\n"
+  assert_eq(strip_comments_code(mbt, Moonbit), strip_comments(mbt, Moonbit))
+  assert_false(strip_comments_code(mbt, Moonbit).contains("FORBIDDEN"))
 }
 
 ///|

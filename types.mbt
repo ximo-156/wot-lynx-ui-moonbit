@@ -104,6 +104,14 @@ pub struct Rule {
   /// targets comments themselves — a no-TODO rule, say — opts into the raw
   /// view instead. `false` keeps the historical stripped view.
   match_comments : Bool
+  /// Whether this rule matches literal text. The default code view blanks the
+  /// contents of string, template and regex literals (JavaScript/TypeScript
+  /// family), so `const q = "FORBIDDEN"` no longer looks like code; a rule
+  /// whose target only exists as a literal value — an attribute value such as
+  /// `target="_blank"`, a module specifier such as `from 'react'` — opts in
+  /// with `true` and matches the literal view instead. Ignored when
+  /// `match_comments` is set, because the raw view already contains literals.
+  match_literals : Bool
 }
 
 ///|
@@ -175,6 +183,12 @@ pub struct LintConfig {
   structural_rules : Array[StructuralRule]
   /// The global scope applied to every scan.
   scope : Scope
+  /// Path-alias prefixes for cross-file import resolution, as ordered
+  /// `(prefix, target)` pairs. A bare specifier `prefix/rest` resolves to the
+  /// root-relative path `target/rest` before extension probing, so aliases
+  /// such as `@/` → `src` let `no_unused_exports` follow them. Empty by
+  /// default; relative specifiers are unaffected.
+  aliases : Array[(String, String)]
 }
 
 ///|

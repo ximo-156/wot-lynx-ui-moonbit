@@ -50,13 +50,21 @@ pub fn lint_file(String, String, Array[(Int32, String)], Array[FileRule]) -> Arr
 
 pub fn lint_files(String, Array[String], Array[Rule], Array[FileRule], Array[StructuralRule], Scope) -> LintResult raise
 
-pub fn lint_lines(String, Array[(Int32, String)], Array[(Int32, String)], Array[Rule]) -> Array[Finding]
+pub fn lint_files_with(String, Array[String], Array[Rule], Array[FileRule], Array[StructuralRule], Scope, Array[(String, String)]) -> LintResult raise
+
+pub fn lint_lines(String, Array[(Int32, String)], Array[(Int32, String)], Array[(Int32, String)], Array[Rule]) -> Array[Finding]
 
 pub fn lint_selected(String, ScanMode, Array[String], Array[Rule], Array[FileRule], Array[StructuralRule], Scope) -> LintResult raise
 
 pub fn lint_selected_cached(String, ScanMode, Array[String], Array[Rule], Array[FileRule], Array[StructuralRule], Scope, Cache?) -> (LintResult, Cache) raise
 
+pub fn lint_selected_cached_with(String, ScanMode, Array[String], Array[Rule], Array[FileRule], Array[StructuralRule], Scope, Cache?, Array[(String, String)]) -> (LintResult, Cache) raise
+
+pub fn lint_selected_with(String, ScanMode, Array[String], Array[Rule], Array[FileRule], Array[StructuralRule], Scope, Array[(String, String)]) -> LintResult raise
+
 pub fn lint_tree(String, Array[Rule], Array[FileRule], Array[StructuralRule], Array[String], Scope) -> Result[LintResult, Error]
+
+pub fn lint_tree_with(String, Array[Rule], Array[FileRule], Array[StructuralRule], Array[String], Scope, Array[(String, String)]) -> Result[LintResult, Error]
 
 pub fn make_api_snapshot(String, String, String, String) -> Result[String, ConfigError]
 
@@ -71,6 +79,8 @@ pub fn parse_disable_comments(String) -> DisableMap
 pub fn parse_package_policy(String) -> Result[Array[PackagePolicyRule], ConfigError]
 
 pub fn parse_source(String) -> FileModel
+
+pub fn parse_source_for(String, String) -> FileModel
 
 pub fn parse_tokens(Array[Token]) -> FileModel
 
@@ -110,6 +120,8 @@ pub fn source_path_kind(String) -> Int32 raise NativeError
 
 pub fn spec_source(ImportSpec) -> String
 
+pub fn strip_comments_code(String, CommentMode) -> String
+
 pub fn tokenize(String) -> Array[Token]
 
 pub fn utc_date() -> String raise NativeError
@@ -121,6 +133,8 @@ pub fn validate_glob(String) -> Unit raise
 pub fn validate_moonbit_source(String) -> Unit raise
 
 pub fn validate_rules(Array[Rule]) -> Result[Unit, ConfigError]
+
+pub fn vue_template_usages(String) -> Array[UsedIdent]
 
 pub fn walk_files(String, Array[String]) -> Array[String] raise
 
@@ -337,6 +351,7 @@ pub struct LintConfig {
   file_rules : Array[FileRule]
   structural_rules : Array[StructuralRule]
   scope : Scope
+  aliases : Array[(String, String)]
 }
 pub fn LintConfig::to_repr(Self) -> @debug.Repr
 
@@ -452,9 +467,11 @@ pub struct ProjectFile {
 }
 pub fn ProjectFile::to_repr(Self) -> @debug.Repr
 
+#derive(@debug.Debug)
 pub struct ProjectIndex {
   files : Array[ProjectFile]
   paths : @set.Set[String]
+  aliases : Array[(String, String)]
 }
 pub fn ProjectIndex::resolve(Self, String, String) -> String?
 
@@ -468,6 +485,7 @@ pub struct Rule {
   unless : MatchKind?
   scope : Scope
   match_comments : Bool
+  match_literals : Bool
 }
 pub fn Rule::to_repr(Self) -> @debug.Repr
 

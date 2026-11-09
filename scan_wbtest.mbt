@@ -89,6 +89,7 @@ test "lint_files: missing file is a failure, not a successful read" {
       unless: None,
       scope: Scope::empty(),
       match_comments: false,
+      match_literals: false,
     },
   ]
   let result = lint_files(

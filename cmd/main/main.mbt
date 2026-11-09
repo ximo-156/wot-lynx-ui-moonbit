@@ -183,6 +183,7 @@ fn run(opts : Options) -> Unit raise {
     file_rules,
     structural_rules,
     config.scope,
+    config.aliases,
   )
   persist_cache(opts, cache)
   let scan = @lib.ScanInfo::new(opts.scan_mode.tag(), root, exts)
@@ -222,6 +223,7 @@ fn run(opts : Options) -> Unit raise {
       file_rules,
       structural_rules,
       config.scope,
+      config.aliases,
     )
     persist_cache(opts, cache2)
     finish_source_run(result2, opts, scan)
@@ -244,9 +246,10 @@ fn scan_with_cache(
   file_rules : Array[@lib.FileRule],
   structural_rules : Array[@lib.StructuralRule],
   scope : @lib.Scope,
+  aliases : Array[(String, String)],
 ) -> (@lib.LintResult, @lib.Cache?) raise {
   if !opts.incremental {
-    let result = @lib.lint_selected(
+    let result = @lib.lint_selected_with(
       root,
       opts.scan_mode,
       files,
@@ -254,12 +257,13 @@ fn scan_with_cache(
       file_rules,
       structural_rules,
       scope,
+      aliases,
     )
     return (result, None)
   }
   let previous = @fs.read_file_to_string(opts.cache_file) catch { _ => "" }
   let loaded = if previous == "" { None } else { @lib.Cache::parse(previous) }
-  let (result, cache) = @lib.lint_selected_cached(
+  let (result, cache) = @lib.lint_selected_cached_with(
     root,
     opts.scan_mode,
     files,
@@ -268,6 +272,7 @@ fn scan_with_cache(
     structural_rules,
     scope,
     loaded,
+    aliases,
   )
   (result, Some(cache))
 }

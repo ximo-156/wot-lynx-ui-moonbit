@@ -38,9 +38,12 @@ pub struct ProjectFile {
 ///|
 /// The parsed project: every scanned file plus a membership set used for
 /// extension-less module resolution.
+#derive(Debug)
 pub struct ProjectIndex {
   files : Array[ProjectFile]
   paths : Set[String]
+  /// Ordered `(prefix, target)` path aliases, longest prefix first.
+  aliases : Array[(String, String)]
 }
 
 ///|
@@ -49,13 +52,36 @@ pub struct ProjectIndex {
 /// checks see a consistent file list even when a file parses to an empty
 /// model.
 pub fn build_index(sources : Array[(String, String)]) -> ProjectIndex {
+  build_index_with_aliases(sources, [])
+}
+
+///|
+/// Alias-aware variant of `build_index`. `aliases` maps a specifier prefix to
+/// a root-relative directory, so `@/api/ka` can resolve to `src/api/ka.ts`.
+fn build_index_with_aliases(
+  sources : Array[(String, String)],
+  aliases : Array[(String, String)],
+) -> ProjectIndex {
   let files : Array[ProjectFile] = []
   let paths : Set[String] = Set::from_iter([].iter())
   for (rel, source) in sources {
-    files.push({ rel, source, model: parse_source(source), })
+    files.push({ rel, source, model: parse_source_for(rel, source), })
     paths.add(rel)
   }
-  { files, paths, }
+  // A longer prefix is more specific, so it must be tried first.
+  let ordered = aliases.copy()
+  ordered.sort_by((a, b) => {
+    let (pa, _) = a
+    let (pb, _) = b
+    if pa.length() > pb.length() {
+      -1
+    } else if pa.length() < pb.length() {
+      1
+    } else {
+      0
+    }
+  })
+  { files, paths, aliases: ordered, }
 }
 
 ///|
@@ -132,10 +158,14 @@ pub fn ProjectIndex::resolve(
   } else {
     specifier
   }
-  if !is_relative(spec) {
-    return None
+  let base = if is_relative(spec) {
+    normalize_join(from_rel, spec)
+  } else {
+    match alias_expand(self.aliases, spec) {
+      Some(b) => b
+      None => return None
+    }
   }
-  let base = normalize_join(from_rel, spec)
   if base == "" {
     return None
   }
@@ -152,6 +182,47 @@ pub fn ProjectIndex::resolve(
     let candidate = "\{base}/index\{ext}"
     if self.paths.contains(candidate) {
       return Some(candidate)
+    }
+  }
+  None
+}
+
+///|
+/// Expand a bare specifier through the first matching alias into a
+/// root-relative path. A prefix matches on its own (`@` for `@`) or on a
+/// following `/` (`@` for `@/x`, `@/` for `@/x`), never on a partial segment
+/// (`@scope` must not match the `@` alias).
+fn alias_expand(
+  aliases : Array[(String, String)],
+  spec : String,
+) -> String? {
+  for pair in aliases {
+    let (prefix, target) = pair
+    let rest : String? = if spec == prefix {
+      Some("")
+    } else if prefix.has_suffix("/") {
+      if spec.has_prefix(prefix) {
+        Some(spec[prefix.length():].to_owned())
+      } else {
+        None
+      }
+    } else if spec.has_prefix("\{prefix}/") {
+      Some(spec[prefix.length() + 1:].to_owned())
+    } else {
+      None
+    }
+    match rest {
+      Some(r) => {
+        let base = if r == "" {
+          target
+        } else if target == "" {
+          r
+        } else {
+          "\{target}/\{r}"
+        }
+        return Some(base)
+      }
+      None => ()
     }
   }
   None

@@ -58,7 +58,8 @@
       ],
       "match": {
         "regex": "from[[:space:]]+['\"]react['\"]"
-      }
+      },
+      "match_literals": true
     },
     {
       "id": "solid/event-directives",

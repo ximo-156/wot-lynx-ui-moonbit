@@ -5,7 +5,8 @@
       "severity": "warning",
       "message": "Use <Link> instead of <a> for internal pages",
       "extensions": [".jsx", ".tsx", ".js", ".ts"],
-      "match": { "regex": "<a[^>]*href=\"/" }
+      "match": { "regex": "<a[^>]*href=\"/" },
+      "match_literals": true
     },
     {
       "id": "next/no-img-element",
@@ -26,7 +27,8 @@
       "severity": "warning",
       "message": "Use CSS imports instead of <link rel=\"stylesheet\">",
       "extensions": [".jsx", ".tsx", ".js", ".ts"],
-      "match": { "regex": "<link[^>]*rel=\"stylesheet\"" }
+      "match": { "regex": "<link[^>]*rel=\"stylesheet\"" },
+      "match_literals": true
     },
     {
       "id": "next/no-sync-scripts",
@@ -42,14 +44,16 @@
       "message": "Google Fonts links must include &display=swap",
       "extensions": [".jsx", ".tsx", ".js", ".ts"],
       "match": { "regex": "fonts.googleapis.com" },
-      "unless": { "regex": "display=swap" }
+      "unless": { "regex": "display=swap" },
+      "match_literals": true
     },
     {
       "id": "next/no-unwanted-polyfillio",
       "severity": "error",
       "message": "polyfill.io is a security risk; remove it",
       "extensions": [".jsx", ".tsx", ".js", ".ts"],
-      "match": { "contains": "polyfill.io" }
+      "match": { "contains": "polyfill.io" },
+      "match_literals": true
     }
   ]
 }
