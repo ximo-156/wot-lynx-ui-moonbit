@@ -1,4 +1,35 @@
-# moonlint
+# MoonImpact / moonlint
+
+## MoonImpact — change-impact and regression-test planning (MVP)
+
+The new `cmd/impact` entry turns changed files into an **explainable test plan**
+for Vue/TypeScript projects: static module dependencies, bounded file-read
+and reader-wrapper inference, CSS/SCSS input chains, shortest evidence chains,
+and conservative full-suite fallback.
+It does not check naming or formatting, and a plan is not a passing test result.
+
+```sh
+moon build --target native
+moon run cmd/impact -- plan --file src/fees.ts \
+  --config examples/impact-demo/moonimpact.json examples/impact-demo
+moon run cmd/impact -- plan --file src/theme.css \
+  --config examples/impact-demo/moonimpact.json examples/impact-demo
+```
+
+Planning does not run tests or install dependencies. Only explicit `--run`
+invokes the local Vitest installation through fixed process arguments.
+Read the [MoonImpact guide](<docs/moonimpact.md>) and the
+[synthetic demo](<examples/impact-demo/README.md>) for supported dependency
+forms, limitations, Git input, JSON/HTML reports and execution safety.
+See the [local verification record](<docs/moonimpact-verification.md>) for
+real Vitest fault-injection evidence and the current full-fallback result on
+unibest; selective whole-project CI reduction is not claimed.
+
+This is substantial new functionality built on the existing project. The
+original `cmd/main` moonlint CLI, module identity, license notices and history
+remain intact; the new direction is not a rename of the old lint rules.
+
+## Original moonlint CLI
 
 A MoonBit-native convention linter for MoonBit source trees, written in
 [MoonBit](https://www.moonbitlang.com/). It also ships JavaScript/TypeScript
@@ -331,7 +362,7 @@ duplicates) rather than individual lines. They are declared in a separate
 | `no_trailing_whitespace` | `{ "no_trailing_whitespace": true }` | No trailing whitespace on any line |
 | `no_tabs` | `{ "no_tabs": true }` | No tab characters |
 | `final_newline` | `{ "final_newline": true }` | File must end with a newline |
-| `no_duplicate_lines` | `{ "no_duplicate_lines": true }` | No duplicate lines |
+| `no_duplicate_lines` | `{ "no_duplicate_lines": true }` or `{ "no_duplicate_lines": 40 }` | No repeated line of at least N trimmed characters (default 24; `0` compares any non-empty line) |
 | `file_naming` | `{ "file_naming": "kebab-case" }` | File name must follow a convention (camelCase, PascalCase, snake_case, kebab-case) |
 | `max_file_size` | `{ "max_file_size": 10000 }` | File must not exceed N bytes |
 | `no_empty_files` | `{ "no_empty_files": true }` | File must not be empty |
@@ -339,6 +370,12 @@ duplicates) rather than individual lines. They are declared in a separate
 | `no_bom` | `{ "no_bom": true }` | File must not start with a UTF-8 BOM |
 
 The `rules` array is optional when `file_rules` is present.
+
+`no_duplicate_lines` only compares lines long enough to be substantive: a
+minimum trimmed length (24 by default) keeps `}`, `</view>`, `/**` and
+`return` — which repeat in every file by construction — from flooding the
+report. Set an explicit number to tune it, or `0` to compare every non-empty
+line.
 
 ## Cross-File Structural Rules
 
@@ -382,11 +419,16 @@ Or activate the whole set with `--preset imports`.
 | `no_default_export` | `{ "no_default_export": true }` | `export default` is used |
 | `no_deep_relative_imports` | `{ "no_deep_relative_imports": 2 }` | A relative import climbs more than N directories with `../` |
 | `no_require_imports` | `{ "no_require_imports": true }` | `require()` is used in an ES module codebase |
-| `no_unused_exports` | `{ "no_unused_exports": true }` | An exported name is never imported by the available project/context files |
+| `no_unused_exports` | `{ "no_unused_exports": true }` | An exported name is never imported by the available project/context files (ambient `.d.ts` files are exempt) |
 
 The `rules` array is optional when `structural_rules` is present. Structural
 findings respect inline `// moonlint-disable <rule-id>` comments and rule
 scopes, exactly like line findings.
+
+Cross-file checks read unselected dependencies as context. When the selection
+is empty there is nothing they could report — findings outside the selection
+are dropped — so the context read is skipped entirely and an unrelated
+unreadable file cannot turn an empty scan into exit 2.
 
 ### Path aliases
 
@@ -705,6 +747,34 @@ Properties that make the cache safe:
 | Self-healing | A missing, corrupt or version-mismatched cache file degrades to a full scan with a warning, never a wrong result |
 | Structural-safe | Cached runs still collect project sources for cross-file checks, and refresh full dependency context under the same rules; context failures block the verdict |
 | Opt-in | Without `--incremental` no cache file is read or written |
+
+The cache also keeps each file's **parsed structural model** (imports, exports
+and the set of used names), keyed by the same content hash. Findings still
+never come from the cache for cross-file rules on a changed tree — a dead
+export can become live when an unrelated file is edited — but the expensive
+tokenize/parse step is skipped for unchanged files, which is what made
+`--incremental` worthwhile for `--preset imports` scans. Models are
+rule-independent, so they survive a configuration change, and they carry a
+parser generation: bumping the parser drops stale models without discarding
+the per-file findings.
+
+On top of that, a full-tree scan records the **structural verdict itself**,
+keyed by the rule fingerprint plus every participating file's content hash.
+When an unchanged tree is scanned again under the same rules, the whole
+cross-file pass is skipped — no context reads, no analysis. Because that key
+covers every file that took part, any edit, addition or deletion changes it and
+forces a recompute. Partial scans (`--glob`, `--stdin`, `--changed`,
+`--staged`) and scans that exclude files by scope are never reused this way,
+since their unselected dependency context is not part of the key.
+
+| Behaviour | Detail |
+|-----------|--------|
+| Content-keyed models | A model is reused only when its stored hash equals the source being scanned |
+| Rule-independent | Models are reused across rule changes; only cross-file findings are re-derived |
+| Parser generation | A model written by an older parser (`model_version`) is dropped, so a front-end fix is never masked by a stale parse |
+| Bounded | Only files in the current selection keep an entry; a deleted file leaves no model behind |
+| Verdict identity | The cached structural verdict is keyed by the rule fingerprint plus every participating file's digest, so any edit invalidates it |
+| No snippets stored | Cached structural findings omit snippets (a minified line can be larger than the cache); they are re-derived from the scanned source, so reports stay byte-identical |
 
 ### Glob syntax
 

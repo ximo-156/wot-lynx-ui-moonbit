@@ -426,3 +426,36 @@ test "config: aliases reject escaping targets and malformed entries" {
     assert_true(parse_config(json) is Err(_))
   }
 }
+
+///|
+test "config with extends: an unknown top-level field is still rejected" {
+  // The CLI loads configs through the extends-aware path; skipping the field
+  // check there would silently accept a typo that `parse_config` rejects.
+  let json = "{\"rules\":[],\"bogus_field\":1}"
+  let message = match parse_config_with_extends(json, ".") {
+    Ok(_) => "accepted"
+    Err(ConfigError(message)) => message
+  }
+  assert_true(message.contains("unknown field 'bogus_field'"))
+  // `extends` itself and `aliases` remain allowed.
+  assert_true(
+    parse_config_with_extends(
+      "{\"extends\":[],\"aliases\":{\"@\":\"src\"},\"rules\":[]}", ".",
+    )
+    is Ok(_),
+  )
+}
+
+///|
+test "config: no_duplicate_lines accepts true or an explicit minimum length" {
+  let unit = "{\"rules\":[],\"file_rules\":[{\"id\":\"f/d\",\"message\":\"m\",\"extensions\":[],\"check\":{\"no_duplicate_lines\":true}}]}"
+  let numeric = "{\"rules\":[],\"file_rules\":[{\"id\":\"f/d\",\"message\":\"m\",\"extensions\":[],\"check\":{\"no_duplicate_lines\":40}}]}"
+  assert_eq(
+    parse_config(unit).unwrap().file_rules[0].check,
+    NoDuplicateLines(DEFAULT_DUPLICATE_MIN_LENGTH),
+  )
+  assert_eq(
+    parse_config(numeric).unwrap().file_rules[0].check,
+    NoDuplicateLines(40),
+  )
+}

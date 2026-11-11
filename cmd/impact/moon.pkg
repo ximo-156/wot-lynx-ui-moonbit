@@ -1,0 +1,8 @@
+import {
+  "ximo-156/moonlint" @lib,
+  "moonbitlang/core/env",
+  "moonbitlang/x/fs",
+  "moonbitlang/x/sys",
+}
+
+pkgtype(kind: "executable")

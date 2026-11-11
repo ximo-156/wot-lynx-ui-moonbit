@@ -560,6 +560,17 @@ class RepairsTests(FixtureCase):
         with self.subTest(case="missing config"):
             self.assert_exit(self.run_cli(["--config", self.base / "missing.json", self.root]), 2)
 
+    def test_unknown_top_level_config_field_is_rejected(self):
+        # The CLI loads configs through the extends-aware path; it must reject
+        # an unknown top-level field just like the plain parser does, not
+        # silently ignore it.
+        self.write_file("a.ts", "SAFE\n")
+        self.config.write_text(
+            json.dumps({"rules": [], "bogus_field": 1}), encoding="utf-8")
+        result = self.invoke()
+        self.assert_exit(result, 2)
+        self.assertIn("unknown field", self.text_of(result))
+
     def test_fixed_noise_directories_are_skipped_even_for_all_regular_rules(self):
         self.write_config([rule(extensions=[])])
         for name in (".git/noise.ts", "node_modules/noise.ts", "_build/noise.ts"):
@@ -1272,7 +1283,8 @@ class PresetTests(FixtureCase):
         self.write_file("test.ts",
                         "const x = 1;   \n"
                         "\tconst y = 2;\n"
-                        "const x = 1;\n")
+                        "const duplicatedStatement = computeSomething();\n"
+                        "const duplicatedStatement = computeSomething();\n")
         result = self.run_cli(["--preset", "file", self.root])
         self.assert_exit(result, 0)
         output = self.output(result)
@@ -1876,6 +1888,110 @@ class IncrementalTests(FixtureCase):
         self.assert_findings(result, 1)
         self.assertTrue(custom.is_file(), "custom cache location was not written")
 
+    def test_corrupt_cache_warns_and_falls_back_to_a_full_scan(self):
+        self.write_file("src/a.ts", "const a = FORBIDDEN;\n")
+        self.cache_path().write_text("not json {{{", encoding="utf-8")
+        result = self.invoke("--incremental")
+        # Correct results, not a silent clean pass...
+        self.assert_findings(result, 1)
+        # ...and the degradation is reported, not hidden.
+        self.assertIn("cache", self.text_of(result))
+        self.assertIn("full scan", self.text_of(result))
+
+    def test_outdated_cache_version_warns_and_rescans(self):
+        self.write_file("src/a.ts", "const a = FORBIDDEN;\n")
+        self.cache_path().write_text(
+            '{"version": 999, "fingerprint": "x", "files": {}}', encoding="utf-8")
+        result = self.invoke("--incremental")
+        self.assert_findings(result, 1)
+        self.assertIn("outdated cache", self.text_of(result))
+
+    def test_structural_verdict_is_reused_when_nothing_changed(self):
+        # `no_unused_exports` needs dependency context, so the first run reads
+        # the unselected .mts file as context. An unchanged tree reuses the
+        # cached verdict, so no context is read at all — and the report is
+        # byte-identical, snippets included.
+        self.write_config(rules=[], structural_rules=[
+            {"id": "imports/no-unused-exports", "severity": "error",
+             "message": "dead export", "extensions": [".ts"],
+             "check": {"no_unused_exports": True}},
+        ])
+        self.write_file("src/a.ts", "export const live = 1;\nexport const dead = 2;\n")
+        self.write_file("src/b.ts", "import { live } from './a';\nconst b = live;\n")
+        # Selected by the extension filter, but not by the rule: context only.
+        self.write_file("src/extra.mts", "export const extra = 1;\n")
+        first = self.invoke("--incremental", "--format", "json")
+        self.assert_exit(first, 1)
+        first_doc = json.loads(self.output(first))
+        self.assertEqual(first_doc["scan"]["context_files_scanned"], 1)
+        second = self.invoke("--incremental", "--format", "json")
+        self.assert_exit(second, 1)
+        second_doc = json.loads(self.output(second))
+        self.assertEqual(second_doc["scan"]["context_files_scanned"], 0)
+        # Identical findings, snippets included: the cached snippets are
+        # re-derived from the scanned sources. (The context counter differs by
+        # design — the reused run read nothing.)
+        self.assertEqual(first_doc["findings"], second_doc["findings"])
+        self.assertEqual(first_doc["counts"], second_doc["counts"])
+        # Editing a file invalidates the verdict: the new export is reported.
+        self.write_file("src/a.ts",
+                        "export const live = 1;\nexport const dead = 2;\n"
+                        "export const alsoDead = 3;\n")
+        third = self.invoke("--incremental", "--format", "json")
+        self.assert_exit(third, 1)
+        third_doc = json.loads(self.output(third))
+        self.assertEqual(third_doc["scan"]["context_files_scanned"], 1)
+        self.assertEqual(len(third_doc["findings"]), 2)
+        self.assertIn("alsoDead", self.output(third))
+
+    def test_structural_verdict_is_not_reused_after_a_rule_change(self):
+        self.write_config(rules=[], structural_rules=[
+            {"id": "imports/no-unused-exports", "severity": "error",
+             "message": "dead export", "extensions": [".ts"],
+             "check": {"no_unused_exports": True}},
+        ])
+        self.write_file("src/a.ts", "export const dead = 2;\n")
+        self.assert_findings(self.invoke("--incremental"), 1,
+                              rule_id="imports/no-unused-exports")
+        # A different rule set means a different fingerprint, so the cached
+        # verdict must not be reused.
+        self.write_config(rules=[], structural_rules=[
+            {"id": "imports/no-unused-imports", "severity": "error",
+             "message": "unused import", "extensions": [".ts"],
+             "check": {"no_unused_imports": True}},
+        ])
+        result = self.invoke("--incremental")
+        self.assert_exit(result, 0)
+        self.assertNotIn("imports/no-unused-exports", self.output(result))
+
+    def test_structural_models_are_reused_and_invalidated_by_edits(self):
+        self.write_config(rules=[], structural_rules=[
+            {"id": "imports/no-unused-exports", "severity": "error",
+             "message": "dead export", "extensions": [".ts"],
+             "check": {"no_unused_exports": True}},
+        ])
+        self.write_file("src/a.ts", "export const live = 1;\nexport const dead = 2;\n")
+        self.write_file("src/b.ts", "import { live } from './a';\nconst b = live;\n")
+        first = self.invoke("--incremental")
+        self.assert_findings(first, 1, rule_id="imports/no-unused-exports")
+        self.assertIn("dead", self.output(first))
+        # The cache records the parsed models, not only the findings.
+        cache = self.cache_path().read_text(encoding="utf-8")
+        self.assertIn("model_version", cache)
+        self.assertIn("models", cache)
+        self.assertIn("src/a.ts", cache)
+        # An unchanged tree reuses the models and reaches the same verdict.
+        second = self.invoke("--incremental")
+        self.assert_findings(second, 1, rule_id="imports/no-unused-exports")
+        self.assertEqual(self.output(first), self.output(second))
+        # Editing the file invalidates its model: the new export is reported.
+        self.write_file("src/a.ts",
+                        "export const live = 1;\nexport const dead = 2;\n"
+                        "export const alsoDead = 3;\n")
+        third = self.invoke("--incremental")
+        self.assert_findings(third, 2, rule_id="imports/no-unused-exports")
+        self.assertIn("alsoDead", self.output(third))
+
 
 class StructuralRuleTests(FixtureCase):
     """Cross-file rules run over the parsed project index."""
@@ -1944,6 +2060,28 @@ class StructuralRuleTests(FixtureCase):
         self.write_file("src/b.ts", "export const gone = 2;\n")
         result = self.invoke()
         self.assert_findings(result, 0, rule_id="imports/no-unused-imports")
+
+    def test_empty_selection_skips_dependency_context(self):
+        """With nothing selected the project pass cannot report anything, so
+        it must not read the whole tree as context — an unrelated unreadable
+        file would otherwise turn an empty scan into exit 2."""
+        self.write_config(rules=[], structural_rules=[
+            {"id": "imports/no-import-cycles", "severity": "error",
+             "message": "cycle", "extensions": [".ts"],
+             "check": {"no_import_cycles": True}},
+        ])
+        self.write_file("src/a.ts", "export const a = 1;\n")
+        bad = self.root / "src" / "bad.ts"
+        self.assert_owned(bad.parent)
+        bad.parent.mkdir(parents=True, exist_ok=True)
+        bad.write_bytes(b"\xff\xfe not utf-8\n")
+        result = self.invoke("--glob", "zzz/**", "--format", "json")
+        self.assert_exit(result, 0)
+        document = json.loads(self.output(result))
+        self.assertEqual(document["counts"]["findings"], 0)
+        self.assertEqual(document["scan"]["context_files_scanned"], 0)
+        self.assertEqual(document["scan"]["context_files_failed"], 0)
+        self.assertEqual(document["diagnostics"], [])
 
     def test_aliases_resolve_imports_for_unused_exports(self):
         # `@/api/ka` is a path alias for src/api/ka. Without the alias the

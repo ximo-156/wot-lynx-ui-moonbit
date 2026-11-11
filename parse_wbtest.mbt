@@ -223,3 +223,26 @@ test "broken source still yields a model" {
   assert_eq(m.imports.length(), 1)
   assert_eq(m.imports[0].source, "'./m'")
 }
+
+///|
+test "type annotations are not exported declaration names" {
+  // `export const a: Foo = 1` exports `a` only; `Foo` (and the generic
+  // arguments of `Map<string, number>`) are types, not bindings.
+  let m = parse_source(
+    "export const a: Foo = 1;\nexport const b: Map<string, number> = new Map();\nexport const c: (x: number) => Api = f;",
+  )
+  let exported : Array[String] = []
+  for spec in m.exports {
+    for name in spec.names {
+      exported.push(name)
+    }
+  }
+  assert_true(exported.contains("a"))
+  assert_true(exported.contains("b"))
+  assert_true(exported.contains("c"))
+  assert_false(exported.contains("Foo"))
+  assert_false(exported.contains("Map"))
+  assert_false(exported.contains("string"))
+  assert_false(exported.contains("number"))
+  assert_false(exported.contains("Api"))
+}

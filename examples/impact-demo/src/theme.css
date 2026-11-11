@@ -1,0 +1,6 @@
+@import './palette.css';
+
+:root {
+  --surface: white;
+  --text: #172033;
+}

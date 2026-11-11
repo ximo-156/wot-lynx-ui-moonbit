@@ -4,6 +4,44 @@ All notable changes to this project are documented in this file.
 
 ## [Unreleased]
 
+### MoonImpact static input coverage
+
+- Infer bounded immutable path constants and narrowly proved single-return
+  filesystem readers, without trusting arbitrary `read`/`ROOT` names. Support
+  module-relative `__dirname`, static `new URL(..., import.meta.url)` and genuine
+  `fileURLToPath` imports while retaining full fallback for mutable/shadowed or
+  escaping bindings, dynamic arguments, extra I/O and unsafe path semantics.
+- Add a pure CSS/SCSS frontend for static imports, Sass modules/partials and
+  asset URLs, including Vue inline/external styles and transitive evidence.
+  Unknown preprocessors, custom importer ambiguity, dynamic styles, unresolved
+  assets and out-of-scope stylesheet bodies remain explicit uncertainty.
+- Preserve raw file-read names containing `?`/`#`; URL cleanup applies only to
+  stylesheet URLs. Raw reads of known out-of-scope source/config files are
+  opaque leaf inputs rather than an instruction to execute their imports.
+- Guard recursive path evaluation and normalization-sensitive dirname forms;
+  configured aliases that escape the root are not mistaken for npm packages.
+
+### MoonImpact MVP
+
+- Added an independent `cmd/impact` CLI for change-impact and regression-test
+  planning. The existing moonlint CLI remains available at `cmd/main`.
+- Added strict inert configuration, explicit/Git working-tree change input,
+  reverse dependency traversal, one deterministic shortest evidence chain per
+  related test, and related/full/none/blocked strategies. Missing/deleted or
+  unmodeled inputs and unsupported dependency forms never silently authorize
+  selective execution; source I/O failures block execution.
+- Added static import and Vue script adapters, supported fs file-reading forms
+  and explicitly configured root-reader wrappers, with conservative uncertainty
+  reporting for dynamic paths, shadowed bindings and unsupported SFC features.
+- Added text/JSON/script-free HTML plan reports; JSON report files are atomically
+  created without overwriting existing paths. Plans are not test results.
+- Added explicit `--run` support for fixed-argv local `pnpm exec vitest run`,
+  stdout-to-stderr forwarding and process-group timeout cleanup. Planning does
+  not execute project code or install packages. Git clean/process filters are
+  refused rather than executed implicitly during change collection.
+- Added isolated unit, CLI and native bridge regressions plus a synthetic
+  charging-fee/stylesheet demo. No unibest business sources are included.
+
 ### Added
 
 - **`aliases` config option** — an object mapping a bare-specifier prefix to a
@@ -77,6 +115,61 @@ All notable changes to this project are documented in this file.
 
 ### Changed
 
+- **Structural findings materialize each snippet once per file line.**
+  `snippet_at` re-split and re-trimmed the source for every finding, which on a
+  minified file meant trimming a 1.3MB line hundreds of times: `no_require_imports`
+  alone cost 0.49s on a 336-file project where the check itself is trivial.
+  Snippets are now memoized per `(file, line)`. The full seven-rule structural
+  pass dropped from 3.17s to 1.33s CPU (−58%), and the `imports` preset's
+  uncached run from 2.55s to 1.49s (−42%), with byte-identical findings.
+- **The structural verdict is reused for an unchanged tree.** A full-tree scan
+  now caches the whole cross-file result, keyed by the rule fingerprint plus
+  every participating file's content digest. A repeated `--incremental
+  --preset imports` run on an unchanged 336-file Vue/TS tree skips the context
+  read and the analysis: **2.28s → 0.26s CPU (−89%)**, with byte-identical
+  findings. Any edit, addition, deletion or rule change alters the key and
+  forces a recompute, and partial scans (scope exclusions, `--glob`,
+  `--stdin`, `--changed`, `--staged`) are never reused this way because their
+  dependency context is not part of the key. Cached structural findings omit
+  snippets — a single minified line can exceed the whole cache — and snippets
+  are re-derived from the scanned source, so reports stay identical.
+- **An empty selection skips the dependency context.** Cross-file rules read
+  unselected dependencies as context; when nothing is selected the project
+  pass can only report on selected files, so reading the tree was pure waste
+  (and turned an unrelated unreadable file into exit 2). An empty
+  `--glob`/`--stdin`/scope selection now finishes without touching context:
+  2.3s → <0.01s on a 336-file project, with `context_files_scanned`/`_failed`
+  honestly reported as 0.
+- **Structural models are cached.** `--incremental` now stores each file's
+  parsed structural model (imports, exports, used names) keyed by content
+  hash, so a repeated `--preset imports` scan skips tokenizing and parsing
+  unchanged files. Cross-file findings are still re-derived every run — a dead
+  export can become live when another file changes — but on a 336-file
+  Vue/TS project the full `imports` preset dropped from 2.8s to 1.5s CPU
+  (−47%), and a single structural rule from 1.52s to 0.28s (−82%). Models are
+  rule-independent (they survive a config change), content-validated, and
+  carry a parser generation so a front-end fix invalidates stale models while
+  keeping per-file findings. The cache format version moved to 3.
+- **`no_duplicate_lines` compares substantive lines only.** A minimum trimmed
+  length (24 by default, configurable as `{"no_duplicate_lines": 40}`, `0` for
+  the old behaviour) keeps structural lines such as `}`, `</view>`, `/**` and
+  `return` out of the report. On a real Vue/TS project this cut the `file`
+  preset from 24,159 to 3,727 findings (−85%); `no_duplicate_lines` alone went
+  from 22,870 to 2,445.
+- **`no_unused_exports` exempts ambient `.d.ts` files.** Declaration files
+  describe the environment; nothing imports their declarations at runtime.
+- **Performance: one MoonBit lex per file.** The engine used to lex every
+  `.mbt` file about six times (validation, inline disables, code view, comment
+  view, project pass, declaration scan). It now lexes once and shares the view,
+  and the declaration scanner accepts a precomputed view. Measured on a
+  57-file MoonBit tree: the line-rule path dropped 0.68s → 0.40s (−41%), the
+  structural path 0.58s → 0.40s (−31%).
+- **Performance: the raw view is only split when something reads it.** The
+  per-line raw view (one string per line) is now built only when a
+  `match_comments` rule or a file rule exists. On a 336-file TS/Vue tree a
+  single-rule scan dropped 0.84s → 0.47s (−44%).
+- **Performance: `split_lines` avoids a per-line character array.** A CRLF
+  trim is only attempted when the line actually ends in `\r`.
 - **JS/TS line rules no longer match literal text.** The code view blanks the
   contents of string, template and regex literals, aligning the JS/TS line
   matcher with the MoonBit front end. Rules that must see literal values opt
@@ -116,6 +209,21 @@ All notable changes to this project are documented in this file.
 
 ### Fixed
 
+- **Type annotations are no longer exported as names.** `parse_var_decl`
+  recorded every identifier in a declaration head, so `export const a: Foo = 1`
+  also exported `Foo` (and `Map`, `string`, `number` for generics). Type
+  annotations are now skipped, including generic argument lists and function
+  types. On the real project this removed 11 of 247 dead-export findings.
+- **Unknown top-level config fields are rejected on the CLI path.** The
+  CLI loads configs through `parse_config_with_extends`, which lacked the
+  `config_fields` check that `parse_config` performs, so `{"bogus": 1}` was
+  silently accepted even though the documented contract and the unit tests
+  reject it. Both paths now fail with exit 2 and `config: unknown field '…'`.
+- **A corrupt or outdated cache now warns.** The README promises that a
+  missing, corrupt or version-mismatched cache "degrades to a full scan with a
+  warning"; the fallback was correct but silent. A non-empty cache file that
+  fails to parse now prints `ignoring unreadable or outdated cache file …;
+  running a full scan` on stderr.
 - **Spread syntax no longer hides a usage.** The tokenizer emits one `Punct`
   per character, so `...foo` has a `.` immediately before `foo` exactly like
   `.foo` does; the usage walker skipped both as property names, so a binding

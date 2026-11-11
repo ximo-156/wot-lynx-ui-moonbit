@@ -1,0 +1,6 @@
+{
+  "version": 1,
+  "include": ["src/**", "test/**"],
+  "tests": ["test/**/*.test.ts"],
+  "aliases": {"@": "src"}
+}

@@ -33,6 +33,10 @@ pub struct ProjectFile {
   source : String
   /// The structural model parsed from the source.
   model : FileModel
+  /// Snippets already materialized for this file, keyed by 1-based line. A
+  /// minified file can produce hundreds of findings on one enormous line, and
+  /// trimming that line once per finding dominated the analysis.
+  snippets : Map[Int32, String]
 }
 
 ///|
@@ -62,10 +66,28 @@ fn build_index_with_aliases(
   sources : Array[(String, String)],
   aliases : Array[(String, String)],
 ) -> ProjectIndex {
+  build_index_from_models(sources, aliases, Map([]))
+}
+
+///|
+/// Build the project index reusing structural models that are already known.
+/// `prebuilt` maps a relative path to a model parsed from that exact source
+/// (the caller validates the content hash); anything missing is parsed here.
+/// This is what lets `--incremental` skip tokenizing unchanged files on every
+/// run while still deriving cross-file findings from fresh data.
+fn build_index_from_models(
+  sources : Array[(String, String)],
+  aliases : Array[(String, String)],
+  prebuilt : Map[String, FileModel],
+) -> ProjectIndex {
   let files : Array[ProjectFile] = []
   let paths : Set[String] = Set::from_iter([].iter())
   for (rel, source) in sources {
-    files.push({ rel, source, model: parse_source_for(rel, source), })
+    let model = match prebuilt.get(rel) {
+      Some(m) => m
+      None => parse_source_for(rel, source)
+    }
+    files.push({ rel, source, model, snippets: Map([]), })
     paths.add(rel)
   }
   // A longer prefix is more specific, so it must be tried first.
@@ -268,6 +290,19 @@ pub fn analyze(
 }
 
 ///|
+/// The trimmed source line at `lineno`, memoized per file.
+fn ProjectFile::snippet(self : ProjectFile, lineno : Int32) -> String {
+  match self.snippets.get(lineno) {
+    Some(text) => text
+    None => {
+      let text = snippet_at(self.source, lineno)
+      self.snippets.set(lineno, text)
+      text
+    }
+  }
+}
+
+///|
 /// Build a structural finding, quoting the offending source line.
 fn structural_finding(
   rule : StructuralRule,
@@ -283,7 +318,7 @@ fn structural_finding(
     file: file.rel,
     line,
     column,
-    snippet: snippet_at(file.source, line),
+    snippet: file.snippet(line),
   }
 }
 
@@ -591,6 +626,12 @@ fn check_unused_exports(
   findings : Array[Finding],
 ) -> Unit {
   if namespace_used.contains(file.rel) {
+    return
+  }
+  // Ambient declaration files describe the environment (globals, module
+  // shims, generated auto-import types); nothing imports their exports at
+  // runtime, so the dead-export question does not apply.
+  if file.rel.has_suffix(".d.ts") {
     return
   }
   for spec in file.model.exports {

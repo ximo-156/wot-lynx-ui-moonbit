@@ -36,6 +36,12 @@ jobs:
           BINARY="$PWD/_build/native/debug/build/cmd/main/main.exe"
           test -x "$BINARY"
           python3 tests/integration.py --binary "$BINARY" --phase all
+      - name: Test MoonImpact CLI and native process boundary
+        run: |
+          BINARY="$PWD/_build/native/debug/build/cmd/impact/impact.exe"
+          test -x "$BINARY"
+          python3 tests/impact_integration.py --binary "$BINARY"
+          python3 tests/impact_native.py
       - name: Build and test MoonBit examples
         run: |
           for module in examples/moonbit-demo examples/package-policy-demo examples/api-policy-demo/before examples/api-policy-demo/after; do

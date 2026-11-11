@@ -262,7 +262,21 @@ fn scan_with_cache(
     return (result, None)
   }
   let previous = @fs.read_file_to_string(opts.cache_file) catch { _ => "" }
-  let loaded = if previous == "" { None } else { @lib.Cache::parse(previous) }
+  let loaded = if previous == "" {
+    None
+  } else {
+    match @lib.Cache::parse(previous) {
+      Some(c) => Some(c)
+      None => {
+        // A corrupt or version-mismatched cache degrades to a full scan; say
+        // so instead of silently discarding it.
+        eprintln(
+          "moonlint: warning: ignoring unreadable or outdated cache file \{opts.cache_file}; running a full scan",
+        )
+        None
+      }
+    }
+  }
   let (result, cache) = @lib.lint_selected_cached_with(
     root,
     opts.scan_mode,

@@ -722,6 +722,44 @@ fn parse_var_decl(
       j += 1
       continue
     }
+    if t.kind == TokenKind::Punct && t.text == ":" {
+      // A top-level `:` in a declaration head starts a type annotation. Its
+      // identifiers (`Foo`, `Map`, `string`) are types, not bindings — without
+      // this, `export const a: Foo = 1` also exports `Foo`.
+      j += 1
+      let mut d = 0
+      while j < n {
+        let u = tokens[j]
+        if d == 0 && j > 0 && u.line > tokens[j - 1].line {
+          break
+        }
+        if u.kind == TokenKind::Punct {
+          // `=>` belongs to a function type, not the assignment operator.
+          if u.text == "=" &&
+            j + 1 < n &&
+            tokens[j + 1].kind == TokenKind::Punct &&
+            tokens[j + 1].text == ">" {
+            j += 2
+            continue
+          }
+          if u.text == "{" || u.text == "[" || u.text == "(" || u.text == "<" {
+            d += 1
+          } else if u.text == "}" ||
+            u.text == "]" ||
+            u.text == ")" ||
+            u.text == ">" {
+            if d == 0 {
+              break
+            }
+            d -= 1
+          } else if d == 0 && (u.text == "=" || u.text == ";" || u.text == ",") {
+            break
+          }
+        }
+        j += 1
+      }
+      continue
+    }
     if t.kind == TokenKind::Punct && t.text == "," {
       j += 1
       continue

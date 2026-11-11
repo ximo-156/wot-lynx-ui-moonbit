@@ -250,6 +250,21 @@ fn parse_config_with_extends_impl(
     Some(o) => o
     None => return Err(ConfigError("config root must be a JSON object"))
   }
+  // Reject unknown top-level fields here too: the CLI loads configs through
+  // this extends-aware path, so skipping the check would silently accept a
+  // typo that `parse_config` (and its tests) reject.
+  match
+    config_fields(
+      obj,
+      [
+        "extends", "rules", "file_rules", "structural_rules", "include", "exclude",
+        "aliases",
+      ],
+      "config",
+    ) {
+    Some(message) => return Err(ConfigError(message))
+    None => ()
+  }
   // Parse extends
   let extends_paths = match parse_extends(obj) {
     Ok(paths) => paths
@@ -652,6 +667,14 @@ fn parse_file_rule(rj : Json) -> Result[FileRule, ConfigError] {
 /// Parse a file check object: exactly one of max_lines / max_line_length /
 /// no_trailing_whitespace / no_tabs / final_newline / no_duplicate_lines /
 /// file_naming.
+
+///|
+/// Default minimum trimmed line length for `no_duplicate_lines`. Short
+/// structural lines repeat by construction; comparing them produces thousands
+/// of findings on any real project.
+const DEFAULT_DUPLICATE_MIN_LENGTH : Int32 = 24
+
+///|
 fn parse_file_check(cj : Json) -> Result[FileCheck, ConfigError] {
   let obj = match cj.as_object() {
     Some(obj) => obj
@@ -695,6 +718,20 @@ fn parse_file_check(cj : Json) -> Result[FileCheck, ConfigError] {
         None => Err(ConfigError("line_ending must be a string"))
       }
     }
+    if key == "no_duplicate_lines" {
+      // `true` uses the default minimum length; a number sets it explicitly
+      // (0 restores the historical "any repeated line" behaviour).
+      let min_len = match value.as_bool() {
+        Some(true) => DEFAULT_DUPLICATE_MIN_LENGTH
+        Some(false) => return Err(ConfigError("check \{key} must be true"))
+        None =>
+          match config_check_integer(value, key) {
+            Ok(n) => n
+            Err(error) => return Err(error)
+          }
+      }
+      return Ok(NoDuplicateLines(min_len))
+    }
     if value.as_bool() != Some(true) {
       return Err(ConfigError("check \{key} must be true"))
     }
@@ -702,7 +739,6 @@ fn parse_file_check(cj : Json) -> Result[FileCheck, ConfigError] {
       "no_trailing_whitespace" => Ok(NoTrailingWhitespace)
       "no_tabs" => Ok(NoTabs)
       "final_newline" => Ok(FinalNewline)
-      "no_duplicate_lines" => Ok(NoDuplicateLines)
       "no_empty_files" => Ok(NoEmptyFiles)
       "no_bom" => Ok(NoBom)
       _ => Err(ConfigError("unknown file check: \{key}"))

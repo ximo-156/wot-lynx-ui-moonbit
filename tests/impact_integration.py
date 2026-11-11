@@ -1,0 +1,331 @@
+#!/usr/bin/env python3
+"""Isolated MoonImpact CLI regressions; never mutates the real target project.
+
+python3 tests/impact_integration.py --binary /absolute/path/to/impact/main.exe
+An already-built executable is required. No dependencies are installed.
+"""
+from __future__ import annotations
+
+import argparse
+import json
+import os
+from pathlib import Path
+import shutil
+import subprocess
+import sys
+import tempfile
+import unittest
+
+BINARY: Path | None = None
+
+
+class ImpactCLI(unittest.TestCase):
+    def setUp(self):
+        self.temp = tempfile.TemporaryDirectory(prefix="moonimpact-integration-")
+        self.owner = Path(self.temp.name).resolve()
+        self.addCleanup(self.cleanup_owned)
+        self.root = self.owner / "project"
+        self.root.mkdir()
+        self.config = self.owner / "moonimpact.json"
+        self.env = {k: v for k, v in os.environ.items() if not k.startswith("GIT_")}
+        self.env.update({
+            "GIT_CONFIG_NOSYSTEM": "1", "GIT_CONFIG_GLOBAL": os.devnull,
+            "GIT_CONFIG_SYSTEM": os.devnull, "GIT_TERMINAL_PROMPT": "0",
+            "GIT_AUTHOR_NAME": "Fixture", "GIT_AUTHOR_EMAIL": "fixture@example.invalid",
+            "GIT_COMMITTER_NAME": "Fixture", "GIT_COMMITTER_EMAIL": "fixture@example.invalid",
+        })
+        self.settings = {"version": 1, "include": ["src/**", "test/**"]}
+        self.save_config()
+        self.write("src/value.ts", "export const value = 1;\n")
+        self.write("src/wrapper.ts", "import { value } from './value';\nexport const wrapped = value;\n")
+        self.write("test/value.test.ts", "import { wrapped } from '../src/wrapper';\nconsole.log(wrapped);\n")
+        self.write("test/other.test.ts", "const unrelated = 1;\n")
+
+    def cleanup_owned(self):
+        actual = Path(self.temp.name).resolve()
+        assert actual == self.owner
+        assert actual.parent == Path(tempfile.gettempdir()).resolve()
+        assert actual.name.startswith("moonimpact-integration-")
+        self.temp.cleanup()
+
+    def write(self, name, content):
+        path = self.root / name
+        assert path.resolve().is_relative_to(self.owner)
+        path.parent.mkdir(parents=True, exist_ok=True)
+        if isinstance(content, bytes):
+            path.write_bytes(content)
+        else:
+            path.write_text(content, encoding="utf-8")
+        return path
+
+    def save_config(self):
+        self.config.write_text(json.dumps(self.settings), encoding="utf-8")
+
+    def invoke(self, *args, expected=0, root=None):
+        result = subprocess.run(
+            [str(BINARY), "plan", "--config", str(self.config), *map(str, args), str(root or self.root)],
+            cwd=self.root, env=self.env, text=True, capture_output=True, timeout=30,
+        )
+        self.assertEqual(result.returncode, expected, result.stdout + "\n" + result.stderr)
+        return result
+
+    def plan(self, *args, expected=0):
+        return json.loads(self.invoke(*args, "--format", "json", expected=expected).stdout)
+
+    def fake_runner(self, code=0):
+        bindir = self.owner / "bin"
+        bindir.mkdir(exist_ok=True)
+        self.marker = self.owner / "executed.json"
+        runner = bindir / "pnpm"
+        runner.write_text(
+            f"#!{sys.executable}\nimport json,os,sys\n"
+            "from pathlib import Path\n"
+            "Path(os.environ['IMPACT_TEST_MARKER']).write_text(json.dumps(sys.argv[1:]))\n"
+            "print('RUNNER_STDOUT')\nprint('RUNNER_STDERR',file=sys.stderr)\n"
+            f"sys.exit({code})\n", encoding="utf-8")
+        runner.chmod(0o755)
+        self.env["PATH"] = str(bindir) + os.pathsep + self.env.get("PATH", "")
+        self.env["IMPACT_TEST_MARKER"] = str(self.marker)
+
+    def git(self, *args):
+        if shutil.which("git") is None:
+            self.skipTest("Git unavailable")
+        result = subprocess.run(["git", "-C", str(self.root), *args], env=self.env,
+                                text=True, capture_output=True, timeout=20)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        return result.stdout.strip()
+
+    def commit_fixture(self):
+        self.git("init", "--initial-branch=main")
+        self.git("config", "core.hooksPath", os.devnull)
+        self.git("config", "commit.gpgsign", "false")
+        self.git("add", ".")
+        self.git("commit", "-m", "fixture")
+
+    def test_import_chain_is_explained_without_running_anything(self):
+        self.fake_runner()
+        doc = self.plan("--file", "src/value.ts")
+        self.assertEqual(doc["strategy"], "related")
+        self.assertEqual(doc["tests"], ["test/value.test.ts"])
+        self.assertEqual(len(doc["traces"][0]["chain"]), 2)
+        self.assertEqual(doc["traces"][0]["chain"][0]["dependency"], "src/value.ts")
+        self.assertTrue(doc["advisory"])
+        self.assertEqual(doc["kind"], "test-plan")
+        self.assertFalse(self.marker.exists())
+
+    def test_file_reading_wrapper_connects_non_imported_stylesheet(self):
+        self.settings["file_readers"] = ["readSource"]
+        self.save_config()
+        self.write("src/theme.scss", ":root { --surface: white; }\n")
+        self.write("test/theme.test.ts", """import { readFileSync } from 'node:fs'
+import { resolve } from 'node:path'
+function readSource(file: string) { return readFileSync(resolve(process.cwd(), file), 'utf8') }
+const css = readSource('src/theme.scss')
+""")
+        doc = self.plan("--file", "src/theme.scss")
+        self.assertEqual(doc["strategy"], "related")
+        self.assertEqual(doc["tests"], ["test/theme.test.ts"])
+        self.assertEqual(doc["traces"][0]["chain"][0]["kind"], "read-root")
+
+    def test_immutable_root_and_single_return_reader_are_inferred(self):
+        self.write("src/theme.scss", ":root { color: red; }\n")
+        self.write("test/read.test.ts", """import { readFileSync } from 'node:fs'
+import { resolve } from 'node:path'
+const ROOT = process.cwd()
+function read(file: string) { return readFileSync(resolve(ROOT, file), 'utf8') }
+const source = read('src/theme.scss')
+""")
+        doc = self.plan("--file", "src/theme.scss")
+        self.assertEqual(doc["strategy"], "related")
+        self.assertEqual(doc["tests"], ["test/read.test.ts"])
+        self.assertEqual(doc["issues"], [])
+
+    def test_module_relative_url_and_file_url_to_path(self):
+        self.write("src/theme.css", ":root { color: red; }\n")
+        self.write("test/url.test.ts", """import { readFileSync } from 'node:fs'
+import { fileURLToPath } from 'node:url'
+const input = new URL('../src/theme.css', import.meta.url)
+const source = readFileSync(fileURLToPath(input), 'utf8')
+""")
+        doc = self.plan("--file", "src/theme.css")
+        self.assertEqual(doc["strategy"], "related")
+        self.assertEqual(doc["tests"], ["test/url.test.ts"])
+        self.assertEqual(doc["traces"][0]["chain"][0]["kind"], "read-file")
+
+    def test_dirname_reads_have_file_relative_evidence(self):
+        self.write("src/theme.css", ":root { color: red; }\n")
+        self.write("test/dirname.test.ts", """import { readFileSync } from 'node:fs'
+import { resolve } from 'node:path'
+const source = readFileSync(resolve(__dirname, '../src/theme.css'), 'utf8')
+""")
+        doc = self.plan("--file", "src/theme.css")
+        self.assertEqual(doc["strategy"], "related")
+        self.assertEqual(doc["tests"], ["test/dirname.test.ts"])
+        self.assertEqual(doc["traces"][0]["chain"][0]["kind"], "read-file")
+
+    def test_reader_with_side_effects_or_dynamic_path_still_falls_back(self):
+        self.write("test/read.test.ts", """import { readFileSync } from 'node:fs'
+function read(file: string) { readFileSync(otherPath, 'utf8'); return readFileSync(file, 'utf8') }
+const source = read('src/value.ts')
+""")
+        doc = self.plan("--file", "src/value.ts")
+        self.assertEqual(doc["strategy"], "full")
+        self.assertTrue(doc["issues"])
+
+    def test_mutated_filesystem_namespace_does_not_authorize_selection(self):
+        self.write("test/read.test.ts", """import fs from 'node:fs'
+fs.readFileSync = replacement
+const source = fs.readFileSync('src/value.ts', 'utf8')
+""")
+        doc = self.plan("--file", "src/value.ts")
+        self.assertEqual(doc["strategy"], "full")
+        self.assertTrue(doc["issues"])
+
+    def test_transitive_vue_sass_and_font_dependency(self):
+        self.settings["aliases"] = {"@": "src"}
+        self.save_config()
+        self.write("src/Card.vue", "<template><view>Card</view></template>\n<style lang=\"scss\">\n@use '@/styles/theme' as *;\n</style>\n")
+        self.write("src/styles/theme.scss", "@use './palette' as *;\n@import './fonts.css';\n")
+        self.write("src/styles/_palette.scss", "$color: red;\n")
+        self.write("src/styles/fonts.css", "@font-face { src: url('./font.woff2?v=1#glyph'); }\n")
+        self.write("src/styles/font.woff2", b"\x00\xff\x01binary font input")
+        self.write("test/card.test.ts", "import Card from '../src/Card.vue';\nconsole.log(Card);\n")
+        doc = self.plan("--file", "src/styles/font.woff2")
+        self.assertEqual(doc["strategy"], "related")
+        self.assertEqual(doc["tests"], ["test/card.test.ts"])
+        chain = doc["traces"][0]["chain"]
+        self.assertEqual(len(chain), 4)
+        self.assertEqual(chain[0]["dependency"], "src/styles/font.woff2")
+        self.assertEqual(chain[0]["kind"], "style-url")
+        self.assertEqual(doc["issues"], [])
+        partial = self.plan("--file", "src/styles/_palette.scss")
+        self.assertEqual(partial["tests"], ["test/card.test.ts"])
+
+    def test_unsupported_style_input_keeps_full_fallback(self):
+        self.write("src/theme.scss", "@use '#{selected}/theme';\n")
+        self.write("test/style.test.ts", "import '../src/theme.scss';\n")
+        doc = self.plan("--file", "src/value.ts")
+        self.assertEqual(doc["strategy"], "full")
+        self.assertTrue(doc["issues"])
+
+    def test_unreadable_stylesheet_blocks_execution(self):
+        self.fake_runner()
+        self.write("src/theme.scss", b"\xff\xfe invalid stylesheet")
+        doc = self.plan("--file", "src/value.ts", "--run", expected=2)
+        self.assertEqual(doc["strategy"], "blocked")
+        self.assertFalse(self.marker.exists())
+
+    def test_dynamic_dependency_requests_all_tests(self):
+        self.write("src/wrapper.ts", "export const load = () => import(runtimePath);\n")
+        doc = self.plan("--file", "src/value.ts")
+        self.assertEqual(doc["strategy"], "full")
+        self.assertEqual(doc["tests"], doc["inventory"])
+        self.assertGreater(len(doc["issues"]), 0)
+
+    def test_alias_and_vue_script_are_supported(self):
+        self.settings["aliases"] = {"@": "src"}
+        self.save_config()
+        self.write("src/Card.vue", "<template><view>Card</view></template>\n<script setup lang=\"ts\">\nimport { value } from '@/value';\n</script>\n")
+        self.write("test/card.test.ts", "import Card from '../src/Card.vue';\nconsole.log(Card);\n")
+        doc = self.plan("--file", "src/value.ts")
+        self.assertEqual(doc["strategy"], "related")
+        self.assertIn("test/card.test.ts", doc["tests"])
+
+    def test_global_change_requests_full_suite(self):
+        doc = self.plan("--file", "package.json")
+        self.assertEqual(doc["strategy"], "full")
+        self.assertTrue(any(reason.startswith("global-input-changed") for reason in doc["reasons"]))
+
+    def test_deleted_input_is_not_silently_discarded(self):
+        doc = self.plan("--file", "src/deleted.ts")
+        self.assertEqual(doc["strategy"], "full")
+        self.assertIn("src/deleted.ts", doc["changed"])
+
+    def test_bad_utf8_blocks_run(self):
+        self.fake_runner()
+        self.write("src/broken.ts", b"\xff\xfe invalid")
+        doc = self.plan("--file", "src/value.ts", "--run", expected=2)
+        self.assertEqual(doc["strategy"], "blocked")
+        self.assertFalse(self.marker.exists())
+
+    def test_symlinks_are_not_followed(self):
+        self.fake_runner()
+        target = self.owner / "outside.ts"
+        target.write_text("export const outside = 1;\n", encoding="utf-8")
+        (self.root / "src/link.ts").symlink_to(target)
+        doc = self.plan("--file", "src/value.ts", "--run", expected=2)
+        self.assertEqual(doc["strategy"], "blocked")
+        self.assertFalse(self.marker.exists())
+
+    def test_related_run_has_safe_argv_and_keeps_stdout_json(self):
+        self.fake_runner()
+        result = self.invoke("--file", "src/value.ts", "--run", "--format", "json")
+        json.loads(result.stdout)
+        self.assertEqual(json.loads(self.marker.read_text()), ["exec", "vitest", "run", "./test/value.test.ts"])
+        self.assertIn("RUNNER_STDOUT", result.stderr)
+        self.assertIn("RUNNER_STDERR", result.stderr)
+
+    def test_full_run_intentionally_has_no_filters(self):
+        self.fake_runner(code=1)
+        self.invoke("--file", "package.json", "--run", expected=1)
+        self.assertEqual(json.loads(self.marker.read_text()), ["exec", "vitest", "run"])
+
+    def test_report_is_create_only_and_html_escapes_names(self):
+        report = self.owner / "plan.json"
+        self.invoke("--file", "src/value.ts", "--report", report)
+        original = report.read_bytes()
+        self.invoke("--file", "src/value.ts", "--report", report, expected=2)
+        self.assertEqual(report.read_bytes(), original)
+        source = self.root / "src/value.ts"
+        original_source = source.read_bytes()
+        self.invoke("--file", "src/value.ts", "--report", source, expected=2)
+        self.assertEqual(source.read_bytes(), original_source)
+        html = self.invoke("--file", "missing<script>.ts", "--format", "html").stdout
+        self.assertNotIn("<script>", html)
+        self.assertIn("&lt;script&gt;", html)
+
+    def test_strict_configuration_and_input_validation(self):
+        self.invoke(expected=2)
+        self.invoke("--file", "src/value.ts", "--worktree", expected=2)
+        self.invoke("--file", "../outside.ts", expected=2)
+        self.invoke("--file", "src/value.ts", "--timeout-ms", "4", expected=2)
+        self.settings["execute"] = "pnpm test"
+        self.save_config()
+        self.invoke("--file", "src/value.ts", expected=2)
+
+    def test_git_empty_worktree_never_runs_tests(self):
+        self.commit_fixture()
+        self.fake_runner()
+        doc = self.plan("--worktree", "--run")
+        self.assertEqual(doc["changed"], [])
+        self.assertEqual(doc["strategy"], "none")
+        self.assertFalse(self.marker.exists())
+
+    def test_git_worktree_includes_staged_unstaged_and_untracked(self):
+        self.commit_fixture()
+        self.write("src/value.ts", "export const value = 2;\n")
+        self.git("add", "src/value.ts")
+        self.write("src/wrapper.ts", "import { value } from './value';\nexport const wrapped = value + 1;\n")
+        self.write("src/new.ts", "export const added = 1;\n")
+        doc = self.plan("--worktree")
+        self.assertEqual(doc["changed"], ["src/new.ts", "src/value.ts", "src/wrapper.ts"])
+
+    def test_unknown_git_reference_fails_instead_of_empty_success(self):
+        self.commit_fixture()
+        self.invoke("--base", "nonexistent-moonimpact-ref", expected=2)
+
+
+def main():
+    global BINARY
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--binary", type=Path, required=True)
+    args = parser.parse_args()
+    BINARY = args.binary.resolve(strict=True)
+    if not BINARY.is_file() or not os.access(BINARY, os.X_OK):
+        parser.error("--binary must be an existing executable")
+    suite = unittest.defaultTestLoader.loadTestsFromTestCase(ImpactCLI)
+    return 0 if unittest.TextTestRunner(verbosity=2).run(suite).wasSuccessful() else 1
+
+
+if __name__ == "__main__":
+    sys.exit(main())

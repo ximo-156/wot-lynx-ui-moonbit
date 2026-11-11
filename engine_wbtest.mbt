@@ -342,7 +342,7 @@ test "lint_file accepts final newline" {
 ///|
 test "lint_file detects duplicate lines" {
   let lines = [(1, "same"), (2, "different"), (3, "same")]
-  let frs = [test_file_rule("file/no-duplicate-lines", NoDuplicateLines)]
+  let frs = [test_file_rule("file/no-duplicate-lines", NoDuplicateLines(0))]
   let findings = lint_file("test.ts", "same\ndifferent\nsame\n", lines, frs)
   assert_eq(findings.length(), 1)
   assert_eq(findings[0].line, 3)
@@ -351,10 +351,29 @@ test "lint_file detects duplicate lines" {
 ///|
 test "lint_file ignores empty lines for duplicates" {
   let lines = [(1, "code"), (2, ""), (3, ""), (4, "code")]
-  let frs = [test_file_rule("file/no-duplicate-lines", NoDuplicateLines)]
+  let frs = [test_file_rule("file/no-duplicate-lines", NoDuplicateLines(0))]
   let findings = lint_file("test.ts", "code\n\n\ncode\n", lines, frs)
   assert_eq(findings.length(), 1)
   assert_eq(findings[0].line, 4)
+}
+
+///|
+test "duplicate lines shorter than the threshold are not reported" {
+  // `}` and `</view>` repeat in every file by construction; only substantive
+  // lines are compared once a minimum length is set.
+  let lines = [
+    (1, "}"),
+    (2, "</view>"),
+    (3, "const total = 1"),
+    (4, "}"),
+    (5, "</view>"),
+    (6, "const total = 1"),
+  ]
+  let source = "}\n</view>\nconst total = 1\n}\n</view>\nconst total = 1\n"
+  let frs = [test_file_rule("file/no-duplicate-lines", NoDuplicateLines(10))]
+  let findings = lint_file("test.ts", source, lines, frs)
+  assert_eq(findings.length(), 1)
+  assert_eq(findings[0].line, 6)
 }
 
 ///|

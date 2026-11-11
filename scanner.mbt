@@ -16,7 +16,15 @@ fn split_lines(src : String) -> Array[(Int32, String)] {
   let result : Array[(Int32, String)] = []
   let mut lineno = 1
   for view in src.split("\n") {
-    result.push((lineno, trim_end_char(view.to_owned(), '\r')))
+    // Only a CRLF line needs the trim; checking first avoids allocating a
+    // character array for every line of an LF file.
+    let text = view.to_owned()
+    let text = if text.has_suffix("\r") {
+      trim_end_char(text, '\r')
+    } else {
+      text
+    }
+    result.push((lineno, text))
     lineno += 1
   }
   if result.length() > 0 && result[result.length() - 1].1 == "" {

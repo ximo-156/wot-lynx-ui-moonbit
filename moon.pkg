@@ -9,5 +9,5 @@ import {
 }
 
 options(
-  "native-stub": [ "git_native.c" ],
+  "native-stub": [ "git_native.c", "impact_native.c" ],
 )

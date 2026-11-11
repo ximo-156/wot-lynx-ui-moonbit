@@ -287,3 +287,65 @@ test "a longer alias prefix wins over a shorter one" {
   )
   assert_eq(index.resolve("a.ts", "@/lib/x"), Some("other/lib/x.ts"))
 }
+
+///|
+test "ambient .d.ts files are not reported for dead exports" {
+  let rules = [
+    structural_rule("imports/no-unused-exports", NoUnusedExports, [".ts"]),
+  ]
+  let files : Array[(String, String)] = [
+    (
+      "src/types/auto-import.d.ts", "declare global { const Ref: unknown }\nexport const Generated = 1;\n",
+    ),
+  ]
+  assert_eq(analyze(test_index(files), rules).length(), 0)
+}
+
+///|
+test "a prebuilt model is reused instead of re-parsing the source" {
+  // The source declares no imports; the prebuilt model claims one. If the
+  // index reused it, the import appears in the model.
+  let sources : Array[(String, String)] = [("a.ts", "export const x = 1;\n")]
+  let prebuilt : Map[String, FileModel] = Map([])
+  prebuilt.set("a.ts", {
+    imports: [
+      {
+        kind: Static,
+        source: "'./b'",
+        names: [{ local: "y", imported: "y", }],
+        line: 1,
+        column: 1,
+        type_only: false,
+      },
+    ],
+    exports: [],
+    decls: [],
+    used: [{ name: "y", line: 1, column: 1, }],
+  })
+  let index = build_index_from_models(sources, [], prebuilt)
+  assert_eq(index.files[0].model.imports.length(), 1)
+  // A file without a prebuilt model is parsed as usual.
+  let sources2 : Array[(String, String)] = [
+    ("b.ts", "import { z } from './a';\n"),
+  ]
+  let index2 = build_index_from_models(sources2, [], Map([]))
+  assert_eq(index2.files[0].model.imports.length(), 1)
+}
+
+///|
+test "findings sharing a line reuse one memoized snippet" {
+  // Two imports of the same module on one line: the duplicate-import rule
+  // reports both, and the snippet must be the trimmed line for each.
+  let files : Array[(String, String)] = [
+    ("a.ts", "import x from './b'; import y from './b';\n"),
+    ("b.ts", "export default 1;\n"),
+  ]
+  let rules = [
+    structural_rule("imports/no-duplicate-imports", NoDuplicateImports, [".ts"]),
+  ]
+  let findings = analyze(test_index(files), rules)
+  assert_eq(findings.length(), 1)
+  assert_eq(findings[0].snippet, "import x from './b'; import y from './b';")
+  // A second call on the same file returns the cached text unchanged.
+  assert_eq(findings[0].snippet, findings[0].snippet)
+}

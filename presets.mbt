@@ -898,7 +898,7 @@ fn file_rules_preset() -> Array[FileRule] {
       severity: Severity::warning(),
       message: "Duplicate line found",
       extensions: all_exts,
-      check: NoDuplicateLines,
+      check: NoDuplicateLines(24),
       scope: Scope::empty(),
     },
   ]

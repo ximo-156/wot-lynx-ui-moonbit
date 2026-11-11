@@ -236,3 +236,107 @@ test "config fingerprint tracks combinator structure" {
   assert_true(base != nested)
   assert_true(base != deeper)
 }
+
+///|
+test "structural models round-trip through the cache" {
+  let model = parse_source(
+    "import type { A } from './a';\nimport b from 'b';\nexport const c: C = b(usedName);\n",
+  )
+  let cache = Cache::new("fp")
+  let hash = content_hash("source-1")
+  cache.put_model("src/x.ts", hash, model)
+  let reparsed = Cache::parse(cache.render()).unwrap()
+  let entry = reparsed.get_model("src/x.ts").unwrap()
+  assert_eq(entry.hash, hash)
+  assert_eq(entry.model.imports.length(), 2)
+  assert_eq(entry.model.imports[0].source, "'./a'")
+  assert_true(entry.model.imports[0].type_only)
+  assert_eq(entry.model.exports.length(), 1)
+  assert_eq(entry.model.exports[0].names[0], "c")
+  // Used identifiers survive (deduplicated). A type name referenced in an
+  // annotation is still an identifier read; only export names must exclude it.
+  assert_true(entry.model.used.map(u => u.name).contains("usedName"))
+  assert_eq(entry.model.exports[0].names.length(), 1)
+  assert_eq(entry.model.exports[0].names[0], "c")
+}
+
+///|
+test "an outdated model version drops models but keeps findings" {
+  let cache_json =
+    #|{
+    #|  "version": 3,
+    #|  "fingerprint": "fp",
+    #|  "files": {"a.ts": {"hash": "h", "findings": []}},
+    #|  "model_version": 999,
+    #|  "models": {"a.ts": {"hash": "h", "model": {"imports": [], "exports": [], "used": []}}}
+    #|}
+  let parsed = Cache::parse(cache_json).unwrap()
+  assert_true(parsed.get_model("a.ts") is None)
+  assert_true(parsed.get("a.ts") is Some(_))
+}
+
+///|
+test "a corrupt model entry is dropped without discarding findings" {
+  let cache_json =
+    #|{
+    #|  "version": 3,
+    #|  "fingerprint": "fp",
+    #|  "files": {"a.ts": {"hash": "h", "findings": []}},
+    #|  "model_version": 1,
+    #|  "models": {"a.ts": {"hash": "h", "model": {"imports": "nope"}},
+    #|             "b.ts": {"hash": "h2", "model": {"imports": [], "exports": [], "used": ["x"]}}}
+    #|}
+  let parsed = Cache::parse(cache_json).unwrap()
+  assert_true(parsed.get_model("a.ts") is None)
+  assert_true(parsed.get_model("b.ts") is Some(_))
+  assert_true(parsed.get("a.ts") is Some(_))
+}
+
+///|
+test "structural key is order-independent and content-sensitive" {
+  let a = structural_key("fp", [("b.ts", "h2"), ("a.ts", "h1")])
+  let b = structural_key("fp", [("a.ts", "h1"), ("b.ts", "h2")])
+  assert_eq(a, b)
+  // A different file hash, a different file set or a different rule
+  // fingerprint must all produce a different identity.
+  assert_true(a != structural_key("fp", [("a.ts", "h1"), ("b.ts", "h3")]))
+  assert_true(a != structural_key("fp", [("a.ts", "h1")]))
+  assert_true(a != structural_key("fp2", [("a.ts", "h1"), ("b.ts", "h2")]))
+}
+
+///|
+test "structural verdict round-trips through the cache" {
+  let cache = Cache::new("fp")
+  cache.put_structural("key-1", [
+    {
+      rule_id: "imports/no-unused-exports",
+      severity: Severity::error(),
+      message: "m",
+      file: "a.ts",
+      line: 2,
+      column: 1,
+      snippet: "",
+    },
+  ])
+  let parsed = Cache::parse(cache.render()).unwrap()
+  let entry = parsed.get_structural().unwrap()
+  assert_eq(entry.key, "key-1")
+  assert_eq(entry.findings.length(), 1)
+  assert_eq(entry.findings[0].file, "a.ts")
+}
+
+///|
+test "a malformed structural verdict is dropped without discarding the rest" {
+  let cache_json =
+    #|{
+    #|  "version": 3,
+    #|  "fingerprint": "fp",
+    #|  "files": {"a.ts": {"hash": "h", "findings": []}},
+    #|  "model_version": 1,
+    #|  "models": {},
+    #|  "structural": {"key": "k", "findings": "nope"}
+    #|}
+  let parsed = Cache::parse(cache_json).unwrap()
+  assert_true(parsed.get_structural() is None)
+  assert_true(parsed.get("a.ts") is Some(_))
+}

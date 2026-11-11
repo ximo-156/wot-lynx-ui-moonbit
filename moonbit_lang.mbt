@@ -289,15 +289,14 @@ fn moonbit_parse_decl(
 }
 
 ///|
-/// Scan a MoonBit source file for top-level declarations.
+/// Scan an already-lexed MoonBit source for top-level declarations.
 ///
 /// `///|` opens a documentation block; `///` lines continue it; `#...`
 /// attribute lines may sit between the block and the declaration. Anything
 /// else (a blank line, an ordinary comment, another declaration) closes the
 /// pending block.
-fn scan_moonbit_decls(src : String) -> Array[MoonbitDecl] {
+fn scan_moonbit_decls_view(view : MoonbitLexView) -> Array[MoonbitDecl] {
   let decls : Array[MoonbitDecl] = []
-  let view = moonbit_lex(src)
   let comments = split_lines(view.comments)
   let code_lines = split_lines(view.declarations)
   let mut depth = 0
@@ -372,6 +371,12 @@ fn scan_moonbit_decls(src : String) -> Array[MoonbitDecl] {
     }
   }
   decls
+}
+
+///|
+/// Lex and scan a MoonBit source file for top-level declarations.
+fn scan_moonbit_decls(src : String) -> Array[MoonbitDecl] {
+  scan_moonbit_decls_view(moonbit_lex(src))
 }
 
 ///|
@@ -554,7 +559,7 @@ fn analyze_moonbit(
       continue
     }
     let view = moonbit_lex(source)
-    let decls = scan_moonbit_decls(source)
+    let decls = scan_moonbit_decls_view(view)
     for rule in rules {
       if !rule.applies_to(rel) {
         continue

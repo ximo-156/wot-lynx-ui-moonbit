@@ -12,6 +12,8 @@ pub fn analyze(ProjectIndex, Array[StructuralRule]) -> Array[Finding]
 
 pub fn baseline_audit_with_findings(PolicyReport, LintResult) -> PolicyReport
 
+pub fn build_impact_plan(String, Array[(String, String)], Array[String], Array[String], ImpactConfig, String, Array[ImpactIssue]) -> ImpactPlan raise
+
 pub fn build_index(Array[(String, String)]) -> ProjectIndex
 
 pub fn canonical_root(String) -> String raise NativeError
@@ -43,6 +45,16 @@ pub fn git_source_kind(String, String, Bool) -> Int32 raise NativeError
 pub fn git_staged_files(String) -> Array[String] raise NativeError
 
 pub fn glob_pattern_error(String) -> String?
+
+pub fn impact_default_config() -> ImpactConfig
+
+pub fn impact_git_changes(String, String?) -> Array[String] raise
+
+pub fn impact_plan(String, Array[String], ImpactConfig, String, Array[ImpactIssue]) -> ImpactPlan raise
+
+pub fn impact_run_vitest(String, Array[String], Bool, Int32) -> Int32 raise
+
+pub fn impact_write_report_new(String, String) -> Unit raise
 
 pub fn is_relative(String) -> Bool
 
@@ -76,6 +88,8 @@ pub fn parse_config_with_extends(String, String) -> Result[LintConfig, ConfigErr
 
 pub fn parse_disable_comments(String) -> DisableMap
 
+pub fn parse_impact_config(String) -> ImpactConfig raise
+
 pub fn parse_package_policy(String) -> Result[Array[PackagePolicyRule], ConfigError]
 
 pub fn parse_source(String) -> FileModel
@@ -97,6 +111,12 @@ pub fn read_stdin_text() -> String raise NativeError
 pub fn render_detail(Array[Finding]) -> String
 
 pub fn render_github(LintResult) -> String
+
+pub fn render_impact_html(ImpactPlan) -> String
+
+pub fn render_impact_json(ImpactPlan) -> String
+
+pub fn render_impact_text(ImpactPlan) -> String
 
 pub fn render_json(LintResult, ScanInfo) -> String
 
@@ -121,6 +141,8 @@ pub fn source_path_kind(String) -> Int32 raise NativeError
 pub fn spec_source(ImportSpec) -> String
 
 pub fn strip_comments_code(String, CommentMode) -> String
+
+pub fn structural_key(String, Array[(String, String)]) -> String
 
 pub fn tokenize(String) -> Array[Token]
 
@@ -175,12 +197,18 @@ pub struct Cache {
   version : Int32
   fingerprint : String
   files : Map[String, CacheEntry]
+  models : Map[String, ModelEntry]
+  mut structural : StructuralCache?
 }
 pub fn Cache::get(Self, String) -> CacheEntry?
+pub fn Cache::get_model(Self, String) -> ModelEntry?
+pub fn Cache::get_structural(Self) -> StructuralCache?
 pub fn Cache::is_current(Self, String) -> Bool
 pub fn Cache::new(String) -> Self
 pub fn Cache::parse(String) -> Self?
 pub fn Cache::put(Self, String, String, Array[Finding]) -> Unit
+pub fn Cache::put_model(Self, String, String, FileModel) -> Unit
+pub fn Cache::put_structural(Self, String, Array[Finding]) -> Unit
 pub fn Cache::render(Self) -> String
 pub fn Cache::to_repr(Self) -> @debug.Repr
 
@@ -249,7 +277,7 @@ pub enum FileCheck {
   NoTrailingWhitespace
   NoTabs
   FinalNewline
-  NoDuplicateLines
+  NoDuplicateLines(Int32)
   FileNaming(NamingStyle)
   MaxFileSize(Int32)
   NoEmptyFiles
@@ -303,6 +331,62 @@ pub fn GlobPattern::matches_path(Self, String) -> Bool
 pub fn GlobPattern::new(String) -> Self
 pub fn GlobPattern::not_equal(Self, Self) -> Bool
 pub fn GlobPattern::to_repr(Self) -> @debug.Repr
+
+#derive(@debug.Debug)
+pub struct ImpactConfig {
+  includes : Array[String]
+  excludes : Array[String]
+  tests : Array[String]
+  aliases : Array[(String, String)]
+  file_readers : Array[String]
+  dependencies : Array[ImpactEdge]
+  global_inputs : Array[String]
+  max_source_bytes : Int32
+}
+pub fn ImpactConfig::to_repr(Self) -> @debug.Repr
+
+#derive(@debug.Debug)
+pub struct ImpactEdge {
+  dependency : String
+  dependent : String
+  kind : String
+  line : Int32
+  column : Int32
+}
+pub fn ImpactEdge::to_repr(Self) -> @debug.Repr
+
+#derive(@debug.Debug)
+pub struct ImpactIssue {
+  file : String
+  line : Int32
+  reason : String
+}
+pub fn ImpactIssue::to_repr(Self) -> @debug.Repr
+
+#derive(@debug.Debug)
+pub struct ImpactPlan {
+  root : String
+  input : String
+  changed : Array[String]
+  strategy : String
+  tests : Array[String]
+  inventory : Array[String]
+  affected : Array[String]
+  traces : Array[ImpactTrace]
+  issues : Array[ImpactIssue]
+  reasons : Array[String]
+  source_count : Int32
+  edge_count : Int32
+}
+pub fn ImpactPlan::to_repr(Self) -> @debug.Repr
+
+#derive(@debug.Debug)
+pub struct ImpactTrace {
+  test_file : String
+  changed : String
+  chain : Array[ImpactEdge]
+}
+pub fn ImpactTrace::to_repr(Self) -> @debug.Repr
 
 #derive(Eq, @debug.Debug)
 pub enum ImportKind {
@@ -396,6 +480,12 @@ pub fn MatchKind::prepare(Self) -> Prepared
 pub fn MatchKind::to_repr(Self) -> @debug.Repr
 pub fn MatchKind::validate(Self) -> String?
 
+#derive(@debug.Debug)
+pub struct ModelEntry {
+  hash : String
+  model : FileModel
+}
+
 #derive(Eq, @debug.Debug)
 pub enum NamingStyle {
   CamelCase
@@ -464,6 +554,7 @@ pub struct ProjectFile {
   rel : String
   source : String
   model : FileModel
+  snippets : Map[Int32, String]
 }
 pub fn ProjectFile::to_repr(Self) -> @debug.Repr
 
@@ -550,6 +641,12 @@ pub struct SkippedFile {
   reason : String
 }
 pub fn SkippedFile::to_repr(Self) -> @debug.Repr
+
+#derive(@debug.Debug)
+pub struct StructuralCache {
+  key : String
+  findings : Array[Finding]
+}
 
 #derive(Eq, @debug.Debug)
 pub enum StructuralCheck {

@@ -296,6 +296,11 @@ fn lint_selected_impl(
   let wants_literal_view = rules.any(rule => {
     rule.match_literals && !rule.match_comments
   })
+  // The raw view is only consumed by `match_comments` rules and file rules.
+  // Splitting it per file allocates one string per line, so skip it when
+  // nothing can read it.
+  let wants_raw_view = !file_rules.is_empty() ||
+    rules.any(rule => rule.match_comments)
   let reusable : Cache? = match cache {
     Some(previous) =>
       if previous.is_current(fingerprint) {
@@ -311,6 +316,17 @@ fn lint_selected_impl(
     _ => None
   }
   let updated = Cache::new(fingerprint)
+  // Structural models are content-addressed and rule-independent, so they are
+  // reused from the previous cache even when the configuration changed.
+  let previous_models : Map[String, ModelEntry] = match cache {
+    Some(previous) => previous.models
+    None => Map([])
+  }
+  let models_out : Map[String, ModelEntry] = Map([])
+  let prebuilt_models : Map[String, FileModel] = Map([])
+  // Every scanned file's path and content digest: the identity of the
+  // project the structural pass sees.
+  let scanned_ids : Array[(String, String)] = []
   let mut scanned = 0
   let mut skipped = 0
   let mut failed = 0
@@ -340,10 +356,37 @@ fn lint_selected_impl(
         Some(snapshot) => snapshot.source(root, rel)
         None => read_source(join_path(root, rel))
       }
-      if rel.has_suffix(".mbt") {
-        validate_moonbit_source(source)
+      // A MoonBit file is lexed once and every consumer below reuses the same
+      // view: validation, inline-disable comments, the code view, the comment
+      // view and the project pass. Lexing it per consumer cost ~5x the work.
+      let mb_view : MoonbitLexView? = if rel.has_suffix(".mbt") {
+        let view = moonbit_lex(source)
+        validate_moonbit_view(view)
+        Some(view)
+      } else {
+        None
       }
       let hash = content_hash(source)
+      // Parse the structural model once per file, reusing the cached model
+      // when the content digest matches. MoonBit files are handled by their
+      // own declaration scanner, so they are not parsed here.
+      if !structural_rules.is_empty() && !rel.has_suffix(".mbt") {
+        let reused = match previous_models.get(rel) {
+          Some(entry) =>
+            if entry.hash == hash {
+              Some(entry.model)
+            } else {
+              None
+            }
+          None => None
+        }
+        let model = match reused {
+          Some(m) => m
+          None => parse_source_for(rel, source)
+        }
+        models_out.set(rel, { hash, model, })
+        prebuilt_models.set(rel, model)
+      }
       // A cache hit means identical content under an identical rule set, so
       // the previous findings are still exactly right: reuse them instead of
       // re-running the matchers. The source is still needed for the project
@@ -363,14 +406,14 @@ fn lint_selected_impl(
           }
           if !structural_rules.is_empty() {
             project_sources.push((rel, source))
+            scanned_ids.push((rel, hash))
             disable_maps.push(
               (
                 rel,
                 parse_disable_comments(
-                  if rel.has_suffix(".mbt") {
-                    moonbit_lex(source).comments
-                  } else {
-                    source
+                  match mb_view {
+                    Some(view) => view.comments
+                    None => source
                   },
                 ),
               ),
@@ -383,28 +426,40 @@ fn lint_selected_impl(
         None => ()
       }
       let disable_map = parse_disable_comments(
-        if rel.has_suffix(".mbt") {
-          moonbit_lex(source).comments
-        } else {
-          source
+        match mb_view {
+          Some(view) => view.comments
+          None => source
         },
       )
-      let raw_lines = split_lines(source)
+      let raw_lines = if wants_raw_view {
+        split_lines(source)
+      } else {
+        ([] : Array[(Int32, String)])
+      }
       let mode = comment_mode_for(rel)
       // The code view blanks literal contents (JS/TS family); the literal view
       // keeps them for rules that opted in with `match_literals`. It is only
       // built when such a rule exists, and for `Plain`/MoonBit sources the two
       // views are identical anyway.
-      let lines = split_lines(strip_comments_code(source, mode))
-      let literal_lines = if wants_literal_view {
-        split_lines(strip_comments(source, mode))
-      } else {
+      let lines = split_lines(
+        match mb_view {
+          Some(view) => view.code
+          None => strip_comments_code(source, mode)
+        },
+      )
+      let literal_lines = if !wants_literal_view {
         lines
-      }
-      let comment_lines = if rel.has_suffix(".mbt") {
-        split_lines(moonbit_code_and_comments(moonbit_lex(source)))
       } else {
-        raw_lines
+        match mb_view {
+          // MoonBit literal contents are already blanked in the code view, so
+          // the literal view is the same view.
+          Some(_) => lines
+          None => split_lines(strip_comments(source, mode))
+        }
+      }
+      let comment_lines = match mb_view {
+        Some(view) => split_lines(moonbit_code_and_comments(view))
+        None => raw_lines
       }
       // Per-file findings are collected separately so they can be stored in
       // the cache; the project pass appends its own afterwards.
@@ -431,6 +486,7 @@ fn lint_selected_impl(
       if !structural_rules.is_empty() {
         project_sources.push((rel, source))
         disable_maps.push((rel, disable_map))
+        scanned_ids.push((rel, hash))
       }
       scanned += 1
     } catch {
@@ -440,47 +496,134 @@ fn lint_selected_impl(
       }
     }
   }
-  let mut context_scanned = 0
-  let mut context_failed = 0
-  if structural_rules.any(rule => needs_project_context(rule.check)) {
-    let (count, failures, context_diagnostics) = add_project_context(
-      root, project_sources, frozen,
-    )
-    context_scanned = count
-    context_failed = failures
-    for diagnostic in context_diagnostics {
-      diagnostics.push(diagnostic)
+  // Persist the models parsed this run. Files outside this run's selection
+  // keep no entry: a later full scan re-parses them rather than trusting a
+  // model whose source it has not seen. Files inside the selection that were
+  // not re-parsed (a line-only preset, a skipped file) keep their previous
+  // model, which is safe because every reuse is hash-checked.
+  for rel, entry in models_out {
+    updated.put_model(rel, entry.hash, entry.model)
+  }
+  for rel in selected {
+    if !models_out.contains(rel) {
+      match previous_models.get(rel) {
+        Some(entry) => updated.models.set(rel, entry)
+        None => ()
+      }
     }
   }
-  // Project pass: one index over every scanned file, then every structural
-  // rule. Findings honour inline disables like per-file findings do.
-  if !structural_rules.is_empty() {
-    // The JS/TS index does not need to parse MoonBit files; handing them to
-    // the JS parser would only produce empty models. MoonBit rules get the
-    // raw sources and their own declaration scanner.
-    let js_sources = project_sources.filter(pair => {
-      let (rel, _) = pair
-      !rel.has_suffix(".mbt")
-    })
-    let index = build_index_with_aliases(js_sources, aliases)
-    let structural_findings = if context_failed == 0 {
-      analyze(index, structural_rules)
-    } else {
-      []
-    }
-    for finding in analyze_moonbit(project_sources, structural_rules) {
-      structural_findings.push(finding)
-    }
-    for finding in structural_findings {
-      if !selected.contains(finding.file) {
-        continue
+  let mut context_scanned = 0
+  let mut context_failed = 0
+  // The project pass only ever reports findings for selected files, so with an
+  // empty selection it cannot produce anything. Reading the whole tree as
+  // dependency context merely to discard every result would be wasted work (and
+  // would turn an unrelated broken file into an operational failure), so skip
+  // both the context read and the analysis.
+  let project_pass = !structural_rules.is_empty() && !selected.is_empty()
+  // A full-tree scan whose files were all read and all in scope has no
+  // dependency context of its own: the verdict is a pure function of the
+  // rule set and the file contents. That makes the whole structural pass
+  // cacheable, not just its per-file pieces.
+  let cacheable_pass = project_pass &&
+    mode is Tree &&
+    out_of_scope == 0 &&
+    failed == 0
+  let pass_key : String? = if cacheable_pass {
+    Some(structural_key(fingerprint, scanned_ids))
+  } else {
+    None
+  }
+  // Reuse the previous verdict when the key matches exactly.
+  let reused_pass : Array[Finding]? = match (pass_key, cache) {
+    (Some(key), Some(previous)) =>
+      match previous.get_structural() {
+        Some(entry) =>
+          if entry.key == key {
+            Some(entry.findings)
+          } else {
+            None
+          }
+        None => None
       }
-      let suppressed = disable_maps.any(pair => {
-        let (rel, map) = pair
-        rel == finding.file && map.is_disabled(finding.rule_id, finding.line)
-      })
-      if !suppressed {
+    _ => None
+  }
+  match reused_pass {
+    Some(cached) => {
+      // The cached findings carry no snippets: they are re-derived from the
+      // sources that were just scanned.
+      for finding in rehydrate_snippets(cached, project_sources) {
         findings.push(finding)
+      }
+      // Keep the verdict in the cache: a reused run must leave the cache in
+      // the same state as a computing run, or the next run would recompute.
+      match pass_key {
+        Some(key) => updated.put_structural(key, cached)
+        None => ()
+      }
+    }
+    None => {
+      if project_pass &&
+        structural_rules.any(rule => needs_project_context(rule.check)) {
+        let (count, failures, context_diagnostics) = add_project_context(
+          root, project_sources, frozen,
+        )
+        context_scanned = count
+        context_failed = failures
+        for diagnostic in context_diagnostics {
+          diagnostics.push(diagnostic)
+        }
+      }
+      // Project pass: one index over every scanned file, then every structural
+      // rule. Findings honour inline disables like per-file findings do.
+      if project_pass {
+        // The JS/TS index does not need to parse MoonBit files; handing them to
+        // the JS parser would only produce empty models. MoonBit rules get the
+        // raw sources and their own declaration scanner.
+        let js_sources = project_sources.filter(pair => {
+          let (rel, _) = pair
+          !rel.has_suffix(".mbt")
+        })
+        let index = build_index_from_models(
+          js_sources, aliases, prebuilt_models,
+        )
+        let structural_findings = if context_failed == 0 {
+          analyze(index, structural_rules)
+        } else {
+          []
+        }
+        for finding in analyze_moonbit(project_sources, structural_rules) {
+          structural_findings.push(finding)
+        }
+        let reported : Array[Finding] = []
+        for finding in structural_findings {
+          if !selected.contains(finding.file) {
+            continue
+          }
+          let suppressed = disable_maps.any(pair => {
+            let (rel, map) = pair
+            rel == finding.file &&
+            map.is_disabled(finding.rule_id, finding.line)
+          })
+          if !suppressed {
+            reported.push(finding)
+          }
+        }
+        for finding in reported {
+          findings.push(finding)
+        }
+        // Store the verdict for the next run. The snippets are dropped: one
+        // minified line can be larger than the whole cache, and the line is
+        // re-derived from the scanned source.
+        match pass_key {
+          Some(key) =>
+            if context_failed == 0 {
+              updated.put_structural(
+                key,
+                reported.map(finding => { ..finding, snippet: "", }),
+              )
+            }
+          None => ()
+        }
       }
     }
   }
@@ -512,6 +655,45 @@ fn lint_selected_impl(
     skipped_files,
   }
   (result, updated)
+}
+
+///|
+/// Fill in the snippets of cached structural findings from the scanned
+/// sources. The cache stores findings without snippets (a minified one-line
+/// file can make a single snippet larger than the whole cache), and the line
+/// is already in memory because the file was just scanned.
+fn rehydrate_snippets(
+  findings : Array[Finding],
+  sources : Array[(String, String)],
+) -> Array[Finding] {
+  let source_by_file : Map[String, String] = Map([])
+  for pair in sources {
+    let (rel, source) = pair
+    source_by_file.set(rel, source)
+  }
+  let lines_by_file : Map[String, Array[String]] = Map([])
+  let out : Array[Finding] = []
+  for finding in findings {
+    let lines = match lines_by_file.get(finding.file) {
+      Some(existing) => existing
+      None => {
+        let lines = match source_by_file.get(finding.file) {
+          Some(source) => split_lines(source).map(pair => pair.1)
+          None => ([] : Array[String])
+        }
+        lines_by_file.set(finding.file, lines)
+        lines
+      }
+    }
+    // The snippet is the trimmed raw line, exactly as a fresh scan reports it.
+    let snippet = if finding.line >= 1 && finding.line <= lines.length() {
+      lines[finding.line - 1].trim().to_owned()
+    } else {
+      ""
+    }
+    out.push({ ..finding, snippet, })
+  }
+  out
 }
 
 ///|
@@ -641,11 +823,14 @@ pub fn lint_file(
             ),
           )
         }
-      NoDuplicateLines => {
+      NoDuplicateLines(min_len) => {
         let seen : Set[String] = Set([])
         for (lineno, text) in lines {
           let trimmed = text.trim().to_owned()
-          if trimmed != "" {
+          // Short structural lines (`}`, `</view>`, `/**`) repeat in every
+          // file by construction and say nothing about duplication; only
+          // substantive lines are compared. Empty lines never count.
+          if trimmed != "" && trimmed.length() >= min_len {
             if seen.contains(trimmed) {
               findings.push(
                 file_finding(fr, rel, lineno, "duplicate line: \{trimmed}"),

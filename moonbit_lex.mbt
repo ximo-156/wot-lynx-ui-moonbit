@@ -230,7 +230,14 @@ fn moonbit_code_and_comments(view : MoonbitLexView) -> String {
 /// Reject incomplete lexical input instead of counting it as a clean scan.
 /// This checks lexical coverage only, not MoonBit types or the full grammar.
 pub fn validate_moonbit_source(source : String) -> Unit raise {
-  let view = moonbit_lex(source)
+  validate_moonbit_view(moonbit_lex(source))
+}
+
+///|
+/// Validation over an already-computed view, so a caller that needs the views
+/// anyway (the scan engine, the declaration scanner) lexes the file once
+/// instead of once per consumer.
+fn validate_moonbit_view(view : MoonbitLexView) -> Unit raise {
   if !view.issues.is_empty() {
     let (line, message) = view.issues[0]
     raise Failure(

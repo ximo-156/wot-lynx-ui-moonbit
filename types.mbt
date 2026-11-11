@@ -248,7 +248,10 @@ pub enum FileCheck {
   /// File must end with a newline.
   FinalNewline
   /// No duplicate lines in the file.
-  NoDuplicateLines
+  /// No duplicate lines in the file. The payload is the minimum trimmed line
+  /// length a line must have to count: repeated structural lines such as `}`,
+  /// `</view>`, `/**` or `return` would otherwise flood a normal project.
+  NoDuplicateLines(Int32)
   /// File name (without extension) must follow a naming convention.
   FileNaming(NamingStyle)
   /// File must not exceed N bytes.

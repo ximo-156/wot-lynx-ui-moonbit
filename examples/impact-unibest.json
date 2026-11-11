@@ -1,0 +1,8 @@
+{
+  "version": 1,
+  "include": ["src/**", "test/**"],
+  "exclude": ["src/libs/**", "src/uni_modules/**", "src/wxcomponents/**", "**/*.min.js"],
+  "tests": ["test/**/*.spec.ts", "test/**/*.test.ts"],
+  "aliases": {"@": "src"},
+  "file_readers": ["readSource"]
+}
