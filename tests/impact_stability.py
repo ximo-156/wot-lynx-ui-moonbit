@@ -164,7 +164,8 @@ class ImpactStability(unittest.TestCase):
         pool: list[str] = []
         for base, dirs, names in os.walk(root):
             dirs[:] = [d for d in dirs if d not in {
-                ".git", "node_modules", "dist", "_build", "coverage",
+                ".git", "node_modules", ".pnpm-store", "dist", "target", "_build",
+                ".mooncakes", "coverage", ".rspeedy", ".vitepress", ".preview",
             }]
             for name in names:
                 rel = os.path.relpath(os.path.join(base, name), root)
@@ -191,7 +192,8 @@ def main() -> int:
     parser.add_argument("--samples", type=int, default=60)
     args = parser.parse_args()
     global BINARY, PROJECT, CONFIG, SAMPLES
-    BINARY, PROJECT, CONFIG, SAMPLES = args.binary, args.project, args.config, args.samples
+    BINARY, PROJECT, SAMPLES = args.binary, args.project, args.samples
+    CONFIG = args.config.resolve() if args.config is not None else None
     if PROJECT is None:
         print("impact_stability: no --project given; skipping (read-only audit)")
         return 0

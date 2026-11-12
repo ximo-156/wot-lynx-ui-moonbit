@@ -307,6 +307,35 @@ fn impact_resolve_reference(
 }
 
 ///|
+/// Lexicographic order for paths and path-shaped keys. MoonBit's String
+/// comparison is length-first: it is a valid total order and keeps output
+/// deterministic, but `mts/…` sorting before `component/…` surprises readers.
+/// Every user-visible MoonImpact array is ordered the way a directory
+/// listing reads instead.
+fn impact_path_order(a : String, b : String) -> Int {
+  let left = a.to_array()
+  let right = b.to_array()
+  let mut i = 0
+  while i < left.length() && i < right.length() {
+    if left[i] != right[i] {
+      return if left[i].to_int() < right[i].to_int() {
+        -1
+      } else {
+        1
+      }
+    }
+    i += 1
+  }
+  if left.length() == right.length() {
+    0
+  } else if left.length() < right.length() {
+    -1
+  } else {
+    1
+  }
+}
+
+///|
 fn impact_edge_key(edge : ImpactEdge) -> String {
   "\{edge.dependency}\u{0}\{edge.dependent}\u{0}\{edge.kind}\u{0}\{edge.line}\u{0}\{edge.column}"
 }
@@ -322,7 +351,7 @@ fn impact_unique_paths(paths : Array[String]) -> Array[String] raise {
       result.push(clean)
     }
   }
-  result.sort()
+  result.sort_by(impact_path_order)
   result
 }
 
@@ -358,7 +387,7 @@ pub fn build_impact_plan(
       impact_in_scope(config, path) && impact_matches(config.tests, path)
     })
     .to_array()
-  inventory.sort()
+  inventory.sort_by(impact_path_order)
   let issues = observations.copy()
   // Explicit dependencies are a user contract: each entry asserts that the
   // dependent reads the dependency. A dependency may be a glob, expanded
@@ -489,7 +518,7 @@ pub fn build_impact_plan(
       })
     }
   }
-  raw_edges.sort_by((a, b) => impact_edge_key(a).compare(impact_edge_key(b)))
+  raw_edges.sort_by((a, b) => impact_path_order(impact_edge_key(a), impact_edge_key(b)))
   let edges : Array[ImpactEdge] = []
   let edge_keys : Set[String] = Set([])
   let reverse : Map[String, Array[ImpactEdge]] = Map([])
@@ -524,7 +553,7 @@ pub fn build_impact_plan(
     }
   }
   let affected = origins.keys().to_array()
-  affected.sort()
+  affected.sort_by(impact_path_order)
   let traces : Array[ImpactTrace] = []
   let related : Array[String] = []
   for test_file in inventory {
@@ -581,13 +610,13 @@ pub fn build_impact_plan(
     }
   }
   unique_issues.sort_by((a, b) => {
-    let order = a.file.compare(b.file)
+    let order = impact_path_order(a.file, b.file)
     if order != 0 {
       order
     } else if a.line != b.line {
       a.line.compare(b.line)
     } else {
-      a.reason.compare(b.reason)
+      impact_path_order(a.reason, b.reason)
     }
   })
   // A declared file's uncertainties are covered by its explicit contract.
@@ -721,7 +750,7 @@ pub fn impact_plan(
   let sources : Array[(String, String)] = []
   let issues = observations.copy()
   impact_collect_paths(absolute, "", config, paths, issues)
-  paths.sort()
+  paths.sort_by(impact_path_order)
   for path in paths {
     if !impact_in_scope(config, path) ||
       (!impact_source_extension(path) && !impact_any_style_extension(path)) {
