@@ -76,15 +76,27 @@ test "impact refuses dynamic concatenated templated and escaped module paths" {
 }
 
 ///|
-test "impact import meta glob is uncertainty not an ordinary import" {
+test "impact import meta glob literal patterns become glob references" {
   let source =
     #|const pages = import.meta.glob('./pages/*.vue')
     #|const eager = import.meta.globEager('./other/*.ts')
   let (references, issues) = impact_extract_references("a.ts", source, [])
+  assert_eq(references.length(), 2)
+  assert_eq(issues.length(), 0)
+  assert_eq(references[0].specifier, "./pages/*.vue")
+  assert_eq(references[0].kind, "glob-import")
+  assert_eq(references[1].specifier, "./other/*.ts")
+  assert_eq(references[1].kind, "glob-import")
+}
+
+///|
+test "impact dynamic import meta glob patterns stay inconclusive" {
+  let source =
+    #|const pages = import.meta.glob(pattern)
+  let (references, issues) = impact_extract_references("a.ts", source, [])
   assert_eq(references.length(), 0)
-  assert_eq(issues.length(), 2)
+  assert_eq(issues.length(), 1)
   assert_eq(issues[0].file, "a.ts")
-  assert_eq(issues[0].line, 1)
   assert_true(issues[0].reason.contains("glob"))
 }
 

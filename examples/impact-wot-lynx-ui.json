@@ -1,0 +1,290 @@
+{
+  "version": 1,
+  "include": [
+    "packages/**"
+  ],
+  "exclude": [
+    "**/*.min.js",
+    "packages/ui/src/styles/theme/presets/**"
+  ],
+  "tests": [
+    "packages/**/test/**/*.test.ts"
+  ],
+  "aliases": {
+    "@wot-lynx/core/common": "packages/core/src/common",
+    "@wot-lynx/core/composables": "packages/core/src/composables",
+    "@wot-lynx/core/locale": "packages/core/src/locale",
+    "@wot-lynx/core/icons": "packages/core/src/icons",
+    "@wot-lynx/primitives": "packages/primitives/src",
+    "@wot-lynx/ui-display": "packages/ui-display/src",
+    "@wot-lynx/ui-feedback": "packages/ui-feedback/src",
+    "@wot-lynx/ui-form": "packages/ui-form/src",
+    "@wot-lynx/ui-layout": "packages/ui-layout/src",
+    "@wot-lynx/ui-nav": "packages/ui-nav/src",
+    "@wot-lynx/ui-picker": "packages/ui-picker/src",
+    "wot-lynx-ui": "packages/ui/src/index",
+    "wot-lynx-ui/theme": "packages/ui/src/styles/theme/index.scss",
+    "wot-lynx-ui/plugin": "packages/ui/plugin/index.js"
+  },
+  "file_readers": [],
+  "dependencies": [
+    {
+      "dependent": "packages/ui/test/helpers/component-roots.ts",
+      "dependency": "packages/primitives/src/**"
+    },
+    {
+      "dependent": "packages/ui/test/helpers/component-roots.ts",
+      "dependency": "packages/ui-layout/src/**"
+    },
+    {
+      "dependent": "packages/ui/test/helpers/component-roots.ts",
+      "dependency": "packages/ui-display/src/**"
+    },
+    {
+      "dependent": "packages/ui/test/helpers/component-roots.ts",
+      "dependency": "packages/ui-nav/src/**"
+    },
+    {
+      "dependent": "packages/ui/test/helpers/component-roots.ts",
+      "dependency": "packages/ui-form/src/**"
+    },
+    {
+      "dependent": "packages/ui/test/helpers/component-roots.ts",
+      "dependency": "packages/ui-feedback/src/**"
+    },
+    {
+      "dependent": "packages/ui/test/helpers/component-roots.ts",
+      "dependency": "packages/ui-picker/src/**"
+    },
+    {
+      "dependent": "packages/ui/test/helpers/component-roots.ts",
+      "dependency": "packages/ui/src/components/**"
+    },
+    {
+      "dependent": "packages/ui/test/unit/side-effects.test.ts",
+      "dependency": "packages/primitives/src/**"
+    },
+    {
+      "dependent": "packages/ui/test/unit/side-effects.test.ts",
+      "dependency": "packages/ui-layout/src/**"
+    },
+    {
+      "dependent": "packages/ui/test/unit/side-effects.test.ts",
+      "dependency": "packages/ui-display/src/**"
+    },
+    {
+      "dependent": "packages/ui/test/unit/side-effects.test.ts",
+      "dependency": "packages/ui-nav/src/**"
+    },
+    {
+      "dependent": "packages/ui/test/unit/side-effects.test.ts",
+      "dependency": "packages/ui-form/src/**"
+    },
+    {
+      "dependent": "packages/ui/test/unit/side-effects.test.ts",
+      "dependency": "packages/ui-feedback/src/**"
+    },
+    {
+      "dependent": "packages/ui/test/unit/side-effects.test.ts",
+      "dependency": "packages/ui-picker/src/**"
+    },
+    {
+      "dependent": "packages/ui/test/unit/side-effects.test.ts",
+      "dependency": "packages/*/package.json"
+    },
+    {
+      "dependent": "packages/ui/test/unit/no-main-thread-script.test.ts",
+      "dependency": "packages/**"
+    },
+    {
+      "dependent": "packages/ui/test/unit/generated-css-device-guards.test.ts",
+      "dependency": "packages/ui/src/**"
+    },
+    {
+      "dependent": "packages/ui/test/unit/meta-generated.test.ts",
+      "dependency": "packages/ui/meta.json"
+    },
+    {
+      "dependent": "packages/ui/test/unit/api-diff.test.ts",
+      "dependency": "scripts/api-diff.mjs"
+    },
+    {
+      "dependent": "packages/ui/test/unit/api-diff.test.ts",
+      "dependency": "packages/ui/test/fixtures/**"
+    },
+    {
+      "dependent": "packages/ui/test/unit/codemod.test.ts",
+      "dependency": "scripts/codemod.mjs"
+    },
+    {
+      "dependent": "packages/ui/test/unit/visual-diff.test.ts",
+      "dependency": "scripts/lib/image-diff.mjs"
+    },
+    {
+      "dependent": "packages/ui/test/unit/png-codec.test.ts",
+      "dependency": "scripts/lib/png.mjs"
+    },
+    {
+      "dependent": "packages/ui/test/unit/project-coverage.test.ts",
+      "dependency": "scripts/test-shard.mjs"
+    },
+    {
+      "dependent": "packages/ui/test/unit/project-coverage.test.ts",
+      "dependency": "packages/ui/test/unit/**"
+    },
+    {
+      "dependent": "packages/ui/test/unit/web-font-plugin.test.ts",
+      "dependency": "packages/core/src/icons/fonts/**"
+    },
+    {
+      "dependent": "packages/ui/test/native-first/form-native-first.test.ts",
+      "dependency": "pnpm-workspace.yaml"
+    },
+    {
+      "dependent": "packages/ui/test/regression/demo-workload.test.ts",
+      "dependency": "packages/demo/**"
+    },
+    {
+      "dependent": "packages/ui/test/regression/host-module-scope.test.ts",
+      "dependency": "packages/core/src/common/**"
+    },
+    {
+      "dependent": "packages/ui/test/regression/upload-evoke-button.test.ts",
+      "dependency": "pnpm-lock.yaml"
+    },
+    {
+      "dependent": "packages/ui/test/regression/upload-evoke-button.test.ts",
+      "dependency": "packages/demo/**"
+    },
+    {
+      "dependent": "packages/ui/test/regression/upload-evoke-button.test.ts",
+      "dependency": "packages/demo/package.json"
+    },
+    {
+      "dependent": "packages/ui/test/regression/popover-resize-native-layout.test.ts",
+      "dependency": "pnpm-lock.yaml"
+    },
+    {
+      "dependent": "packages/ui/test/regression/popover-resize-native-layout.test.ts",
+      "dependency": "packages/demo/**"
+    },
+    {
+      "dependent": "packages/ui/test/regression/popover-resize-native-layout.test.ts",
+      "dependency": "packages/demo/package.json"
+    },
+    {
+      "dependent": "packages/ui/test/component/native-tag-whitelist.test.ts",
+      "dependency": "packages/ui/src/**"
+    },
+    {
+      "dependent": "packages/ui/test/component/native-tag-whitelist.test.ts",
+      "dependency": "packages/demo/**"
+    },
+    {
+      "dependent": "packages/ui/test/component/native-tag-whitelist.test.ts",
+      "dependency": "docs/.vitepress/theme/demos/**"
+    },
+    {
+      "dependent": "packages/ui/test/parity/wot-parity-props.test.ts",
+      "dependency": ".wot-ref/**"
+    },
+    {
+      "dependent": "packages/ui/test/parity/wot-parity-nav-controls.test.ts",
+      "dependency": ".wot-ref/**"
+    },
+    {
+      "dependent": "packages/ui/test/parity/wot-parity-layout-additional.test.ts",
+      "dependency": ".wot-ref/**"
+    },
+    {
+      "dependent": "packages/ui/test/parity/wot-parity-scroll-additional.test.ts",
+      "dependency": ".wot-ref/**"
+    },
+    {
+      "dependent": "packages/ui/test/parity/wot-parity-icon-grid-pagination-additional.test.ts",
+      "dependency": ".wot-ref/**"
+    },
+    {
+      "dependent": "packages/ui/test/parity/wot-parity-props.test.ts",
+      "dependency": "scripts/check-wot-props.mjs"
+    },
+    {
+      "dependent": "packages/ui/test/parity/wot-parity-props.test.ts",
+      "dependency": "packages/ui/src/**"
+    },
+    {
+      "dependent": "packages/ui/test/parity/wot-parity-scroll-additional.test.ts",
+      "dependency": "pnpm-lock.yaml"
+    },
+    {
+      "dependent": "packages/ui/plugin/auto-import-loader.cjs",
+      "dependency": "packages/core/src/icons/fonts/**"
+    },
+    {
+      "dependent": "packages/ui/plugin/web-fonts.js",
+      "dependency": "packages/core/src/icons/fonts/**"
+    },
+    {
+      "dependent": "scripts/api-diff.mjs",
+      "dependency": "packages/**"
+    },
+    {
+      "dependent": "scripts/api-diff.mjs",
+      "dependency": "docs/architecture/packages.json"
+    },
+    {
+      "dependent": "scripts/codemod.mjs",
+      "dependency": "packages/**"
+    },
+    {
+      "dependent": "scripts/check-wot-props.mjs",
+      "dependency": "packages/**"
+    },
+    {
+      "dependent": "scripts/test-shard.mjs",
+      "dependency": "packages/ui/test/**"
+    },
+    {
+      "dependent": "scripts/lib/image-diff.mjs",
+      "dependency": "packages/ui/test/**"
+    }
+  ],
+  "style_load_paths": [
+    "packages/core/src",
+    "packages/primitives/src",
+    "packages/ui-layout/src",
+    "packages/ui-display/src",
+    "packages/ui-nav/src",
+    "packages/ui-form/src",
+    "packages/ui-feedback/src",
+    "packages/ui-picker/src",
+    "packages/ui/src/components"
+  ],
+  "global_inputs": [
+    "package.json",
+    "pnpm-lock.yaml",
+    "pnpm-workspace.yaml",
+    "**/tsconfig*.json",
+    "**/vite.config.*",
+    "**/vitest.config.*",
+    "**/vitest.workspace.*",
+    "**/setup.*",
+    "**/setupTests.*",
+    "**/.env*",
+    "packages/ui/test/mts-worklet-shim.ts",
+    "packages/ui/test/helpers/**"
+  ],
+  "max_source_bytes": 2000000,
+  "skip_dirs": [
+    ".git",
+    "node_modules",
+    "dist",
+    "target",
+    "_build",
+    ".mooncakes",
+    "coverage",
+    ".rspeedy",
+    ".preview"
+  ],
+  "runner_dir": "packages/ui"
+}

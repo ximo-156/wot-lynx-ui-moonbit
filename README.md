@@ -1,6 +1,6 @@
 # MoonImpact / moonlint
 
-## MoonImpact — change-impact and regression-test planning (MVP)
+## MoonImpact — change-impact and regression-test planning
 
 The new `cmd/impact` entry turns changed files into an **explainable test plan**
 for Vue/TypeScript projects: static module dependencies, bounded file-read
@@ -21,9 +21,11 @@ invokes the local Vitest installation through fixed process arguments.
 Read the [MoonImpact guide](<docs/moonimpact.md>) and the
 [synthetic demo](<examples/impact-demo/README.md>) for supported dependency
 forms, limitations, Git input, JSON/HTML reports and execution safety.
-See the [local verification record](<docs/moonimpact-verification.md>) for
-real Vitest fault-injection evidence and the current full-fallback result on
-unibest; selective whole-project CI reduction is not claimed.
+See the [real-project measurement](<docs/moonimpact.md#real-project-measurement>)
+for the public wot-lynx-ui evaluation: 71 of 135 test files selected for a
+core-utility change, a 44% wall-clock reduction against the full suite, and an
+injected off-by-one caught by the selected subset. Selective whole-project CI
+reduction is a per-project property, not a guarantee.
 
 This is substantial new functionality built on the existing project. The
 original `cmd/main` moonlint CLI, module identity, license notices and history
@@ -993,6 +995,17 @@ moonlint/
 ├── config.mbt        — JSON config parsing, validation, and extends
 ├── presets.mbt       — built-in presets (common, react, vue, angular, svelte,
 │                       next, solid, astro, nuxt, file, imports, moonbit)
+├── impact_types.mbt  — MoonImpact plan/config/edge/issue/trace types
+├── impact_config.mbt — strict inert MoonImpact JSON configuration
+├── impact_dependencies.mbt — JS/TS/Vue reference extraction: imports, file
+│                       reads, directory reads, existence checks, glob imports
+├── impact_styles.mbt — CSS/SCSS reference scanner (imports, Sass modules, urls)
+├── impact_style_resolution.mbt — stylesheet candidate resolution, load paths
+├── impact_plan.mbt   — plan construction: membership, reference resolution,
+│                       reverse BFS, strategies, declaration contracts
+├── impact_report.mbt — text/JSON/script-free HTML plan rendering
+├── impact_native.mbt — native bridge for Git input, Vitest execution, reports
+├── impact_native.c   — process-group execution, atomic create-only report write
 ├── presets/          — standalone JSON copies of each preset for customization
 ├── disable.mbt       — inline disable comment parsing (// moonlint-disable)
 ├── baseline.mbt      — hash-based finding exemption
@@ -1002,7 +1015,8 @@ moonlint/
 ├── report_sarif.mbt  — SARIF 2.1.0 report
 ├── tests/            — dependency-free CLI integration tests
 ├── examples/         — TS and MoonBit demos with hand-verified reports
-└── cmd/main/         — CLI entry point
+├── cmd/main/         — moonlint CLI entry point
+└── cmd/impact/       — MoonImpact CLI entry point
 ```
 
 The MoonBit front end is a declaration scanner: it blanks comments and
@@ -1025,6 +1039,9 @@ moon test --target native
 moon build --target native
 python3 tests/integration.py \
   --binary "$PWD/_build/native/debug/build/cmd/main/main.exe" --phase all
+python3 tests/impact_integration.py \
+  --binary "$PWD/_build/native/debug/build/cmd/impact/impact.exe"
+python3 tests/impact_native.py
 moon info && moon fmt
 # Review generated interface/source diffs, then rerun affected gates.
 ```
@@ -1033,8 +1050,9 @@ moon info && moon fmt
 examples. Its installer fetches latest, **not a pinned toolchain**; versions are
 recorded and interface/format drift is checked. Remote CI was not verified in
 this session. Current local evidence and known limits are in
-[verification notes](<docs/verification.md>); historical wasm failures are not
-claimed fixed. The JS/TS legacy line matcher still sees literal text in two
+[verification notes](<docs/verification.md>) for the moonlint CLI and in
+[MoonImpact verification](<docs/moonimpact-round3-verification.md>) for the
+impact planner; historical wasm failures are not claimed fixed. The JS/TS legacy line matcher still sees literal text in two
 known expected-failure cases; they are not counted as repaired behavior.
 
 `moonlint .` uses [the repository config](<moonlint.json>), which deliberately

@@ -546,6 +546,28 @@ fn impact_dep_vue_code(scan : ImpactDepScan, source : String) -> String {
       i += 1
       continue
     }
+    // Block and line comments between top-level blocks carry no dependency.
+    // Real single-file components open with a file-level /* */ header before
+    // the first block, so this text is skipped rather than reported per line.
+    if impact_dep_starts(chars, i, "/*") {
+      match vue_find(chars, "*/", i + 2) {
+        Some(end) => i = end + 2
+        None => {
+          let (line, _) = impact_dep_position(chars, i)
+          impact_dep_issue(scan, line, "unterminated Vue block comment")
+          break
+        }
+      }
+      continue
+    }
+    if impact_dep_starts(chars, i, "//") {
+      let mut end = i + 2
+      while end < chars.length() && !is_line_break(chars[end]) {
+        end += 1
+      }
+      i = end
+      continue
+    }
     if impact_dep_starts(chars, i, "<!--") {
       match vue_find(chars, "-->", i + 4) {
         Some(end) => i = end + 3
@@ -682,9 +704,20 @@ fn impact_dep_path_module(source : String) -> Bool {
 ///|
 fn impact_dep_other_fs_read(name : String) -> Bool {
   [
-    "readdir", "readdirSync", "stat", "statSync", "lstat", "lstatSync", "exists",
-    "existsSync", "access", "accessSync", "open", "openSync", "createReadStream",
-    "readlink", "readlinkSync", "realpath", "realpathSync",
+    "open", "openSync", "createReadStream", "readlink", "readlinkSync", "realpath",
+    "realpathSync",
+  ].contains(name)
+}
+
+///|
+fn impact_dep_fs_dir(name : String) -> Bool {
+  name == "readdir" || name == "readdirSync"
+}
+
+///|
+fn impact_dep_fs_exists(name : String) -> Bool {
+  [
+    "exists", "existsSync", "stat", "statSync", "lstat", "lstatSync", "access", "accessSync",
   ].contains(name)
 }
 
@@ -701,6 +734,12 @@ fn impact_dep_import_role(
     }
     if imported_name == "readFileSync" || imported_name == "readFile" {
       return Some("fs-read")
+    }
+    if impact_dep_fs_dir(imported_name) {
+      return Some("fs-dir")
+    }
+    if impact_dep_fs_exists(imported_name) {
+      return Some("fs-exists")
     }
     if impact_dep_other_fs_read(imported_name) {
       return Some("fs-unsupported")
@@ -1149,16 +1188,8 @@ fn impact_dep_module_calls(
       continue
     }
     if token.text == "import" && impact_dep_at(tokens, i + 1, ".") {
-      if impact_dep_at(tokens, i + 2, "meta") &&
-        impact_dep_at(tokens, i + 3, ".") &&
-        i + 4 < tokens.length() &&
-        tokens[i + 4].text.has_prefix("glob") {
-        impact_dep_issue(
-          scan,
-          token.line,
-          "import.meta.glob requires full fallback",
-        )
-      }
+      // import.meta.glob is handled by impact_dep_glob_imports, which turns a
+      // literal pattern into a glob-import reference.
       continue
     }
     if token.text != "import" && token.text != "require" {
@@ -1372,6 +1403,10 @@ fn impact_read_callee(
   } else if role == "fs-object" &&
     ["readFileSync", "readFile"].contains(property_name) {
     "fs-read"
+  } else if role == "fs-object" && impact_dep_fs_dir(property_name) {
+    "fs-dir"
+  } else if role == "fs-object" && impact_dep_fs_exists(property_name) {
+    "fs-exists"
   } else if role == "url-object" {
     match property_name {
       "fileURLToPath" => "url-to-path"
@@ -1672,10 +1707,14 @@ fn impact_read_eval(
 ///|
 /// Validate containment symbolically using the source's known relative path.
 /// Ordinary fs strings retain literal ?/#/%; only URL construction rejects them.
+/// The kind prefix selects the reference family: "read" for file contents,
+/// "read-dir" for a directory's current entries, "exists" for an existence
+/// check on a path that may not exist yet.
 fn impact_read_emit(
   scan : ImpactDepScan,
   value : ImpactReadValue,
   token : Token,
+  kind_prefix : String,
 ) -> Unit {
   let path = value.path
   let chars = path.to_array()
@@ -1715,40 +1754,41 @@ fn impact_read_emit(
     )
     return
   }
-  impact_dep_reference(
-    scan,
-    path,
-    if value.base == "file" {
-      "read-file"
-    } else {
-      "read-root"
-    },
-    token.line,
-    token.column,
-  )
+  let kind = kind_prefix +
+    (if value.base == "file" { "-file" } else { "-root" })
+  impact_dep_reference(scan, path, kind, token.line, token.column)
 }
 
 ///|
-/// Find the opening paren of a supported FS reader, or report a computed/
-/// escaping namespace access. Non-reading FS methods are intentionally ignored.
+/// Find the opening paren of a supported FS reader and its effective role, or
+/// report a computed/escaping namespace access. Non-reading FS methods are
+/// intentionally ignored.
 fn impact_dep_fs_call(
   scan : ImpactDepScan,
   tokens : Array[Token],
   index : Int32,
   role : String,
-) -> Int32? {
+) -> (Int32, String)? {
   let token = tokens[index]
-  if role == "fs-read" || role == "fs-unsupported" {
+  if role == "fs-read" || role == "fs-dir" || role == "fs-exists" {
     if impact_dep_at(tokens, index + 1, "(") {
-      if role == "fs-unsupported" {
-        impact_dep_issue(
-          scan,
-          token.line,
-          "filesystem reader is unsupported: " + token.text,
-        )
-        return None
-      }
-      return Some(index + 1)
+      return Some((index + 1, role))
+    }
+    impact_dep_issue(
+      scan,
+      token.line,
+      "filesystem reader escapes direct-call analysis: " + token.text,
+    )
+    return None
+  }
+  if role == "fs-unsupported" {
+    if impact_dep_at(tokens, index + 1, "(") {
+      impact_dep_issue(
+        scan,
+        token.line,
+        "filesystem reader is unsupported: " + token.text,
+      )
+      return None
     }
     impact_dep_issue(
       scan,
@@ -1777,23 +1817,34 @@ fn impact_dep_fs_call(
     return None
   }
   let name = tokens[property_index].text
-  if name == "readFile" || name == "readFileSync" {
-    if impact_dep_at(tokens, property_index + 1, "(") {
-      return Some(property_index + 1)
-    }
-    impact_dep_issue(
-      scan,
-      token.line,
-      "filesystem reader is aliased, rebound or called indirectly",
-    )
-  } else if impact_dep_other_fs_read(name) &&
-    impact_dep_at(tokens, property_index + 1, "(") {
-    impact_dep_issue(
-      scan,
-      token.line,
-      "filesystem reader is unsupported: " + name,
-    )
+  let effective = if name == "readFile" || name == "readFileSync" {
+    "fs-read"
+  } else if impact_dep_fs_dir(name) {
+    "fs-dir"
+  } else if impact_dep_fs_exists(name) {
+    "fs-exists"
+  } else {
+    ""
   }
+  if effective == "" {
+    if impact_dep_other_fs_read(name) &&
+      impact_dep_at(tokens, property_index + 1, "(") {
+      impact_dep_issue(
+        scan,
+        token.line,
+        "filesystem reader is unsupported: " + name,
+      )
+    }
+    return None
+  }
+  if impact_dep_at(tokens, property_index + 1, "(") {
+    return Some((property_index + 1, effective))
+  }
+  impact_dep_issue(
+    scan,
+    token.line,
+    "filesystem reader is aliased, rebound or called indirectly: " + name,
+  )
   None
 }
 
@@ -2376,6 +2427,8 @@ fn impact_dep_file_calls(
     if role != "root-reader" &&
       role != "inferred-reader" &&
       role != "fs-read" &&
+      role != "fs-dir" &&
+      role != "fs-exists" &&
       role != "fs-object" &&
       role != "fs-unsupported" {
       continue
@@ -2394,6 +2447,7 @@ fn impact_dep_file_calls(
       )
       continue
     }
+    let mut effective = role
     let opening = if role == "root-reader" || role == "inferred-reader" {
       if !impact_dep_at(tokens, i + 1, "(") {
         impact_dep_issue(
@@ -2406,7 +2460,10 @@ fn impact_dep_file_calls(
       i + 1
     } else {
       match impact_dep_fs_call(scan, tokens, i, role) {
-        Some(opening) => opening
+        Some((opening, resolved)) => {
+          effective = resolved
+          opening
+        }
         None => continue
       }
     }
@@ -2455,7 +2512,14 @@ fn impact_dep_file_calls(
       argument
     }
     match path {
-      Some(value) => impact_read_emit(scan, value, token)
+      Some(value) =>
+        if effective == "fs-dir" {
+          impact_read_emit(scan, value, token, "read-dir")
+        } else if effective == "fs-exists" {
+          impact_read_emit(scan, value, token, "exists")
+        } else {
+          impact_read_emit(scan, value, token, "read")
+        }
       None =>
         impact_dep_issue(
           scan,
@@ -2612,6 +2676,61 @@ fn impact_extract_references(
   impact_dep_module_calls(
     scan, tokens, mates, import_mask, definitions, blocked,
   )
+  impact_dep_glob_imports(scan, tokens, mates, import_mask)
   impact_dep_file_calls(scan, env, import_mask, definitions, trusted, wrappers)
   (scan.references, scan.issues)
+}
+
+///|
+/// Vite's import.meta.glob('<literal pattern>') statically names a module set.
+/// A literal pattern becomes a glob-import reference the planner expands
+/// against current membership; a computed pattern stays an uncertainty.
+/// The legacy globEager spelling is recognized as the same construct.
+fn impact_dep_glob_imports(
+  scan : ImpactDepScan,
+  tokens : Array[Token],
+  mates : Array[Int32],
+  import_mask : Array[Bool],
+) -> Unit {
+  for i in 0..<tokens.length() {
+    if import_mask[i] ||
+      tokens[i].kind != Ident ||
+      tokens[i].text != "import" ||
+      !impact_dep_at(tokens, i + 1, ".") ||
+      !impact_dep_at(tokens, i + 2, "meta") ||
+      !impact_dep_at(tokens, i + 3, ".") ||
+      i + 4 >= tokens.length() ||
+      tokens[i + 4].kind != Ident ||
+      !tokens[i + 4].text.has_prefix("glob") ||
+      !impact_dep_at(tokens, i + 5, "(") {
+      continue
+    }
+    let args = match impact_dep_arguments(tokens, mates, i + 5) {
+      Some(args) if !args.is_empty() => args
+      _ => {
+        impact_dep_issue(
+          scan,
+          tokens[i].line,
+          "import.meta.glob requires a pattern argument",
+        )
+        continue
+      }
+    }
+    match impact_dep_one_string(tokens, (args[0].0, args[0].1)) {
+      Some(pattern) if pattern != "" && !pattern.contains("\u{0}") =>
+        impact_dep_reference(
+          scan,
+          pattern,
+          "glob-import",
+          tokens[i].line,
+          tokens[i].column,
+        )
+      _ =>
+        impact_dep_issue(
+          scan,
+          tokens[i].line,
+          "dynamic import.meta.glob pattern requires full fallback",
+        )
+    }
+  }
 }

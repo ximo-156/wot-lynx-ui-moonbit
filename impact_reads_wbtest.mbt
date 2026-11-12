@@ -396,3 +396,87 @@ test "impact reads a read-only import meta env cast is not a filesystem uncertai
   assert_eq(impact_reads_paths(unsafe_refs).length(), 0)
   assert_true(unsafe_issues.length() > 0)
 }
+
+///|
+test "impact reads static directory listings become read-dir references" {
+  let source =
+    #|import { readdirSync } from 'node:fs'
+    #|import * as fs from 'node:fs'
+    #|const entries = readdirSync('src/locales')
+    #|const nested = fs.readdirSync('src/other')
+  let (refs, issues) = impact_reads_check(source, "test/a.ts")
+  assert_eq(issues.length(), 0)
+  assert_eq(impact_reads_paths(refs), [
+    ("read-dir-root", "src/locales"),
+    ("read-dir-root", "src/other"),
+  ])
+}
+
+///|
+test "impact reads static existence checks become exists references" {
+  let source =
+    #|import { existsSync } from 'node:fs'
+    #|import * as fs from 'node:fs'
+    #|if (existsSync('config/optional.json')) console.log('present')
+    #|if (fs.existsSync('config/other.json')) console.log('present')
+  let (refs, issues) = impact_reads_check(source, "test/a.ts")
+  assert_eq(issues.length(), 0)
+  assert_eq(impact_reads_paths(refs), [
+    ("exists-root", "config/optional.json"),
+    ("exists-root", "config/other.json"),
+  ])
+}
+
+///|
+test "impact reads dynamic directory and existence arguments stay inconclusive" {
+  let source =
+    #|import { readdirSync, existsSync } from 'node:fs'
+    #|readdirSync(dir)
+    #|existsSync(join(root, name))
+  let (refs, issues) = impact_reads_check(source, "test/a.ts")
+  assert_eq(impact_reads_paths(refs).length(), 0)
+  assert_eq(issues.length(), 2)
+  assert_true(issues[0].reason.contains("dynamic"))
+}
+
+///|
+test "impact reads literal import meta glob patterns become glob references" {
+  let source =
+    #|const pages = import.meta.glob('./pages/*.vue')
+    #|const eager = import.meta.globEager('./other/*.ts', { eager: true })
+  let (refs, issues) = impact_reads_check(source, "src/app.ts")
+  assert_eq(issues.length(), 0)
+  assert_eq(refs.length(), 2)
+  assert_eq(refs[0].kind, "glob-import")
+  assert_eq(refs[0].specifier, "./pages/*.vue")
+  assert_eq(refs[1].kind, "glob-import")
+  assert_eq(refs[1].specifier, "./other/*.ts")
+}
+
+///|
+test "impact reads computed import meta glob patterns stay inconclusive" {
+  let source = "const pages = import.meta.glob(pattern)"
+  let (refs, issues) = impact_reads_check(source, "src/app.ts")
+  assert_eq(refs.length(), 0)
+  assert_eq(issues.length(), 1)
+  assert_true(issues[0].reason.contains("glob"))
+}
+
+///|
+test "impact reads Vue top level block comments carry no dependency" {
+  let source =
+    #|/*
+    #| * wd-example — file header before the first block.
+    #| */
+    #|<script lang="ts" setup>
+    #|import './index.css'
+    #|import { computed } from 'vue-lynx'
+    #|</script>
+    #|<template><view>{{ computed }}</view></template>
+  let (refs, issues) = impact_reads_check(source, "src/wd-example.vue")
+  assert_eq(issues.length(), 0)
+  assert_eq(refs.length(), 2)
+  assert_eq(refs[0].kind, "import")
+  assert_eq(refs[0].specifier, "./index.css")
+  assert_eq(refs[1].specifier, "vue-lynx")
+}

@@ -328,3 +328,186 @@ test "impact report escapes HTML and is a plan rather than a test verdict" {
     json is Object(obj) && obj.get("kind") == Some(Json::string("test-plan")),
   )
 }
+
+///|
+test "impact directory reads depend on every current entry" {
+  let files = impact_fixture_sources()
+  files.push(
+    (
+      "test/dir.test.ts", "import { readdirSync } from 'node:fs'\nreaddirSync('src')\n",
+    ),
+  )
+  let plan = build_impact_plan(
+    "/fixture",
+    files,
+    files.map(pair => pair.0),
+    ["src/other.ts"],
+    impact_default_config(),
+    "explicit",
+    [],
+  )
+  assert_eq(plan.strategy, "related")
+  assert_eq(plan.tests, ["test/dir.test.ts", "test/other.test.ts"])
+  let trace = plan.traces[0]
+  assert_eq(trace.chain.length(), 1)
+  assert_eq(trace.chain[0].dependency, "src/other.ts")
+  assert_eq(trace.chain[0].kind, "read-dir-root")
+}
+
+///|
+test "impact existence checks depend on paths that do not exist yet" {
+  let files = impact_fixture_sources()
+  files.push(
+    (
+      "test/exists.test.ts", "import { existsSync } from 'node:fs'\nif (existsSync('config/optional.json')) console.log(1)\n",
+    ),
+  )
+  let plan = build_impact_plan(
+    "/fixture",
+    files,
+    files.map(pair => pair.0),
+    ["src/value.ts"],
+    impact_default_config(),
+    "explicit",
+    [],
+  )
+  // The ghost edge is dormant for unrelated changes and never fabricates one.
+  assert_eq(plan.strategy, "related")
+  assert_eq(plan.tests, ["test/value.test.ts"])
+  assert_eq(plan.issues.length(), 0)
+  // Once the optional file exists, the dormant edge fires for it.
+  let created = files.map(pair => pair.0)
+  created.push("config/optional.json")
+  let ghost = build_impact_plan(
+    "/fixture",
+    files,
+    created,
+    ["config/optional.json"],
+    impact_default_config(),
+    "explicit",
+    [],
+  )
+  assert_eq(ghost.strategy, "related")
+  assert_eq(ghost.tests, ["test/exists.test.ts"])
+}
+
+///|
+test "impact literal glob imports expand against current membership" {
+  let files = impact_fixture_sources()
+  files.push(
+    (
+      "test/glob.test.ts", "const mods = import.meta.glob('../src/*.ts')\nconsole.log(mods)\n",
+    ),
+  )
+  let plan = build_impact_plan(
+    "/fixture",
+    files,
+    files.map(pair => pair.0),
+    ["src/other.ts"],
+    impact_default_config(),
+    "explicit",
+    [],
+  )
+  assert_eq(plan.strategy, "related")
+  assert_eq(plan.tests, ["test/glob.test.ts", "test/other.test.ts"])
+  assert_eq(plan.traces[0].chain[0].kind, "glob-import")
+}
+
+///|
+test "impact glob dependency declarations expand and empty globs are errors" {
+  let files = impact_fixture_sources()
+  let config = parse_impact_config(
+    "{\"dependencies\":[{\"dependent\":\"test/other.test.ts\",\"dependency\":\"src/*.ts\"}]}",
+  )
+  let plan = build_impact_plan(
+    "/fixture",
+    files,
+    files.map(pair => pair.0),
+    ["src/value.ts"],
+    config,
+    "explicit",
+    [],
+  )
+  assert_eq(plan.strategy, "related")
+  assert_eq(plan.tests, ["test/other.test.ts", "test/value.test.ts"])
+  let empty = parse_impact_config(
+    "{\"dependencies\":[{\"dependent\":\"test/other.test.ts\",\"dependency\":\"absent/**\"}]}",
+  )
+  let blocked = build_impact_plan(
+    "/fixture",
+    files,
+    files.map(pair => pair.0),
+    ["src/value.ts"],
+    empty,
+    "explicit",
+    [],
+  )
+  assert_eq(blocked.strategy, "full")
+  assert_true(
+    blocked.issues.any(issue => {
+      issue.reason.has_prefix("unresolved-explicit-dependency")
+    }),
+  )
+}
+
+///|
+test "impact declared dependencies cover a file's unprovable reads" {
+  let files = impact_fixture_sources()
+  files[1] = (
+    "src/wrapper.ts", "import { readdirSync } from 'node:fs'\nimport { value } from './value';\nfor (const e of readdirSync(dir)) console.log(e);\nexport const wrapped = value;\n",
+  )
+  let plain = build_impact_plan(
+    "/fixture",
+    files,
+    files.map(pair => pair.0),
+    ["src/value.ts"],
+    impact_default_config(),
+    "explicit",
+    [],
+  )
+  assert_eq(plain.strategy, "full")
+  let config = parse_impact_config(
+    "{\"dependencies\":[{\"dependent\":\"src/wrapper.ts\",\"dependency\":\"src/*.ts\"}]}",
+  )
+  let declared = build_impact_plan(
+    "/fixture",
+    files,
+    files.map(pair => pair.0),
+    ["src/value.ts"],
+    config,
+    "explicit",
+    [],
+  )
+  assert_eq(declared.strategy, "related")
+  assert_eq(declared.issues.length(), 0)
+  assert_true(
+    declared.reasons.any(reason => reason.has_prefix("declared-dependencies")),
+  )
+}
+
+///|
+test "impact style load paths skip dirs and runner dir are inert configuration" {
+  let config = parse_impact_config(
+    "{\"style_load_paths\":[\"packages/core/src\"],\"skip_dirs\":[\".git\",\"node_modules\"],\"runner_dir\":\"packages/ui\"}",
+  )
+  assert_eq(config.style_load_paths, ["packages/core/src"])
+  assert_eq(config.skip_dirs, [".git", "node_modules"])
+  assert_eq(config.runner_dir, "packages/ui")
+  let empty = parse_impact_config("{}")
+  assert_eq(empty.runner_dir, "")
+  for
+    json in [
+      "{\"style_load_paths\":[\"src/**\"]}", "{\"style_load_paths\":[\"/abs\"]}",
+      "{\"skip_dirs\":[\"a/b\"]}", "{\"skip_dirs\":[\"..\"]}", "{\"skip_dirs\":[\"a*\"]}",
+      "{\"style_load_paths\":1}", "{\"skip_dirs\":{}}", "{\"runner_dir\":\"packages/*\"}",
+      "{\"runner_dir\":\"/abs\"}", "{\"runner_dir\":\"../escape\"}", "{\"runner_dir\":1}",
+    ] {
+    let rejected = try {
+      ignore(parse_impact_config(json))
+      false
+    } catch {
+      _ => true
+    }
+    assert_true(rejected)
+  }
+}

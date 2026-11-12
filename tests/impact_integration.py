@@ -80,7 +80,7 @@ class ImpactCLI(unittest.TestCase):
         runner.write_text(
             f"#!{sys.executable}\nimport json,os,sys\n"
             "from pathlib import Path\n"
-            "Path(os.environ['IMPACT_TEST_MARKER']).write_text(json.dumps(sys.argv[1:]))\n"
+            "Path(os.environ['IMPACT_TEST_MARKER']).write_text(json.dumps({'argv': sys.argv[1:], 'cwd': os.getcwd()}))\n"
             "print('RUNNER_STDOUT')\nprint('RUNNER_STDERR',file=sys.stderr)\n"
             f"sys.exit({code})\n", encoding="utf-8")
         runner.chmod(0o755)
@@ -231,6 +231,142 @@ const source = fs.readFileSync('src/value.ts', 'utf8')
         self.assertEqual(doc["strategy"], "related")
         self.assertIn("test/card.test.ts", doc["tests"])
 
+    def test_membership_covers_reads_outside_the_analysis_scope(self):
+        self.write("docs/data.json", '{"a":1}\n')
+        self.write(
+            "test/other.test.ts",
+            "import { readFileSync } from 'node:fs'\nimport { join } from 'node:path'\n"
+            "const data = readFileSync(join(__dirname, '../docs/data.json'), 'utf8')\nconsole.log(data);\n",
+        )
+        doc = self.plan("--file", "docs/data.json")
+        self.assertEqual(doc["strategy"], "related")
+        self.assertEqual(doc["tests"], ["test/other.test.ts"])
+        self.assertEqual(doc["issues"], [])
+
+    def test_directory_read_depends_on_every_current_entry(self):
+        self.write(
+            "test/dir.test.ts",
+            "import { readdirSync } from 'node:fs'\nfor (const e of readdirSync('src')) console.log(e);\n",
+        )
+        self.write("src/other.ts", "export const other = 2;\n")
+        doc = self.plan("--file", "src/other.ts")
+        self.assertEqual(doc["strategy"], "related")
+        self.assertIn("test/dir.test.ts", doc["tests"])
+        chain = [t for t in doc["traces"] if t["test"] == "test/dir.test.ts"][0]["chain"]
+        self.assertEqual(chain[0]["kind"], "read-dir-root")
+
+    def test_existence_check_covers_a_path_that_does_not_exist_yet(self):
+        self.write(
+            "test/exists.test.ts",
+            "import { existsSync } from 'node:fs'\nif (existsSync('config/optional.json')) console.log(1);\n",
+        )
+        dormant = self.plan("--file", "src/value.ts")
+        self.assertEqual(dormant["strategy"], "related")
+        self.assertNotIn("test/exists.test.ts", dormant["tests"])
+        self.write("config/optional.json", "{}\n")
+        live = self.plan("--file", "config/optional.json")
+        self.assertEqual(live["strategy"], "related")
+        self.assertEqual(live["tests"], ["test/exists.test.ts"])
+
+    def test_literal_glob_import_expands_against_membership(self):
+        self.write(
+            "test/glob.test.ts",
+            "const mods = import.meta.glob('../src/*.ts')\nconsole.log(mods);\n",
+        )
+        doc = self.plan("--file", "src/value.ts")
+        self.assertEqual(doc["strategy"], "related")
+        chain = [t for t in doc["traces"] if t["test"] == "test/glob.test.ts"][0]["chain"]
+        self.assertEqual(chain[0]["kind"], "glob-import")
+
+    def test_style_load_paths_resolve_bare_sass_specifiers(self):
+        self.settings["style_load_paths"] = ["src"]
+        self.save_config()
+        self.write("src/shared/vars.scss", "$primary: #fff;\n")
+        self.write("src/theme.scss", "@use 'shared/vars';\n.a { color: vars.$primary; }\n")
+        self.write("test/style.test.ts", "import '../src/theme.scss';\n")
+        doc = self.plan("--file", "src/shared/vars.scss")
+        self.assertEqual(doc["strategy"], "related")
+        self.assertEqual(doc["tests"], ["test/style.test.ts"])
+        self.assertEqual(doc["issues"], [])
+
+    def test_skip_dirs_override_reads_conventional_build_output(self):
+        self.write("docs/.vitepress/theme/demos/a.vue", "<template><view/></template>\n")
+        self.write(
+            "test/docs.test.ts",
+            "import { readFileSync } from 'node:fs'\nimport { join } from 'node:path'\n"
+            "const demo = readFileSync(join(__dirname, '../docs/.vitepress/theme/demos/a.vue'), 'utf8')\nconsole.log(demo);\n",
+        )
+        skipped = self.plan("--file", "docs/.vitepress/theme/demos/a.vue")
+        self.assertEqual(skipped["strategy"], "full")
+        self.settings["skip_dirs"] = [".git", "node_modules"]
+        self.save_config()
+        scanned = self.plan("--file", "docs/.vitepress/theme/demos/a.vue")
+        self.assertEqual(scanned["strategy"], "related")
+        self.assertEqual(scanned["tests"], ["test/docs.test.ts"])
+
+    def test_glob_dependency_declaration_covers_unprovable_reads(self):
+        self.write(
+            "src/dynamic.ts",
+            "import { readFileSync } from 'node:fs'\nimport { join } from 'node:path'\n"
+            "export const load = (base: string, name: string) => readFileSync(join(base, name), 'utf8');\n",
+        )
+        self.write("test/dynamic.test.ts", "import { load } from '../src/dynamic';\nconsole.log(load('.', 'x'));\n")
+        plain = self.plan("--file", "src/value.ts")
+        self.assertEqual(plain["strategy"], "full")
+        self.settings["dependencies"] = [
+            {"dependent": "src/dynamic.ts", "dependency": "src/*.ts"},
+        ]
+        self.save_config()
+        declared = self.plan("--file", "src/value.ts")
+        self.assertEqual(declared["strategy"], "related")
+        self.assertTrue(
+            any(reason.startswith("declared-dependencies") for reason in declared["reasons"]),
+        )
+
+    def test_empty_glob_dependency_is_reported_not_silent(self):
+        self.settings["dependencies"] = [
+            {"dependent": "test/other.test.ts", "dependency": "absent/**"},
+        ]
+        self.save_config()
+        doc = self.plan("--file", "src/value.ts")
+        self.assertEqual(doc["strategy"], "full")
+        self.assertTrue(
+            any(
+                issue["reason"].startswith("unresolved-explicit-dependency")
+                for issue in doc["issues"]
+            ),
+        )
+
+    def test_runner_dir_executes_in_the_configured_package_directory(self):
+        # A monorepo configures Vitest in a subdirectory; --run must execute
+        # there and pass test paths relative to it.
+        self.settings["runner_dir"] = "app"
+        self.settings["include"] = ["src/**", "test/**", "app/**"]
+        self.save_config()
+        self.write("app/package.json", '{"name":"app","private":true}\n')
+        self.write("app/vitest.config.ts", "export default {}\n")
+        self.write("app/src/lib.ts", "export const inner = 1;\n")
+        self.write(
+            "app/test/inner.test.ts",
+            "import { inner } from '../src/lib';\nconsole.log(inner);\n",
+        )
+        args = self.plan("--file", "app/src/lib.ts")
+        self.assertEqual(args["tests"], ["app/test/inner.test.ts"])
+        self.fake_runner()
+        self.invoke("--file", "app/src/lib.ts", "--run")
+        executed = json.loads(self.marker.read_text())
+        self.assertEqual(executed["cwd"].endswith("/app"), True)
+        self.assertEqual(executed["argv"][-1], "./test/inner.test.ts")
+
+    def test_selected_test_outside_runner_dir_is_a_configuration_error(self):
+        self.settings["runner_dir"] = "app"
+        self.save_config()
+        self.write("app/package.json", '{"name":"app","private":true}\n')
+        self.fake_runner()
+        result = self.invoke("--file", "src/value.ts", "--run", expected=2)
+        self.assertIn("outside runner_dir", result.stderr)
+        self.assertFalse(self.marker.exists())
+
     def test_global_change_requests_full_suite(self):
         doc = self.plan("--file", "package.json")
         self.assertEqual(doc["strategy"], "full")
@@ -261,14 +397,14 @@ const source = fs.readFileSync('src/value.ts', 'utf8')
         self.fake_runner()
         result = self.invoke("--file", "src/value.ts", "--run", "--format", "json")
         json.loads(result.stdout)
-        self.assertEqual(json.loads(self.marker.read_text()), ["exec", "vitest", "run", "./test/value.test.ts"])
+        self.assertEqual(json.loads(self.marker.read_text())["argv"], ["exec", "vitest", "run", "./test/value.test.ts"])
         self.assertIn("RUNNER_STDOUT", result.stderr)
         self.assertIn("RUNNER_STDERR", result.stderr)
 
     def test_full_run_intentionally_has_no_filters(self):
         self.fake_runner(code=1)
         self.invoke("--file", "package.json", "--run", expected=1)
-        self.assertEqual(json.loads(self.marker.read_text()), ["exec", "vitest", "run"])
+        self.assertEqual(json.loads(self.marker.read_text())["argv"], ["exec", "vitest", "run"])
 
     def test_report_is_create_only_and_html_escapes_names(self):
         report = self.owner / "plan.json"

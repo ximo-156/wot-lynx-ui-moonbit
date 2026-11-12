@@ -125,6 +125,8 @@ fn impact_add_issue(
 fn impact_resolve_reference(
   reference : ImpactReference,
   paths : Set[String],
+  dirs : Set[String],
+  declared : Set[String],
   config : ImpactConfig,
   edges : Array[ImpactEdge],
   issues : Array[ImpactIssue],
@@ -166,9 +168,14 @@ fn impact_resolve_reference(
         }
       }
     }
-  } else if reference.kind == "read-file" {
+  } else if reference.kind == "read-file" ||
+    reference.kind == "read-dir-file" ||
+    reference.kind == "exists-file" ||
+    reference.kind == "glob-import" {
     impact_join_relative(impact_parent(reference.file), spec)
-  } else if reference.kind == "read-root" {
+  } else if reference.kind == "read-root" ||
+    reference.kind == "read-dir-root" ||
+    reference.kind == "exists-root" {
     impact_join_relative("", spec)
   } else {
     impact_add_issue(
@@ -190,8 +197,67 @@ fn impact_resolve_reference(
     impact_add_issue(issues, reference, "transformed-module-reference: " + spec)
     return
   }
+  if reference.kind == "glob-import" {
+    // A literal Vite glob pattern expands to the modules it currently names.
+    // Matches outside the analysis scope are leaf inputs: their own
+    // dependencies are not analyzed unless they are in scope.
+    let pattern = GlobPattern::new(base)
+    let mut matched = 0
+    for path in paths.iter() {
+      if pattern.matches_path(path) {
+        matched += 1
+        edges.push({
+          dependency: path,
+          dependent: reference.file,
+          kind: "glob-import",
+          line: reference.line,
+          column: reference.column,
+        })
+      }
+    }
+    if matched == 0 {
+      impact_add_issue(issues, reference, "empty-glob-import: " + spec)
+    }
+    return
+  }
+  if reference.kind == "read-dir-file" || reference.kind == "read-dir-root" {
+    // A directory read depends on the current entries beneath it. Every
+    // membership path under the directory is an input; the directory itself
+    // need not be a configured source.
+    if !dirs.contains(base) {
+      if paths.contains(base) {
+        edges.push({
+          dependency: base,
+          dependent: reference.file,
+          kind: reference.kind,
+          line: reference.line,
+          column: reference.column,
+        })
+        return
+      }
+      impact_add_issue(issues, reference, "unresolved-input: " + spec)
+      return
+    }
+    let prefix = base + "/"
+    for path in paths.iter() {
+      if path.has_prefix(prefix) {
+        edges.push({
+          dependency: path,
+          dependent: reference.file,
+          kind: reference.kind,
+          line: reference.line,
+          column: reference.column,
+        })
+      }
+    }
+    return
+  }
   let candidates = if reference.kind == "import" {
     impact_module_candidates(base, paths)
+  } else if reference.kind == "exists-file" || reference.kind == "exists-root" {
+    // An existence check depends on the path whether or not it exists now:
+    // creating or deleting it later changes the outcome.
+    [base]
   } else if paths.contains(base) {
     [base]
   } else {
@@ -211,7 +277,10 @@ fn impact_resolve_reference(
     return
   }
   let dependency = candidates[0]
+  // An import of an out-of-scope source is an uncertainty unless the target's
+  // own dependencies are covered by an explicit declaration.
   if reference.kind == "import" &&
+    !declared.contains(dependency) &&
     !impact_in_scope(config, dependency) &&
     (
       impact_source_extension(dependency) ||
@@ -273,6 +342,16 @@ pub fn build_impact_plan(
   impact_validate_config(config)
   let changed = impact_unique_paths(changes)
   let membership = Set::from_iter(impact_unique_paths(paths).iter())
+  // Every proper prefix of a membership path is a directory of the live tree.
+  let dirs : Set[String] = Set([])
+  for path in membership.iter() {
+    let parts = path.split("/").map(part => part.to_owned()).to_array()
+    let mut prefix = ""
+    for j in 0..<(parts.length() - 1) {
+      prefix = if prefix == "" { parts[j] } else { prefix + "/" + parts[j] }
+      dirs.add(prefix)
+    }
+  }
   let inventory = membership
     .iter()
     .filter(path => {
@@ -281,7 +360,48 @@ pub fn build_impact_plan(
     .to_array()
   inventory.sort()
   let issues = observations.copy()
-  let raw_edges = config.dependencies.copy()
+  // Explicit dependencies are a user contract: each entry asserts that the
+  // dependent reads the dependency. A dependency may be a glob, expanded
+  // against current membership; a glob matching nothing is an error rather
+  // than a silently empty contract. Declaring a file also asserts that the
+  // declarations cover its unprovable reads, so its uncertainty issues are
+  // suppressed while real I/O and safety failures still block.
+  let declared : Set[String] = Set([])
+  let raw_edges : Array[ImpactEdge] = []
+  for edge in config.dependencies {
+    declared.add(edge.dependent)
+    if edge.dependency.contains("*") || edge.dependency.contains("?") {
+      let pattern = GlobPattern::new(edge.dependency)
+      // Only paths sharing the pattern's literal prefix can match; testing the
+      // cheap prefix first keeps large-tree glob expansion affordable.
+      let fixed : Array[String] = []
+      for segment in edge.dependency.split("/") {
+        if segment.contains("*") || segment.contains("?") {
+          break
+        }
+        fixed.push(segment.to_owned())
+      }
+      let prefix = fixed.join("/")
+      let mut matched = 0
+      for path in membership.iter() {
+        if (prefix != "" && !path.has_prefix(prefix + "/") && path != prefix) ||
+          !pattern.matches_path(path) {
+          continue
+        }
+        matched += 1
+        raw_edges.push({ ..edge, dependency: path, })
+      }
+      if matched == 0 {
+        issues.push({
+          file: edge.dependent,
+          line: edge.line,
+          reason: "unresolved-explicit-dependency: " + edge.dependency,
+        })
+      }
+    } else {
+      raw_edges.push(edge)
+    }
+  }
   let source_paths : Set[String] = Set([])
   for (path, source) in sources {
     let rel = impact_path(path, false)
@@ -325,10 +445,17 @@ pub fn build_impact_plan(
       issues.push(issue)
     }
     for reference in references {
-      impact_resolve_reference(reference, membership, config, raw_edges, issues)
+      impact_resolve_reference(
+        reference, membership, dirs, declared, config, raw_edges, issues,
+      )
     }
   }
-  for edge in config.dependencies {
+  for edge in raw_edges {
+    // An existence check may name a path that does not exist yet; that ghost
+    // edge is intentional and becomes live if the path is ever created.
+    if edge.kind == "exists-file" || edge.kind == "exists-root" {
+      continue
+    }
     if !membership.contains(edge.dependent) ||
       !membership.contains(edge.dependency) {
       issues.push({
@@ -435,11 +562,12 @@ pub fn build_impact_plan(
         path +
         "; historical dependencies are not inferred",
       )
-    } else if !impact_in_scope(config, path) {
-      reasons.push("changed-outside-configured-scope: " + path)
     } else if (!source_paths.contains(path) || !impact_source_extension(path)) &&
       !reverse.contains(path) &&
       !inventory.contains(path) {
+      // An unanalyzed input is still a known input when something reads or
+      // imports it; only a change with no known consumer is unmodeled. The
+      // configured scope decides what is parsed, never what matters.
       reasons.push("unmodeled-changed-input: " + path)
     }
   }
@@ -462,6 +590,29 @@ pub fn build_impact_plan(
       a.reason.compare(b.reason)
     }
   })
+  // A declared file's uncertainties are covered by its explicit contract.
+  // I/O and safety failures are not uncertainties and still block execution,
+  // and a broken declaration is a configuration error, not a covered one.
+  let mut suppressed = 0
+  let mut declared_note : String? = None
+  let unique_issues = unique_issues.filter(issue => {
+    if declared.contains(issue.file) &&
+      !issue.reason.has_prefix("io:") &&
+      !issue.reason.has_prefix("unsafe:") &&
+      !issue.reason.has_prefix("unresolved-explicit-dependency") {
+      suppressed += 1
+      false
+    } else {
+      true
+    }
+  })
+  if suppressed > 0 {
+    // Recorded after the strategy decision: a covered declaration is not a
+    // fallback reason, but it stays visible in the report.
+    declared_note = Some(
+      "declared-dependencies: \{suppressed} uncertainties covered by explicit contracts; verify the declarations match the real reads",
+    )
+  }
   if !unique_issues.is_empty() {
     reasons.push("uncertain-dependencies: full inventory required; see issues")
   }
@@ -489,6 +640,10 @@ pub fn build_impact_plan(
   } else {
     "related"
   }
+  match declared_note {
+    Some(note) => reasons.push(note)
+    None => ()
+  }
   {
     root,
     input,
@@ -512,31 +667,10 @@ pub fn build_impact_plan(
 }
 
 ///|
-/// Descend only into directories that could contain a configured include.
-fn impact_may_descend(config : ImpactConfig, dir : String) -> Bool {
-  if impact_matches(config.excludes, dir) {
-    return false
-  }
-  if config.includes.is_empty() {
-    return true
-  }
-  config.includes.any(pattern => {
-    let prefix : Array[String] = []
-    for segment in pattern.split("/") {
-      if segment.contains("*") || segment.contains("?") {
-        break
-      }
-      prefix.push(segment.to_owned())
-    }
-    let fixed = prefix.join("/")
-    fixed == "" ||
-    fixed == dir ||
-    fixed.has_prefix(dir + "/") ||
-    dir.has_prefix(fixed + "/")
-  })
-}
-
-///|
+/// Collect every regular file under the root. Membership is the whole tree
+/// minus noise directories: a read or import of an out-of-scope file still
+/// resolves to a real leaf input. Which files are *analyzed* as sources is a
+/// separate question answered by include/exclude, never by the walk.
 fn impact_collect_paths(
   root : String,
   dir : String,
@@ -547,15 +681,13 @@ fn impact_collect_paths(
   let directory = if dir == "" { root } else { join_path(root, dir) }
   let entries = @fs.read_dir(directory)
   for name in entries {
-    if skip_dirs().contains(name) {
+    if config.skip_dirs.contains(name) {
       continue
     }
     let rel = if dir == "" { name } else { dir + "/" + name }
     let kind = source_path_kind(join_path(root, rel))
     if kind == 2 {
-      if impact_may_descend(config, rel) {
-        impact_collect_paths(root, rel, config, paths, issues)
-      }
+      impact_collect_paths(root, rel, config, paths, issues)
     } else if kind == 1 {
       paths.push(rel)
     } else if impact_in_scope(config, rel) {

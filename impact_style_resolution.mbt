@@ -192,6 +192,24 @@ fn impact_resolve_style_reference(
   } else {
     []
   }
+  // Sass load paths: when the importing file's own directory does not resolve
+  // the specifier, configured load directories are tried in order, exactly
+  // like the build's sass loadPaths option. This covers both bare
+  // `@use 'styles/variable.scss'` and `../`-style facade forwards that only
+  // resolve through a component load path. Relative resolution still wins.
+  if candidates.is_empty() && !aliased && reference.kind == "style-import-scss" {
+    for load_path in config.style_load_paths {
+      match impact_join_relative(load_path, pathname) {
+        Some(joined) =>
+          for candidate in impact_scss_candidates(joined, paths) {
+            if !candidates.contains(candidate) {
+              candidates.push(candidate)
+            }
+          }
+        None => ()
+      }
+    }
+  }
   if candidates.is_empty() &&
     !aliased &&
     reference.kind == "style-import-scss" &&

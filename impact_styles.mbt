@@ -303,6 +303,42 @@ fn impact_style_word_end(scan : ImpactStyleScan, start : Int32) -> Int32 {
 }
 
 ///|
+/// Skip an interpolation without reporting it. Only positions that can name a
+/// dependency (at-rule preludes) report; declaration values and selectors
+/// cannot construct a stylesheet reference. An interpolation that never closes
+/// swallows the rest of the file, so it must stay inconclusive.
+fn impact_style_interpolation_skip(
+  scan : ImpactStyleScan,
+  start : Int32,
+) -> Int32 {
+  let mut depth = 1
+  let mut i = start + 2
+  while i < scan.chars.length() {
+    let c = scan.chars[i]
+    if c == '\'' || c == '"' {
+      let (_, next) = impact_style_quoted(scan, i, false)
+      i = next
+      continue
+    }
+    if impact_style_pair(scan, i, '/', '*') {
+      i = impact_style_comment(scan, i)
+      continue
+    }
+    if c == '{' {
+      depth += 1
+    } else if c == '}' {
+      depth -= 1
+      if depth == 0 {
+        return i + 1
+      }
+    }
+    i += 1
+  }
+  impact_style_issue(scan, start, "unterminated style interpolation")
+  i
+}
+
+///|
 /// Skip a dynamic interpolation as an opaque balanced expression. Its internal
 /// text must not manufacture apparently static url/import references.
 fn impact_style_interpolation(scan : ImpactStyleScan, start : Int32) -> Int32 {
@@ -654,10 +690,14 @@ fn impact_extract_style_references(
       continue
     }
     if impact_style_interpolation_at(scan, i) {
+      // An interpolation can never name a stylesheet: the at-rules that load
+      // files (@use/@import/@forward) parse their own arguments and report
+      // non-static paths themselves. A prelude interpolation still marks the
+      // block dynamic, so references inside it stay conservative.
       if in_prelude {
         dynamic_prelude = true
       }
-      i = impact_style_interpolation(scan, i)
+      i = impact_style_interpolation_skip(scan, i)
       continue
     }
     if c == '@' {

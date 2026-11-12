@@ -19,11 +19,18 @@ repository = "https://github.com/ximo-156/wot-lynx-ui-moonbit"
 
 license = "Apache-2.0"
 
-keywords = [ "moonbit", "linter", "cli", "conventions", "static-analysis" ]
+keywords = [
+  "moonbit",
+  "static-analysis",
+  "cli",
+  "change-impact",
+  "test-planning",
+  "developer-tools",
+]
 
 preferred_target = "native"
 
-description = "A MoonBit-native convention linter for MoonBit source trees."
+description = "MoonImpact: change-impact and regression-test planning for Vue/TypeScript projects, written in MoonBit. Also ships the moonlint convention linter."
 
 import {
   "moonbitlang/x@0.5.6",

@@ -4,7 +4,71 @@ All notable changes to this project are documented in this file.
 
 ## [Unreleased]
 
+### MoonImpact real-project selective planning
+
+Verified end to end on the public
+[wot-lynx-ui](https://github.com/ximo-156/wot-lynx-ui) monorepo (135 test
+files, 2261 tests) with the shipped
+[`examples/impact-wot-lynx-ui.json`](<examples/impact-wot-lynx-ui.json>): a
+change to `packages/core/src/common/formatDate.ts` produces a `related` plan
+selecting 71 of 135 test files. The clean tree runs the full suite in 37.1s and
+the selected subset in 20.9s; an injected `getFirstDayOfWeek` off-by-one is
+caught by the selected subset (and by the full suite), and reverting it
+restores green. The same three pre-existing failures — caused by duplicate
+component directories in the local working tree, unrelated to the change —
+appear in both runs.
+
+- **`runner_dir` configuration** names the directory the test runner is
+  configured in, for monorepos whose Vitest config is not at the analysis
+  root. Selected test paths are passed relative to it; a selected test
+  outside it is a configuration error rather than a silent miss.
+
+### MoonImpact coverage and configuration
+
+- **Membership is the whole tree; analysis stays scoped.** The file walk no
+  longer stops at the configured `include` boundary: every regular file minus
+  noise directories is known membership, so a read or import of an
+  out-of-scope file resolves to a real leaf input. Which files are parsed as
+  sources is still decided by `include`/`exclude` alone. Previously a test
+  reading `docs/` or `scripts/` was reported as an unresolved input purely
+  because the walk never entered those directories.
+- **`style_load_paths` configuration** models Sass `loadPaths`: bare and
+  `../`-style specifiers that do not resolve next to the importing file are
+  tried against each configured root-relative directory, in order, exactly
+  like the build's sass option. Relative resolution still wins.
+- **`skip_dirs` override** replaces the default noise-directory list for
+  projects whose tests genuinely read conventional build output (for example
+  a docs `.vitepress` theme fixture).
+- **Glob dependency declarations.** A `dependencies` entry may name a glob;
+  each current membership match becomes its own edge. A glob matching nothing
+  is reported, never silently empty. Declaring a file also asserts that the
+  declarations cover its unprovable reads, so that file's uncertainty issues
+  are suppressed while I/O and safety failures still block. This is the
+  documented contract for manifest-driven helpers and build scripts whose
+  reads are known but not statically provable.
+- **Static directory reads and existence checks are modeled.**
+  `readdirSync`/`readdir` with a provable path becomes a `read-dir`
+  reference: the reader depends on every current entry beneath that
+  directory. `existsSync`/`statSync`/`accessSync` with a provable path becomes
+  an `exists` reference that also covers paths that do not exist yet.
+- **Literal `import.meta.glob` patterns are modeled.** A literal pattern
+  (including the legacy `globEager` spelling) becomes a `glob-import`
+  reference expanded against current membership; computed patterns stay
+  uncertainty. Matches outside the analysis scope are leaf inputs.
+- **Vue single-file components may open with a `/* */` or `//` header.** The
+  top-level scanner previously reported every line of such a file as
+  unsupported text; the comment is now skipped like an HTML comment.
+- **Stylesheet interpolations no longer request fallback by themselves.** An
+  interpolation cannot name a stylesheet: only `@use`/`@import`/`@forward`
+  load files, and they already reject non-static paths themselves. Values,
+  selectors and at-rule preludes are skipped, an unterminated interpolation
+  still blocks, and a prelude interpolation still marks its block dynamic.
+- **Glob expansion is prefix-filtered.** Declared globs test their literal
+  prefix before the full pattern, keeping large-tree expansion affordable
+  (the wot-lynx-ui plan runs in about 6s for 982 analyzed sources).
+
 ### MoonImpact static input coverage
+
 
 - Infer bounded immutable path constants and narrowly proved single-return
   filesystem readers, without trusting arbitrary `read`/`ROOT` names. Support

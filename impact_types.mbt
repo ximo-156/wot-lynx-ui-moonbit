@@ -11,6 +11,9 @@ pub struct ImpactConfig {
   file_readers : Array[String]
   dependencies : Array[ImpactEdge]
   global_inputs : Array[String]
+  style_load_paths : Array[String]
+  skip_dirs : Array[String]
+  runner_dir : String
   max_source_bytes : Int32
 }
 

@@ -1,4 +1,4 @@
-# MoonImpact MVP
+# MoonImpact
 
 MoonImpact is a **change-impact and regression-test planning tool**, implemented
 in MoonBit. It reuses moonlint's source and filesystem foundations, but it does
@@ -57,7 +57,7 @@ hooks or external diff/textconv commands. Repositories with configured Git
 clean/process filters are refused with exit 2; use explicit `--file` input or
 remove the executable filter before using Git input, since Git diff could
 otherwise invoke it while examining worktree content. Renames are represented by both old
-and new paths; missing/deleted inputs request full regression because the MVP
+and new paths; missing/deleted inputs request full regression because MoonImpact
 does not reconstruct the previous dependency graph.
 
 These modes intentionally differ from moonlint's HEAD/index blob scan modes.
@@ -86,9 +86,17 @@ to the configuration file's directory.
 }
 ```
 
-- Without `include`, all non-noise directories participate; `.git`,
-  `node_modules`, `_build`, `dist`, coverage and other existing build-noise
-  directories are not traversed.
+- Without `include`, all non-noise directories participate; the default noise
+  directories (`.git`, `node_modules`, `dist`, `target`, `_build`,
+  `.mooncakes`, `coverage`, `.rspeedy`, `.vitepress`, `.preview`) are not
+  traversed. `skip_dirs` replaces that list for projects whose tests genuinely
+  read conventional build output.
+- **Membership is the whole tree; analysis is scoped.** Every regular file
+  minus noise directories is known membership, so a read or import of an
+  out-of-scope file resolves to a real leaf input. `include`/`exclude` decide
+  which files are parsed as sources. A changed file that nothing reads or
+  imports is reported as an unmodeled input; a changed file with a known
+  consumer — even outside the analysis scope — plans normally.
 - Default tests are `*.test` / `*.spec` in JS/TS-family extensions. Their glob
   paths support `*`, `?` and whole-segment `**`, not brace expansion.
 - Alias prefixes match segment boundaries and the longest prefix wins. An
@@ -100,7 +108,23 @@ to the configuration file's directory.
   remain uncertain. The adapter may suppress dynamic reads inside a recognized
   configured wrapper definition; callers are still checked individually.
 - `dependencies` adds exact manual edges with `kind: explicit` and no fabricated
-  source coordinates (`line`/`column` zero).
+  source coordinates (`line`/`column` zero). A dependency may also be a **glob**
+  (`*` / `?` / whole-segment `**`), expanded against current membership; each
+  match becomes its own edge and a glob matching nothing is reported rather
+  than silently empty. Declaring a file asserts that the declarations cover its
+  unprovable reads — manifest-driven helpers and build scripts are the intended
+  use — so that file's uncertainty issues are suppressed while I/O and safety
+  failures still block. Under-declaring silently misses dependencies: verify
+  the declarations against the real reads.
+- `style_load_paths` lists root-relative directories tried after the importing
+  file's own directory, mirroring Sass `loadPaths`. Both bare specifiers
+  (`@use 'styles/variable.scss'`) and `../`-style facade forwards that only
+  resolve through a component load path are supported; relative resolution
+  still wins, and an ambiguous or unresolved result stays an uncertainty.
+- `runner_dir` names the directory the test runner is configured in, for
+  monorepos whose Vitest config is not at the analysis root. It affects only
+  `--run` execution: the test process runs there and selected test paths are
+  passed relative to it.
 - `global_inputs` can override the default full-regression triggers: package
   manifests/lockfiles, Vite/Vitest/TypeScript configs, common setup files,
   environment files, the conventional Vue app entry, and `moonimpact.json`.
@@ -181,15 +205,30 @@ font.woff2 -> fonts.css -> theme.scss -> Card.vue -> card.test.ts
 
 ## Dependency coverage and conservative fallback
 
-The MVP covers static imports, re-exports and supported literal module calls,
+The planner covers static imports, re-exports and supported literal module calls,
 plus supported file-read forms and explicitly configured reader wrappers.
 Vue SFC adapters distinguish real script regions from template text, and keep
-reference positions in the original file. This is **not** the Vue compiler,
-TypeScript type checker, complete binding resolver or a universal dynamic-I/O
-tracer. JSX/TSX currently request fallback rather than pretending JSX text is
-JavaScript. Static CSS/SCSS and supported Vue style blocks use the stylesheet
-adapter above; dynamic stylesheet inputs and unsupported preprocessors still
-request full fallback.
+reference positions in the original file; a file-level `/* */` or `//` header
+before the first block is skipped like an HTML comment. This is **not** the Vue
+compiler, TypeScript type checker, complete binding resolver or a universal
+dynamic-I/O tracer. JSX/TSX currently request fallback rather than pretending
+JSX text is JavaScript. Static CSS/SCSS and supported Vue style blocks use the
+stylesheet adapter above; dynamic stylesheet inputs and unsupported preprocessors
+still request full fallback.
+
+Three further input forms are modeled:
+
+- **Directory reads.** `readdirSync`/`readdir` with a provable path becomes a
+  dependency on every current entry beneath that directory. Adding, removing
+  or editing any entry changes the plan; the reader is never assumed to depend
+  on a fixed file list.
+- **Existence checks.** `existsSync`/`statSync`/`accessSync` with a provable
+  path depend on that path whether or not it exists now, so creating or
+  deleting it later still reaches the reader.
+- **Literal `import.meta.glob` patterns.** A literal pattern (including the
+  legacy `globEager` spelling) expands to the modules it currently names;
+  computed patterns stay uncertainty. Matches outside the analysis scope are
+  leaf inputs whose own dependencies are not analyzed.
 
 Unsupported dynamic imports/reads, unresolved local aliases, ambiguous module
 resolution, unknown source constructs and excluded source dependencies are
@@ -210,7 +249,7 @@ configured inventory when running its full suite. Regular full-suite validation
 is still needed; compare against your actual runner configuration before using
 selective runs as a CI optimization.
 
-The MVP builds a fresh dependency graph. It **does not reuse moonlint's cached
+MoonImpact builds a fresh dependency graph. It **does not reuse moonlint's cached
 structural verdict**: the graph, file-input dependencies and test inventory have
 a different identity and correctness contract.
 
@@ -231,6 +270,12 @@ Child stdout/stderr go to stderr so JSON/HTML plan output remains parseable.
 Test processes run with your permissions and may perform the normal side effects
 of project tests; `--run` is **not** a sandbox.
 
+Monorepos often configure the runner in a package directory rather than the
+analysis root. `runner_dir` names that directory: the test process runs there
+and each selected test path is passed relative to it. A selected test outside
+the runner directory is a configuration error, never a silently dropped
+filter — the runner cannot address a path it cannot see.
+
 `--report <new-file>` additionally publishes the JSON plan with atomic,
 create-only semantics. Its parent must exist; existing files, directories and
 symlinks are not replaced. Use a new filename for each report.
@@ -241,6 +286,57 @@ Exit codes:
   exited successfully. A default plan-only exit 0 does **not** mean tests passed.
 - `1`: the explicitly started test process exited unsuccessfully.
 - `2`: usage/config/Git/I/O/startup/timeout error or blocked plan.
+
+## Real-project measurement
+
+A read-only evaluation against the public
+[wot-lynx-ui](https://github.com/ximo-156/wot-lynx-ui) monorepo (982 analyzed
+sources, 11,929 known edges, 135 test files / 2261 tests) with the two explicit
+changes `packages/core/src/common/formatDate.ts` and
+`packages/core/src/common/host.ts`. The configuration used is
+[`examples/impact-wot-lynx-ui.json`](<../examples/impact-wot-lynx-ui.json>);
+the measurements below are reproducible with it.
+
+| Change | Strategy | Selected | Notes |
+| --- | --- | --- | --- |
+| `formatDate.ts` | related | 71 / 135 | dedicated unit test plus transitive component and parity tests |
+| `host.ts` | related | 101 / 135 | `configureHost` is imported across the suite |
+
+The same project previously measured 618 sources / 2,241 edges / 319
+uncertainties and fell back to `full` on every change; the coverage above is
+what turned those measurements into selective plans. The project's
+manifest-driven test helpers (`component-roots.ts`, build scripts under
+`scripts/`) read trees their arguments name at runtime, so the demo
+configuration declares those reads explicitly with the `dependencies` contract
+— the plan reports `declared-dependencies: 64 uncertainties covered by explicit
+contracts` whenever it relies on them. Every declaration was verified against
+the code it covers.
+
+Execution evidence (clean working tree, `vitest run` from `packages/ui`):
+
+| Run | Test files | Result | Wall time |
+| --- | --- | --- | --- |
+| Full suite | 135 | 3 pre-existing failures, 2185 passed | 37.1s |
+| Selected subset (formatDate change) | 71 | same 3 failures, 1398 passed | 20.9s |
+| Selected subset, injected `getFirstDayOfWeek` off-by-one | 71 | 4 failures — the format-date test catches the fault | 21.3s |
+| Full suite, same injected fault | 135 | 4 failures — same catch | 39.7s |
+
+The subset rows were produced through the tool itself with
+`--run` (the shipped configuration sets `runner_dir` to `packages/ui`, where
+that project configures Vitest), so the table is reproducible end to end:
+
+```sh
+moon build --target native
+BIN="$PWD/_build/native/debug/build/cmd/impact/impact.exe"
+"$BIN" plan --file packages/core/src/common/formatDate.ts --run \
+  --config examples/impact-wot-lynx-ui.json /path/to/wot-lynx-ui
+```
+
+The three pre-existing failures are component-inventory mismatches caused by
+duplicate component directories in that local working tree; they are unrelated
+to the change and appear identically in both runs. The injected fault was
+reverted after measurement. Selective selection is conservative: not every
+selected test is asserted to fail when an input changes.
 
 ## Verification
 

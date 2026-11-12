@@ -98,6 +98,34 @@ fn impact_main(args : Array[String]) -> Int32 raise {
       "related plan contains no tests; refusing to run an unfiltered test command",
     )
   }
+  // The runner may be configured in a subdirectory of a monorepo. Test paths
+  // are then passed relative to that directory; a selected test outside it
+  // cannot be addressed by the runner and is a configuration error.
+  // runner_dir is validated as a plain root-relative directory, so a direct
+  // join is exact; an empty value keeps the analysis root.
+  let run_root = if config.runner_dir == "" {
+    root
+  } else {
+    root + "/" + config.runner_dir
+  }
+  let run_tests : Array[String] = []
+  if !full {
+    let prefix = config.runner_dir + "/"
+    for path in plan.tests {
+      if config.runner_dir != "" && !path.has_prefix(prefix) {
+        raise Failure(
+          "selected test \{path} is outside runner_dir \{config.runner_dir}; adjust the scope or the runner directory",
+        )
+      }
+      run_tests.push(
+        if config.runner_dir == "" {
+          path
+        } else {
+          path[prefix.length():].to_owned()
+        },
+      )
+    }
+  }
   if full {
     eprintln(
       "moonimpact: full fallback; running pnpm exec vitest run with no filters",
@@ -108,8 +136,8 @@ fn impact_main(args : Array[String]) -> Int32 raise {
     )
   }
   let child_code = @lib.impact_run_vitest(
-    root,
-    plan.tests,
+    run_root,
+    run_tests,
     full,
     opts.timeout_ms,
   )

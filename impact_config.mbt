@@ -20,6 +20,12 @@ pub fn impact_default_config() -> ImpactConfig {
       "**/vitest.workspace.*", "moonimpact.json", "**/setup.*", "**/setupTests.*",
       "**/.env*", "src/main.ts", "src/App.vue",
     ],
+    style_load_paths: [],
+    skip_dirs: [
+      ".git", "node_modules", "dist", "target", "_build", ".mooncakes", "coverage",
+      ".rspeedy", ".vitepress", ".preview",
+    ],
+    runner_dir: "",
     max_source_bytes: 2000000,
   }
 }
@@ -133,6 +139,38 @@ fn impact_validate_config(config : ImpactConfig) -> Unit raise {
     ignore(impact_path(edge.dependency, false))
     ignore(impact_path(edge.dependent, false))
   }
+  // Sass load paths are root-relative directories, mirroring the build's
+  // loadPaths option. They never contain globs and never escape the root.
+  for load_path in config.style_load_paths {
+    if load_path.contains("*") || load_path.contains("?") {
+      raise Failure(
+        "moonimpact config: style_load_paths must be directories, not globs: \{load_path}",
+      )
+    }
+    ignore(impact_path(load_path, true))
+  }
+  // The runner directory is where the test runner is configured. It is a
+  // plain root-relative directory, never a glob or an absolute path.
+  if config.runner_dir.contains("*") || config.runner_dir.contains("?") {
+    raise Failure(
+      "moonimpact config: runner_dir must be a directory, not a glob: \{config.runner_dir}",
+    )
+  }
+  // Noise directories are plain names; a project may replace the default list
+  // when its tests genuinely read conventional build output.
+  for name in config.skip_dirs {
+    if name == "" ||
+      name.contains("/") ||
+      name.contains("\\") ||
+      name.contains("*") ||
+      name.contains("?") ||
+      name == "." ||
+      name == ".." {
+      raise Failure(
+        "moonimpact config: skip_dirs entries must be plain directory names: \{name}",
+      )
+    }
+  }
 }
 
 ///|
@@ -156,7 +194,7 @@ pub fn parse_impact_config(source : String) -> ImpactConfig raise {
       obj,
       [
         "version", "include", "exclude", "tests", "aliases", "file_readers", "dependencies",
-        "global_inputs", "max_source_bytes",
+        "global_inputs", "style_load_paths", "skip_dirs", "runner_dir", "max_source_bytes",
       ],
       "moonimpact config",
     ) {
@@ -220,6 +258,11 @@ pub fn parse_impact_config(source : String) -> ImpactConfig raise {
           raise Failure("moonimpact config: \{message}")
       }
   }
+  let runner_dir = match obj.get("runner_dir") {
+    None => defaults.runner_dir
+    Some(Json::String(text)) => impact_path(text, true)
+    _ => raise Failure("moonimpact config: runner_dir must be a string")
+  }
   let config : ImpactConfig = {
     includes: impact_strings(obj, "include", defaults.includes),
     excludes: impact_strings(obj, "exclude", defaults.excludes),
@@ -228,6 +271,13 @@ pub fn parse_impact_config(source : String) -> ImpactConfig raise {
     file_readers: impact_strings(obj, "file_readers", defaults.file_readers),
     dependencies,
     global_inputs: impact_strings(obj, "global_inputs", defaults.global_inputs),
+    style_load_paths: impact_strings(
+      obj,
+      "style_load_paths",
+      defaults.style_load_paths,
+    ),
+    skip_dirs: impact_strings(obj, "skip_dirs", defaults.skip_dirs),
+    runner_dir,
     max_source_bytes,
   }
   impact_validate_config(config)

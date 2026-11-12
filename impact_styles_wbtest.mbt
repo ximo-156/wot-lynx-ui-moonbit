@@ -258,8 +258,19 @@ test "styles interpolation text cannot create a fake static dependency" {
     #|#{'@import "fake.css"; url(fake.png)'}
     #|.x { src: url(real.ttf); }
   let (references, issues) = impact_style_test(source, "scss")
-  assert_true(issues.length() > 0)
+  // The interpolation is inert text: neither its @import nor its url becomes
+  // a reference, and no uncertainty is needed for a terminated expression.
+  assert_eq(issues.length(), 0)
   assert_eq(impact_style_specs(references), ["real.ttf"])
+}
+
+///|
+test "styles unterminated interpolation stays inconclusive" {
+  let (references, issues) = impact_style_test(
+    "#{missing\n.x { src: url(real.ttf); }", "scss",
+  )
+  assert_true(issues.length() > 0)
+  assert_eq(impact_style_specs(references), [])
 }
 
 ///|
