@@ -45,7 +45,9 @@ class ImpactStability(unittest.TestCase):
     def plan(self, *args, expected=None):
         started = time.monotonic()
         command = [str(BINARY), "plan"]
-        if CONFIG is not None:
+        # A MoonBit module plans natively; a JS/TS project needs its config.
+        moonbit = (PROJECT / "moon.mod").exists() or (PROJECT / "moon.mod.json").exists()
+        if CONFIG is not None and not moonbit:
             command += ["--config", str(CONFIG)]
         command += [*map(str, args), str(PROJECT)]
         result = subprocess.run(

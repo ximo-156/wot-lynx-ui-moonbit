@@ -50,7 +50,13 @@ pub fn impact_default_config() -> ImpactConfig
 
 pub fn impact_git_changes(String, String?) -> Array[String] raise
 
+pub fn impact_has_moonbit_module(String) -> Bool
+
+pub fn impact_moonbit_plan(String, Array[String], String, Array[ImpactIssue]) -> ImpactPlan raise
+
 pub fn impact_plan(String, Array[String], ImpactConfig, String, Array[ImpactIssue]) -> ImpactPlan raise
+
+pub fn impact_run_moon_test(String, Array[String], Int32) -> Int32 raise
 
 pub fn impact_run_vitest(String, Array[String], Bool, Int32) -> Int32 raise
 
@@ -380,6 +386,7 @@ pub struct ImpactPlan {
   reasons : Array[String]
   source_count : Int32
   edge_count : Int32
+  mode : String
 }
 pub fn ImpactPlan::to_repr(Self) -> @debug.Repr
 

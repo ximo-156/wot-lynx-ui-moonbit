@@ -477,6 +477,48 @@ done:
   free(root); free(ignored_out.data); free(ignored_err.data);
 }
 
+/* Run `moon test <package paths>` in root. Package paths are root-relative
+ * directories, each passed as its own argv element, never shell text. Child
+ * output goes to stderr so a JSON/HTML plan stays parseable. */
+static void impact_moon_test(struct impact_result *r, const char *path,
+                             const unsigned char *paths, size_t length,
+                             int timeout_ms) {
+  size_t count = 0, i, start = 0, slot = 2;
+  char **argv = NULL, *root = NULL;
+  struct impact_buffer ignored_out = {0}, ignored_err = {0};
+  if (timeout_ms < 1) { impact_fail(r, "test timeout must be positive"); return; }
+  for (i = 0; i < length; ++i) if (!paths[i]) ++count;
+  if (!count || !length || paths[length - 1] != 0) {
+    impact_fail(r, "package selection requires a nonempty NUL-terminated path list"); return;
+  }
+  root = impact_root(r, path);
+  if (!root) return;
+  argv = (char **)calloc(count + 3, sizeof(char *));
+  if (!argv) { impact_fail(r, "out of memory preparing test arguments"); goto done; }
+  argv[0] = "moon"; argv[1] = "test";
+  for (i = 0; i < length; ++i) {
+    if (paths[i] == 0) {
+      size_t n = i - start;
+      if (n == 0) {
+        /* The module root package is addressed as the current directory. */
+        argv[slot] = (char *)malloc(2);
+        if (!argv[slot]) { impact_fail(r, "out of memory preparing test arguments"); goto done; }
+        memcpy(argv[slot], ".", 1); argv[slot][1] = 0;
+      } else {
+        if (!impact_safe_test(paths + start, n)) { impact_fail(r, "package paths must be normalized root-relative paths without .. or empty segments"); goto done; }
+        argv[slot] = (char *)malloc(n + 3);
+        if (!argv[slot]) { impact_fail(r, "out of memory preparing test arguments"); goto done; }
+        memcpy(argv[slot], "./", 2); memcpy(argv[slot] + 2, paths + start, n); argv[slot][n + 2] = 0;
+      }
+      ++slot; start = i + 1;
+    }
+  }
+  r->value = impact_process(r, root, argv, 0, 1, timeout_ms, &ignored_out, &ignored_err);
+done:
+  if (argv) { for (i = 2; i < slot; ++i) free(argv[i]); free(argv); }
+  free(root); free(ignored_out.data); free(ignored_err.data);
+}
+
 /* Atomically publish without replacing even a concurrently-created file. */
 static void impact_report(struct impact_result *r, const char *path,
                           const unsigned char *content, size_t length) {
@@ -533,6 +575,8 @@ MOONBIT_FFI_EXPORT void *moonimpact_native_request(int32_t operation,
     impact_vitest(r, (const char *)first, second, (size_t)length, operation == 2, flag);
   } else if (operation == 3) {
     impact_report(r, (const char *)first, second, (size_t)length);
+  } else if (operation == 4) {
+    impact_moon_test(r, (const char *)first, second, (size_t)length, flag);
   } else impact_fail(r, "unknown MoonImpact native operation");
 #else
   (void)operation; (void)first; (void)second; (void)length; (void)flag;

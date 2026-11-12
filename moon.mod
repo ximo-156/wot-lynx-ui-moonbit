@@ -30,7 +30,7 @@ keywords = [
 
 preferred_target = "native"
 
-description = "MoonImpact: change-impact and regression-test planning for Vue/TypeScript projects, written in MoonBit. Also ships the moonlint convention linter."
+description = "MoonImpact: change-impact and selective regression-test planning for MoonBit modules and Vue/TypeScript projects, written in MoonBit. Also ships the moonlint convention linter."
 
 import {
   "moonbitlang/x@0.5.6",

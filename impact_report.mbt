@@ -40,6 +40,7 @@ pub fn render_impact_json(plan : ImpactPlan) -> String {
     "root": Json::string(plan.root),
     "input": Json::string(plan.input),
     "source_snapshot": Json::string("live-working-tree"),
+    "mode": Json::string(plan.mode),
     "strategy": Json::string(plan.strategy),
     "changed": impact_json_strings(plan.changed),
     "tests": impact_json_strings(plan.tests),
@@ -75,11 +76,18 @@ fn impact_quote(value : String) -> String {
 ///|
 /// Human-readable selection with one shortest known witness per related test.
 pub fn render_impact_text(plan : ImpactPlan) -> String {
+  let moonbit = plan.mode == "moonbit"
+  let unit_word = if moonbit { "package" } else { "test file" }
   let lines : Array[String] = [
     "MoonImpact — advisory test plan",
     "root: " + impact_quote(plan.root),
     "input: " + impact_quote(plan.input),
     "strategy: " + plan.strategy,
+    if moonbit {
+      "mode: moonbit package graph"
+    } else {
+      "mode: js-ts source graph"
+    },
     "changed: \{plan.changed.length()}  sources: \{plan.source_count}  edges: \{plan.edge_count}",
     "test inventory: \{plan.inventory.length()}  selected: \{plan.tests.length()}  uncertainties: \{plan.issues.length()}",
     "This is a plan, not a passing test result. Tests run only with --run.",
@@ -98,7 +106,13 @@ pub fn render_impact_text(plan : ImpactPlan) -> String {
   }
   if !plan.tests.is_empty() {
     lines.push("")
-    lines.push("Selected test files:")
+    lines.push(
+      if moonbit {
+        "Selected packages:"
+      } else {
+        "Selected test files:"
+      },
+    )
     for path in plan.tests {
       lines.push("  " + impact_quote(path))
     }

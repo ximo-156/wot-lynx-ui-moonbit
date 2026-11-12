@@ -6,13 +6,66 @@ not check naming, formatting, documentation or release policy.
 
 Given changed files, it answers:
 
-- Which test files have a known dependency on this change?
+- Which tests have a known dependency on this change?
 - What reference chain explains each selection?
 - Why must this run fall back to the full suite, or be blocked?
 
 A plan is advisory, **not a test result or a proof that unselected tests cannot
 fail**. No tests, builds or installations run unless `--run` is supplied.
 MoonImpact does not install Node.js, pnpm, Vitest or any project dependencies.
+
+Two project kinds are planned:
+
+| Kind | Detection | Test unit | Runner (`--run`) |
+| --- | --- | --- | --- |
+| **MoonBit module** (default) | root holds `moon.mod` / `moon.mod.json`, no `--config` | package | `moon test <package>` per selected package |
+| **JS/TS project** | explicit `--config moonimpact.json` | test file | `pnpm exec vitest run` with `./test-path` filters |
+
+The MoonBit path needs no configuration at all: the package graph is read from
+the `moon.pkg` manifests in the tree. The JS/TS path keeps the explicit,
+inert-configuration contract documented below.
+
+## MoonBit modules
+
+A MoonBit module is a tree of packages, each declared by a `moon.pkg`
+(or `moon.pkg.json`) manifest. MoonImpact reads those manifests directly:
+
+- every `moon.mod` / `moon.mod.json` under the root declares a module; a
+  package resolves its imports against **its own** module, so nested and
+  workspace modules never borrow the root module's name;
+- every `import` block in a manifest counts — plain, `for "test"` and
+  `#cfg(...)`-conditional alike — because a test-only dependency still decides
+  whether that package's tests can observe a change;
+- a changed file selects the package that owns it (the longest package
+  directory prefix; the module root package owns the rest) plus every package
+  that transitively imports it, test-only imports included;
+- the selected **packages** are the execution units: `--run` invokes
+  `moon test <package>` for each, the module root package addressed as `.`.
+
+Try it on this repository, which is itself a multi-module MoonBit workspace:
+
+```sh
+moon build --target native
+BIN="$PWD/_build/native/debug/build/cmd/impact/impact.exe"
+
+# A library change selects the root package and its importers.
+"$BIN" plan --file impact_plan.mbt .
+
+# A CLI-only change selects nothing: no affected package contains tests.
+"$BIN" plan --file cmd/impact/main.mbt .
+
+# A manifest change can alter the graph itself: every package.
+"$BIN" plan --file moon.mod .
+
+# Execute the selection.
+"$BIN" plan --file impact_plan.mbt --run .
+```
+
+Conservative fallback is unchanged in spirit: an unparseable manifest, a
+missing module descriptor, a change outside every package or a manifest/descriptor
+change requests **every** package instead of pretending no test is affected.
+Symlinked sources, stylesheets and manifests are refused; a symlinked document
+is membership data and does not block the plan.
 
 ## Build and try the local demo
 
@@ -288,6 +341,28 @@ Exit codes:
 - `2`: usage/config/Git/I/O/startup/timeout error or blocked plan.
 
 ## Real-project measurement
+
+### MoonBit modules
+
+Read-only planning of the public
+[moonbitlang/x](https://github.com/moonbitlang/x) monorepo (25 packages, 19
+holding tests) needs no configuration:
+
+| Change | Strategy | Selected packages | Notes |
+| --- | --- | --- | --- |
+| `decimal/decimal.mbt` | related | 1 / 19 | leaf package; nothing imports it |
+| `encoding/encoding.mbt` | related | 4 / 19 | `crypto`, `fs` and `jwt` depend on it, declared `for "test"` |
+
+On this repository — itself a multi-module workspace (root package,
+`cmd/main`, `cmd/impact`, four example modules) — a cold-cache comparison
+after `moon clean`:
+
+| Run | Wall time | Tests |
+| --- | --- | --- |
+| Full suite (`moon test`) | 5.4s | 555 |
+| CLI-only change (`moon test cmd/impact`) | 2.1s | 0 — the plan is `none` |
+
+### JS/TS projects
 
 A read-only evaluation against the public
 [wot-lynx-ui](https://github.com/ximo-156/wot-lynx-ui) monorepo (982 analyzed

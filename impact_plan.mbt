@@ -690,7 +690,25 @@ pub fn build_impact_plan(
     reasons,
     source_count: source_paths.length(),
     edge_count: edges.length(),
+    mode: "js-ts",
   }
+}
+
+///|
+/// Whether a path names a build/module manifest whose content the planners
+/// read: a symlinked manifest is a real escape risk, a symlinked document is
+/// membership data no supported reference resolves as a module.
+fn impact_manifest_name(path : String) -> Bool {
+  let name = match path.rev_split_once("/") {
+    Some((_, name)) => name
+    None => path
+  }
+  name == "moon.mod" ||
+  name == "moon.mod.json" ||
+  name == "moon.pkg" ||
+  name == "moon.pkg.json" ||
+  name == "package.json" ||
+  name == "moonimpact.json"
 }
 
 ///|
@@ -717,7 +735,15 @@ fn impact_collect_paths(
       impact_collect_paths(root, rel, config, paths, issues)
     } else if kind == 1 {
       paths.push(rel)
-    } else if impact_in_scope(config, rel) {
+    } else if impact_in_scope(config, rel) &&
+      (
+        impact_source_extension(rel) ||
+        impact_any_style_extension(rel) ||
+        impact_manifest_name(rel)
+      ) {
+      // Only files whose content can matter are refused: a symlinked source,
+      // stylesheet or manifest. A symlinked document stays membership data,
+      // so a project with linked docs is not blocked on every plan.
       issues.push({
         file: rel,
         line: 0,

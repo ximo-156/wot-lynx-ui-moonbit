@@ -42,6 +42,14 @@ jobs:
           test -x "$BINARY"
           python3 tests/impact_integration.py --binary "$BINARY"
           python3 tests/impact_native.py
+      - name: Audit MoonImpact stability on a MoonBit module
+        run: |
+          # This checkout is itself a multi-module MoonBit workspace: the audit
+          # plans it natively (no configuration) through file and Git modes.
+          python3 tests/impact_stability.py \
+            --binary "$PWD/_build/native/debug/build/cmd/impact/impact.exe" \
+            --project "$PWD" \
+            --samples 20
       - name: Audit MoonImpact stability against a real public project
         run: |
           # Structural stability gate: plans a fresh public monorepo checkout

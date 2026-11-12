@@ -162,6 +162,38 @@ pub fn impact_run_vitest(
 }
 
 ///|
+/// Explicitly run `moon test <package paths>` in `root`. Each package path is
+/// root-relative and passed as its own argv element, never shell text. The
+/// module root package is addressed as ".". Child stdout and stderr both go
+/// to this process's stderr.
+pub fn impact_run_moon_test(
+  root : String,
+  packages : Array[String],
+  timeout_ms : Int32,
+) -> Int32 raise {
+  if timeout_ms <= 0 {
+    raise Failure("test timeout must be positive")
+  }
+  if packages.is_empty() {
+    raise Failure("package execution requires a nonempty package selection")
+  }
+  let paths : Array[String] = []
+  for package in packages {
+    // The module root package is the empty path; the native runner addresses
+    // it as the current directory.
+    paths.push(if package == "" { "" } else { normalize_relative(package) })
+  }
+  let payload = @utf8.encode(paths.join("\u{0}") + "\u{0}")
+  let (_, code) = impact_native_operation(
+    4,
+    native_os_string(root, "test root"),
+    payload,
+    timeout_ms,
+  )
+  code
+}
+
+///|
 /// Atomically create a new UTF-8 report. Existing files, directories and
 /// symlinks are never replaced, including a target created concurrently.
 /// Parent directories must already exist. The temporary file is kept in the

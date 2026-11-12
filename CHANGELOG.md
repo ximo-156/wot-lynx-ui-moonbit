@@ -4,6 +4,39 @@ All notable changes to this project are documented in this file.
 
 ## [Unreleased]
 
+### MoonBit module planning
+
+MoonImpact now plans MoonBit modules natively: without `--config`, a root
+holding `moon.mod`/`moon.mod.json` is analyzed as a package graph read from the
+`moon.pkg` manifests themselves — no toolchain invocation, no project code
+executed. A changed file selects the packages that own it plus every package
+that transitively imports them; `--run` invokes `moon test` per selected
+package. Every module under the root is discovered, so nested and workspace
+modules resolve imports against their own module, and every `import` block
+counts — plain, `for "test"` and `#cfg`-conditional alike.
+
+- The plan keeps the advisory contract: an unparseable manifest, a missing
+  module descriptor or an unmodeled change requests every package; a manifest
+  or descriptor change is a global input. The module root package is addressed
+  as `.` by the runner.
+- Verified on this repository (root package plus `cmd/main`, `cmd/impact` and
+  four example modules) and by read-only planning of the public
+  [moonbitlang/x](https://github.com/moonbitlang/x) monorepo: a `decimal`
+  change selects 1 of 19 test-holding packages; an `encoding` change selects
+  4 of 19 through importers whose dependency is declared `for "test"`.
+- Cold-cache measurement on this repository: a full `moon test` after
+  `moon clean` takes 5.4s and runs 555 tests; a CLI-only change plans `none`
+  and `moon test` for the selected package takes 2.1s and runs no library
+  tests.
+- **Symlinked documents no longer block every plan.** A non-regular file is
+  refused only when its content can matter — a source, stylesheet or manifest;
+  a linked `README.md` stays membership data. Four linked READMEs in
+  moonbitlang/x previously blocked all of its plans.
+- The MoonBit planner is split into a filesystem wrapper and a pure planning
+  function, so the package graph, strategies and evidence chains are
+  unit-tested without a toolchain.
+
+
 ### MoonImpact real-project selective planning
 
 Verified end to end on the public

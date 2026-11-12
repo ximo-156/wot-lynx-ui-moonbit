@@ -1,41 +1,55 @@
-# MoonImpact / moonlint
+# MoonImpact
 
-## MoonImpact — change-impact and regression-test planning
+MoonImpact answers one question for a code change: **which tests should run,
+and why**. It is written in [MoonBit](https://www.moonbitlang.com/) and plans
+two project kinds:
 
-The new `cmd/impact` entry turns changed files into an **explainable test plan**
-for Vue/TypeScript projects: static module dependencies, bounded file-read
-and reader-wrapper inference, CSS/SCSS input chains, shortest evidence chains,
-and conservative full-suite fallback.
-It does not check naming or formatting, and a plan is not a passing test result.
+- **MoonBit modules** (no configuration needed): the package graph is read
+  from the `moon.pkg` manifests in the tree — every module under the root,
+  every `import` block including `for "test"` and `#cfg` ones. A changed file
+  selects its owning package plus every transitive importer, and `--run`
+  invokes `moon test` per selected package.
+- **JS/TS projects** (explicit `moonimpact.json`): static imports, bounded
+  file-read and reader-wrapper inference, CSS/SCSS input chains, literal
+  `import.meta.glob` patterns, directory reads and existence checks.
+
+Either way the plan is **explainable**: every selected test carries one
+deterministic shortest evidence chain, and anything the static model cannot
+prove requests the full suite instead of silently claiming "no impact". A plan
+is advisory, never a passing test result.
 
 ```sh
 moon build --target native
+
+# A MoonBit module: this repository is one.
+moon run cmd/impact -- plan --file impact_plan.mbt .
+moon run cmd/impact -- plan --file cmd/impact/main.mbt .
+
+# A JS/TS project with its explicit configuration.
 moon run cmd/impact -- plan --file src/fees.ts \
-  --config examples/impact-demo/moonimpact.json examples/impact-demo
-moon run cmd/impact -- plan --file src/theme.css \
   --config examples/impact-demo/moonimpact.json examples/impact-demo
 ```
 
-Planning does not run tests or install dependencies. Only explicit `--run`
-invokes the local Vitest installation through fixed process arguments.
-Read the [MoonImpact guide](<docs/moonimpact.md>) and the
-[synthetic demo](<examples/impact-demo/README.md>) for supported dependency
-forms, limitations, Git input, JSON/HTML reports and execution safety.
-See the [real-project measurement](<docs/moonimpact.md#real-project-measurement>)
-for the public wot-lynx-ui evaluation: 71 of 135 test files selected for a
-core-utility change, a 44% wall-clock reduction against the full suite, and an
-injected off-by-one caught by the selected subset. Selective whole-project CI
-reduction is a per-project property, not a guarantee.
+Planning never runs tests, builds or installs dependencies; only `--run`
+executes the project's own runner with fixed arguments. Read the
+[MoonImpact guide](<docs/moonimpact.md>) for both modes, the synthetic
+[demo](<examples/impact-demo/README.md>), Git input, JSON/HTML reports and
+execution safety.
 
-This is substantial new functionality built on the existing project. The
-original `cmd/main` moonlint CLI, module identity, license notices and history
-remain intact; the new direction is not a rename of the old lint rules.
+Measured, not promised: on the public
+[moonbitlang/x](https://github.com/moonbitlang/x) monorepo a `decimal` change
+selects 1 of 19 test-holding packages and an `encoding` change selects 4 of 19
+through importers whose dependency is declared `for "test"`; on this
+repository a CLI-only change plans `none` — none of the 555 tests run — and a
+cold full suite takes 5.4s against 2.1s for the selected package. On the public
+wot-lynx-ui monorepo a core-utility change selects 71 of 135 test files with a
+44% wall-clock reduction, and an injected off-by-one is caught by the selected
+subset. Selective reduction is a per-project property, not a guarantee.
 
-## Original moonlint CLI
-
-A MoonBit-native convention linter for MoonBit source trees, written in
-[MoonBit](https://www.moonbitlang.com/). It also ships JavaScript/TypeScript
-presets for mixed repositories, but MoonBit is the primary target.
+The repository also contains **moonlint**, the convention and project-policy
+linter this tool grew from: `cmd/main` keeps its CLI, module identity, license
+notices and history intact, and MoonImpact reuses its source and filesystem
+foundations. The two entry points are independent.
 
 ## Why this exists
 

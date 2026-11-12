@@ -72,6 +72,26 @@ class ImpactCLI(unittest.TestCase):
     def plan(self, *args, expected=0):
         return json.loads(self.invoke(*args, "--format", "json", expected=expected).stdout)
 
+    def invoke_bare(self, *args, expected=0):
+        """Invoke without --config: MoonBit modules plan natively."""
+        result = subprocess.run(
+            [str(BINARY), "plan", *map(str, args), str(self.root)],
+            cwd=self.root, env=self.env, text=True, capture_output=True, timeout=60,
+        )
+        self.assertEqual(result.returncode, expected, result.stdout + "\n" + result.stderr)
+        return result
+
+    def bare_plan(self, *args, expected=0):
+        return json.loads(self.invoke_bare(*args, "--format", "json", expected=expected).stdout)
+
+    def write_moonbit_fixture(self):
+        self.write("moon.mod", 'name = "fixture/mod"\n\nversion = "0.1.0"\n')
+        self.write("moon.pkg", "")
+        self.write("lib.mbt", "pub fn lib() -> Int32 { 1 }\n")
+        self.write("lib_test.mbt", 'test "lib" { assert_eq(lib(), 1) }\n')
+        self.write("cli/moon.pkg", 'import {\n  "fixture/mod" @lib,\n}\n')
+        self.write("cli/main.mbt", "fn main { println(@lib.lib()) }\n")
+
     def fake_runner(self, code=0):
         bindir = self.owner / "bin"
         bindir.mkdir(exist_ok=True)
@@ -84,6 +104,10 @@ class ImpactCLI(unittest.TestCase):
             "print('RUNNER_STDOUT')\nprint('RUNNER_STDERR',file=sys.stderr)\n"
             f"sys.exit({code})\n", encoding="utf-8")
         runner.chmod(0o755)
+        # MoonBit mode runs `moon test`; the same marker records its argv.
+        moon = bindir / "moon"
+        moon.write_text(runner.read_text(encoding="utf-8"), encoding="utf-8")
+        moon.chmod(0o755)
         self.env["PATH"] = str(bindir) + os.pathsep + self.env.get("PATH", "")
         self.env["IMPACT_TEST_MARKER"] = str(self.marker)
 
@@ -366,6 +390,43 @@ const source = fs.readFileSync('src/value.ts', 'utf8')
         result = self.invoke("--file", "src/value.ts", "--run", expected=2)
         self.assertIn("outside runner_dir", result.stderr)
         self.assertFalse(self.marker.exists())
+
+    def test_moonbit_module_is_planned_without_a_config(self):
+        self.write_moonbit_fixture()
+        doc = self.bare_plan("--file", "lib.mbt")
+        self.assertEqual(doc["mode"], "moonbit")
+        self.assertEqual(doc["strategy"], "related")
+        self.assertEqual(doc["tests"], [""])
+        self.assertEqual(doc["issues"], [])
+        chain = doc["traces"][0]["chain"]
+        self.assertEqual(chain[0]["kind"], "owns")
+
+    def test_moonbit_cli_only_change_runs_no_library_tests(self):
+        self.write_moonbit_fixture()
+        doc = self.bare_plan("--file", "cli/main.mbt")
+        self.assertEqual(doc["strategy"], "none")
+        self.assertEqual(doc["tests"], [])
+        self.assertEqual(doc["affected"], ["cli"])
+
+    def test_moonbit_descriptor_change_requests_every_package(self):
+        self.write_moonbit_fixture()
+        doc = self.bare_plan("--file", "moon.mod")
+        self.assertEqual(doc["strategy"], "full")
+        self.assertTrue(
+            any(r.startswith("global-input-changed") for r in doc["reasons"])
+        )
+
+    def test_moonbit_run_executes_moon_test_per_package(self):
+        self.write_moonbit_fixture()
+        self.fake_runner()
+        self.invoke_bare("--file", "lib.mbt", "--run")
+        executed = json.loads(self.marker.read_text())
+        # The module root package is addressed as the current directory.
+        self.assertEqual(executed["argv"], ["test", "."])
+
+    def test_no_config_and_no_moonbit_module_is_an_error(self):
+        result = self.invoke_bare("--file", "src/value.ts", expected=2)
+        self.assertIn("moonimpact:", result.stderr)
 
     def test_global_change_requests_full_suite(self):
         doc = self.plan("--file", "package.json")

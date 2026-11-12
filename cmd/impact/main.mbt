@@ -35,6 +35,14 @@ fn impact_main(args : Array[String]) -> Int32 raise {
     return 0
   }
   let root = @lib.canonical_root(opts.root)
+  // Without an explicit configuration the planner looks for a MoonBit module
+  // and plans it natively; a JS/TS project still needs its moonimpact.json.
+  let moonbit = opts.config_path is None && @lib.impact_has_moonbit_module(root)
+  if opts.config_path is None && !moonbit {
+    raise Failure(
+      "no --config given and no MoonBit module found at the root; supply a moonimpact.json for a JS/TS project",
+    )
+  }
   let config = match opts.config_path {
     None => @lib.impact_default_config()
     Some(path) => {
@@ -61,7 +69,11 @@ fn impact_main(args : Array[String]) -> Int32 raise {
         "HEAD..working-tree"
       }
   }
-  let plan = @lib.impact_plan(root, changed, config, input, [])
+  let plan = if moonbit {
+    @lib.impact_moonbit_plan(root, changed, input, [])
+  } else {
+    @lib.impact_plan(root, changed, config, input, [])
+  }
   if !["none", "related", "full", "blocked"].contains(plan.strategy) {
     raise Failure("planner returned an unsupported execution strategy")
   }
@@ -128,21 +140,29 @@ fn impact_main(args : Array[String]) -> Int32 raise {
   }
   if full {
     eprintln(
-      "moonimpact: full fallback; running pnpm exec vitest run with no filters",
+      if moonbit {
+        "moonimpact: full fallback; running moon test with no package filters"
+      } else {
+        "moonimpact: full fallback; running pnpm exec vitest run with no filters"
+      },
     )
   } else {
     eprintln(
-      "moonimpact: running \{plan.tests.length()} selected test file(s) with Vitest",
+      if moonbit {
+        "moonimpact: running moon test for \{plan.tests.length()} selected package(s)"
+      } else {
+        "moonimpact: running \{plan.tests.length()} selected test file(s) with Vitest"
+      },
     )
   }
-  let child_code = @lib.impact_run_vitest(
-    run_root,
-    run_tests,
-    full,
-    opts.timeout_ms,
-  )
+  let child_code = if moonbit {
+    @lib.impact_run_moon_test(root, plan.tests, opts.timeout_ms)
+  } else {
+    @lib.impact_run_vitest(run_root, run_tests, full, opts.timeout_ms)
+  }
+  let runner = if moonbit { "moon test" } else { "Vitest" }
   eprintln(
-    "moonimpact: Vitest exited with status \{child_code}; the stdout document remains an advisory plan",
+    "moonimpact: \{runner} exited with status \{child_code}; the stdout document remains an advisory plan",
   )
   if child_code == 0 {
     0
@@ -315,11 +335,13 @@ fn print_impact_help() -> Unit {
       "  --base <ref>        Given commit to live working tree, including untracked files",
       "", "Planning and output:", "  --config <json>     Explicit config; no automatic project config discovery",
       "  --format <format>   text (default), json or html on stdout", "  --report <new-file> Also save JSON plan; parent must exist; NEVER overwrite a path",
-      "  --run               Explicitly invoke pnpm exec vitest run after planning",
+      "  --run               Explicitly invoke the project's test runner after planning",
       "  --timeout-ms <n>    Positive timeout for --run (default: 60000 milliseconds)",
       "  -h, --help          Print help", "", "The default command only plans: it does not test, build or install dependencies.",
       "Git input requires the repository root and reads live working-tree changes, not HEAD blobs.",
-      "Related mode passes ./test-path arguments; full fallback runs all Vitest tests.",
+      "Without --config a MoonBit module (moon.mod/moon.mod.json) is planned natively: changed",
+      "files select their owning packages plus every transitive importer, and --run invokes moon",
+      "test per selected package. A JS/TS project needs a moonimpact.json.", "Related mode passes ./test-path arguments; full fallback runs all Vitest tests.",
       "None and blocked strategies NEVER invoke a test process. Test output goes to stderr.",
       "A plan is advisory, not proof that unselected tests cannot fail.", "Exit: 0 plan completed/tests passed; 1 test process failed; 2 usage/IO/blocked/startup/timeout.",
     ].join("\n"),

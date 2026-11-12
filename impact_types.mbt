@@ -80,6 +80,7 @@ pub struct ImpactPlan {
   reasons : Array[String]
   source_count : Int32
   edge_count : Int32
+  mode : String
 }
 
 ///|
