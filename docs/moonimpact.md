@@ -87,10 +87,10 @@ to the configuration file's directory.
 ```
 
 - Without `include`, all non-noise directories participate; the default noise
-  directories (`.git`, `node_modules`, `dist`, `target`, `_build`,
-  `.mooncakes`, `coverage`, `.rspeedy`, `.vitepress`, `.preview`) are not
-  traversed. `skip_dirs` replaces that list for projects whose tests genuinely
-  read conventional build output.
+  directories (`.git`, `node_modules`, `.pnpm-store`, `dist`, `target`,
+  `_build`, `.mooncakes`, `coverage`, `.rspeedy`, `.vitepress`, `.preview`) are
+  not traversed. `skip_dirs` replaces that list for projects whose tests
+  genuinely read conventional build output.
 - **Membership is the whole tree; analysis is scoped.** Every regular file
   minus noise directories is known membership, so a read or import of an
   out-of-scope file resolves to a real leaf input. `include`/`exclude` decide
@@ -291,7 +291,7 @@ Exit codes:
 
 A read-only evaluation against the public
 [wot-lynx-ui](https://github.com/ximo-156/wot-lynx-ui) monorepo (982 analyzed
-sources, 11,929 known edges, 135 test files / 2261 tests) with the two explicit
+sources, 12,019 known edges, 135 test files / 2261 tests) with the two explicit
 changes `packages/core/src/common/formatDate.ts` and
 `packages/core/src/common/host.ts`. The configuration used is
 [`examples/impact-wot-lynx-ui.json`](<../examples/impact-wot-lynx-ui.json>);

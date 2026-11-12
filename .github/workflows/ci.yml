@@ -42,6 +42,19 @@ jobs:
           test -x "$BINARY"
           python3 tests/impact_integration.py --binary "$BINARY"
           python3 tests/impact_native.py
+      - name: Audit MoonImpact stability against a real public project
+        run: |
+          # Structural stability gate: plans a fresh public monorepo checkout
+          # through file and Git input modes. The checkout carries no private
+          # reference copy, so declarations for optional assets report as
+          # unresolved and the plan falls back to full; the audit checks
+          # invariants, determinism and failure loudness, never a strategy.
+          git clone --depth 1 https://github.com/ximo-156/wot-lynx-ui "$RUNNER_TEMP/wot-lynx-ui"
+          python3 tests/impact_stability.py \
+            --binary "$PWD/_build/native/debug/build/cmd/impact/impact.exe" \
+            --project "$RUNNER_TEMP/wot-lynx-ui" \
+            --config examples/impact-wot-lynx-ui.json \
+            --samples 20
       - name: Build and test MoonBit examples
         run: |
           for module in examples/moonbit-demo examples/package-policy-demo examples/api-policy-demo/before examples/api-policy-demo/after; do

@@ -38,7 +38,10 @@ appear in both runs.
   like the build's sass option. Relative resolution still wins.
 - **`skip_dirs` override** replaces the default noise-directory list for
   projects whose tests genuinely read conventional build output (for example
-  a docs `.vitepress` theme fixture).
+  a docs `.vitepress` theme fixture). The default list now also skips
+  `.pnpm-store`: a local 1.3GB pnpm content store was previously walked in
+  full, costing 8.3s of a plan whose result is byte-identical without it
+  (2.5s).
 - **Glob dependency declarations.** A `dependencies` entry may name a glob;
   each current membership match becomes its own edge. A glob matching nothing
   is reported, never silently empty. Declaring a file also asserts that the
@@ -63,9 +66,19 @@ appear in both runs.
   load files, and they already reject non-static paths themselves. Values,
   selectors and at-rule preludes are skipped, an unterminated interpolation
   still blocks, and a prelude interpolation still marks its block dynamic.
+- **User-visible arrays are ordered lexicographically.** MoonBit's String
+  comparison is length-first — a valid total order, but `mts/…` sorting
+  before `component/…` surprises readers. Paths, the test inventory, the
+  selected set, affected nodes, edges and issues now read like a directory
+  listing; selection itself is unchanged.
 - **Glob expansion is prefix-filtered.** Declared globs test their literal
   prefix before the full pattern, keeping large-tree expansion affordable
-  (the wot-lynx-ui plan runs in about 6s for 982 analyzed sources).
+  (the wot-lynx-ui plan runs in about 2.5s for 982 analyzed sources).
+- **Stability audit suite** (`tests/impact_stability.py`, read-only, wired into
+  CI against a fresh clone of the public evaluation project): a 60-file
+  change-input sweep with plan invariants, byte-identical repeated runs, Git
+  input modes, degenerate inputs, create-only reports and a timing bound. The
+  audit found the length-ordering and pnpm-store defects above.
 
 ### MoonImpact static input coverage
 

@@ -22,8 +22,8 @@ pub fn impact_default_config() -> ImpactConfig {
     ],
     style_load_paths: [],
     skip_dirs: [
-      ".git", "node_modules", "dist", "target", "_build", ".mooncakes", "coverage",
-      ".rspeedy", ".vitepress", ".preview",
+      ".git", "node_modules", ".pnpm-store", "dist", "target", "_build", ".mooncakes",
+      "coverage", ".rspeedy", ".vitepress", ".preview",
     ],
     runner_dir: "",
     max_source_bytes: 2000000,

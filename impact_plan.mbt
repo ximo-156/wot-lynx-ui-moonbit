@@ -312,17 +312,13 @@ fn impact_resolve_reference(
 /// deterministic, but `mts/…` sorting before `component/…` surprises readers.
 /// Every user-visible MoonImpact array is ordered the way a directory
 /// listing reads instead.
-fn impact_path_order(a : String, b : String) -> Int {
+fn impact_path_order(a : String, b : String) -> Int32 {
   let left = a.to_array()
   let right = b.to_array()
   let mut i = 0
   while i < left.length() && i < right.length() {
     if left[i] != right[i] {
-      return if left[i].to_int() < right[i].to_int() {
-        -1
-      } else {
-        1
-      }
+      return if left[i].to_int() < right[i].to_int() { -1 } else { 1 }
     }
     i += 1
   }
@@ -518,7 +514,9 @@ pub fn build_impact_plan(
       })
     }
   }
-  raw_edges.sort_by((a, b) => impact_path_order(impact_edge_key(a), impact_edge_key(b)))
+  raw_edges.sort_by((a, b) => {
+    impact_path_order(impact_edge_key(a), impact_edge_key(b))
+  })
   let edges : Array[ImpactEdge] = []
   let edge_keys : Set[String] = Set([])
   let reverse : Map[String, Array[ImpactEdge]] = Map([])

@@ -118,11 +118,10 @@ class ImpactStability(unittest.TestCase):
         self.check_plan_invariants(base, "--base HEAD")
 
     def test_degenerate_inputs_fail_loudly_or_plan_honestly(self):
-        missing = self.plan("--file", "definitely/not/here.ts", expected=0)
-        doc = json.loads(missing.stdout)
-        self.assertEqual(doc["strategy"], "full")
+        missing = self.json_plan("--file", "definitely/not/here.ts")
+        self.assertEqual(missing["strategy"], "full")
         self.assertTrue(
-            any(r.startswith("removed-or-missing-input") for r in doc["reasons"]),
+            any(r.startswith("removed-or-missing-input") for r in missing["reasons"]),
         )
         # A directory is not a membership file: it is a missing input, planned
         # as a full regression rather than a crash.

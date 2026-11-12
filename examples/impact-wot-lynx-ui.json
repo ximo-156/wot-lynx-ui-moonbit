@@ -277,14 +277,15 @@
   "max_source_bytes": 2000000,
   "skip_dirs": [
     ".git",
-    "node_modules",
-    "dist",
-    "target",
-    "_build",
     ".mooncakes",
-    "coverage",
+    ".pnpm-store",
+    ".preview",
     ".rspeedy",
-    ".preview"
+    "_build",
+    "coverage",
+    "dist",
+    "node_modules",
+    "target"
   ],
   "runner_dir": "packages/ui"
 }

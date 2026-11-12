@@ -42,7 +42,7 @@ contract; every declaration was verified against the code it covers.
 | Metric | Round two (unibest) | Now (wot-lynx-ui) |
 | --- | ---: | ---: |
 | Analyzed sources | 628 | 982 |
-| Known dependency edges | 2,358 | 11,929 |
+| Known dependency edges | 2,358 | 12,019 |
 | Test inventory | 296 | 135 |
 | Uncertainty observations | 267 | 0 after declarations (64 covered by explicit contracts) |
 | Effective strategy | full | related |
@@ -83,6 +83,42 @@ silently suppressed by the earlier blanket suppression. Splitting configuration
 errors out of the suppression surfaced them as
 `unresolved-explicit-dependency`, and the corrected `packages/demo/**`
 declarations restored the plan.
+
+## Stability audit
+
+A read-only stability suite (`tests/impact_stability.py`, wired into CI against
+a fresh clone of the same public project) exercises the planner through the
+real tree:
+
+- **Change-input sweep.** Sixty sampled files across sources, tests,
+  stylesheets, configs, JSON and the duplicate-named files the tree contains:
+  every run exits 0 or 2, parses as JSON, keeps the four strategies, keeps the
+  selection inside the sorted inventory, and points every trace at a selected
+  test. No crash, hang or malformed document.
+- **Determinism.** Repeated identical runs are byte-identical.
+- **Git input modes.** `--worktree` and `--base HEAD` produce valid plans on a
+  tree with staged, unstaged and untracked changes.
+- **Degenerate inputs.** A missing file and a directory plan as a full
+  regression with `removed-or-missing-input`; mixing input modes exits 2 with
+  `choose exactly one change input`.
+- **Report semantics.** A second `--report` to the same path is refused and the
+  first file is unchanged; HTML output contains no scripts.
+- **Timing.** The slowest plan stays far below the 60s bound.
+
+Two defects were found by this audit and fixed:
+
+1. **User-visible arrays were length-ordered.** MoonBit's String comparison is
+   length-first, so the inventory read `mts/…` before `component/…`. Output is
+   now lexicographic everywhere (paths, inventory, selection, affected nodes,
+   edges, issues); the selection itself is unchanged.
+2. **A 1.3GB local pnpm content store was walked in full.** `.pnpm-store` now
+   joins the default noise directories: the same plan runs in 2.5s instead of
+   8.3s with byte-identical output.
+
+On a fresh clone (no optional reference copy, no store) the same audit passes
+with the plan honestly falling back to `full`: the five declarations for the
+optional `.wot-ref` asset report `unresolved-explicit-dependency` instead of
+silently matching nothing.
 
 ## Automated coverage
 
