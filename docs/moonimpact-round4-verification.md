@@ -5,6 +5,17 @@ or a guarantee of selective test safety on arbitrary projects. The
 [round-three record](<moonimpact-round3-verification.md>) covers the JS/TS
 engine and stays valid; this record adds the MoonBit front end.
 
+> **2026-11-13 re-verification** (moon 0.1.20261111): every number below was
+> reproduced — 555 native unit tests, 38 MoonImpact CLI regressions, 15 native
+> bridge regressions, 207 moonlint CLI regressions, repository self-lint with no
+> findings, the read-only stability suite (6 tests, MoonBit mode), the
+> moonbitlang/x selections (1/19 and 4/19) and both repository plan modes
+> (`none` for a CLI-only change, `related` selecting the root package for a
+> library change). Wall times are machine-dependent: the cold-cache pair
+> re-measured at 13.0s full / 2.4s selected on the re-verification machine
+> (same ordering, same 555 vs 0 tests). Remote CI remains unstarted (account
+> billing lock).
+
 ## What was added
 
 A second project kind, planned without any configuration: a root holding

@@ -44,7 +44,12 @@ repository a CLI-only change plans `none` — none of the 555 tests run — and 
 cold full suite takes 5.4s against 2.1s for the selected package. On the public
 wot-lynx-ui monorepo a core-utility change selects 71 of 135 test files with a
 44% wall-clock reduction, and an injected off-by-one is caught by the selected
-subset. Selective reduction is a per-project property, not a guarantee.
+subset. That wot-lynx-ui number was measured on a working tree that also holds
+the project's optional, git-ignored `.wot-ref` reference copy; on a fresh clone
+the five `.wot-ref` declarations report `unresolved-explicit-dependency` and the
+plan honestly falls back to `full` (135/135) — see the
+[round-three record](<docs/moonimpact-round3-verification.md>). Selective
+reduction is a per-project property, not a guarantee.
 
 The repository also contains **moonlint**, the convention and project-policy
 linter this tool grew from: `cmd/main` keeps its CLI, module identity, license
@@ -75,10 +80,9 @@ independently proven absence of copied code. This repository declares
 Apache-2.0 in [LICENSE](<LICENSE>); see [third-party attribution](<THIRD_PARTY_NOTICES.md>).
 
 The local manifest now targets **0.3.0** because public result fields and
-structural-check variants changed. The tested result is the current working tree, not a published release. During
-this work HEAD / the local origin/main tracking ref moved to intermediate commit
-4bebde5; subsequent fixes remain uncommitted. This session issued no project
-commit, push or release command.
+structural-check variants changed. The tested result is the current working
+tree, not a published release. The MoonBit module-planning work is committed
+(`1a5d8ce`, 2026-11-12); the tree is clean and no release tag exists yet.
 
 ## What it does
 
@@ -1062,11 +1066,17 @@ moon info && moon fmt
 
 [CI](<.github/workflows/ci.yml>) runs explicit native gates and compiles the
 examples. Its installer fetches latest, **not a pinned toolchain**; versions are
-recorded and interface/format drift is checked. Remote CI was not verified in
-this session. Current local evidence and known limits are in
-[verification notes](<docs/verification.md>) for the moonlint CLI and in
-[MoonImpact verification](<docs/moonimpact-round3-verification.md>) for the
-impact planner; historical wasm failures are not claimed fixed. The JS/TS legacy line matcher still sees literal text in two
+recorded and interface/format drift is checked. **Remote CI has never started a
+job**: every run since 2026-10-20 fails in about two seconds with zero steps
+executed — the signature of the account-level billing lock recorded in commit
+`e318b9e` ("The job was not started because your account is locked due to a
+billing issue"). No remote test result exists either way; the commands above
+reproduce every gate locally on macOS/Linux. Current local evidence and known
+limits are in [verification notes](<docs/verification.md>) for the moonlint CLI
+and in the MoonImpact verification records
+([round three](<docs/moonimpact-round3-verification.md>),
+[round four](<docs/moonimpact-round4-verification.md>)); historical wasm
+failures are not claimed fixed. The JS/TS legacy line matcher still sees literal text in two
 known expected-failure cases; they are not counted as repaired behavior.
 
 `moonlint .` uses [the repository config](<moonlint.json>), which deliberately

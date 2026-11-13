@@ -370,7 +370,8 @@ sources, 12,019 known edges, 135 test files / 2261 tests) with the two explicit
 changes `packages/core/src/common/formatDate.ts` and
 `packages/core/src/common/host.ts`. The configuration used is
 [`examples/impact-wot-lynx-ui.json`](<../examples/impact-wot-lynx-ui.json>);
-the measurements below are reproducible with it.
+the measurements below are reproducible with it on a working tree that also
+holds the project's optional, git-ignored `.wot-ref` reference copy.
 
 | Change | Strategy | Selected | Notes |
 | --- | --- | --- | --- |
@@ -398,7 +399,10 @@ Execution evidence (clean working tree, `vitest run` from `packages/ui`):
 
 The subset rows were produced through the tool itself with
 `--run` (the shipped configuration sets `runner_dir` to `packages/ui`, where
-that project configures Vitest), so the table is reproducible end to end:
+that project configures Vitest), so the table is reproducible end to end under
+the same `.wot-ref` condition; on a fresh clone (no `.wot-ref`) the five
+declarations report `unresolved-explicit-dependency` and the plan falls back to
+`full` instead of matching nothing silently:
 
 ```sh
 moon build --target native
