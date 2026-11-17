@@ -1,5 +1,14 @@
 # 本地验收记录与申报复核
 
+> **这是一份本地验收记录，不是当前公开证据。** 它记录的是 2026-11-04
+> 那一轮 moonlint CLI 的验收结果。当时的运行日志只存在于本地工作区，
+> 既不随公共仓库发布，也已在本轮清理中删除，因此下列结果只保留结论数字，
+> 无法再回溯原始日志。当前可公开复核的证据是 MoonImpact 的各轮验证记录：
+> [验证索引](<moonimpact-round5-verification.md>)、
+> [规划验证](<moonimpact-round4-verification.md>)、
+> [JS/TS 端到端验证](<moonimpact-round3-verification.md>)。
+> 下列数字停留在当时的工具链与测试规模，不代表当前状态。
+
 ## 验收对象
 
 - 工作区模块：`ximo-156/moonlint`，本地版本 **0.3.0**。
@@ -9,18 +18,19 @@
 
 ## 最终运行结果
 
-| 检查 | 结果 | 证据 |
-| --- | --- | --- |
-| `moon check --target native` | 退出 0，230 warnings、0 errors | [check log](<../.workbuddy-ai/final-check.log>) |
-| `moon test --target native` | **383/383 passed** | [unit log](<../.workbuddy-ai/final-unit.log>) |
-| `moon build --target native` | 退出 0，161 warnings、0 errors | [build log](<../.workbuddy-ai/final-build.log>) |
-| 全部 CLI 阶段 | **194 项：192 passed、2 expectedFailure**，退出 0 | [CLI log](<../.workbuddy-ai/final-cli.log>) |
-| 仓库自身规范 | 配置范围内 0 findings、0 source/context failures，未加载基线 | [self report](<../.workbuddy-ai/self-current.json>) |
-| `moon info && moon fmt` | 两个命令退出 0；后续完整 native/CLI 门禁重新运行 | [info log](<../.workbuddy-ai/info-current.log>)、[fmt log](<../.workbuddy-ai/fmt-current.log>) |
-| 实际示例模块 | MoonBit convention、package policy、API before/after 四模块 check/test/build 退出 0 | [example log](<../.workbuddy-ai/example-gates.log>) |
-| 完整当前库接口 | 整份生成接口成功快照；同快照比较 0 变化、退出 0 | [API check](<../.workbuddy-ai/current-full-api-check.json>) |
+| 检查 | 结果 |
+| --- | --- |
+| `moon check --target native` | 退出 0，230 warnings、0 errors |
+| `moon test --target native` | **383/383 passed** |
+| `moon build --target native` | 退出 0，161 warnings、0 errors |
+| 全部 CLI 阶段 | **194 项：192 passed、2 expectedFailure**，退出 0 |
+| 仓库自身规范 | 配置范围内 0 findings、0 source/context failures，未加载基线 |
+| `moon info && moon fmt` | 两个命令退出 0；后续完整 native/CLI 门禁重新运行 |
+| 实际示例模块 | MoonBit convention、package policy、API before/after 四模块 check/test/build 退出 0 |
+| 完整当前库接口 | 整份生成接口成功快照；同快照比较 0 变化、退出 0 |
 
-日志属于本地忽略的验收数据，不随公共仓库自动发布。以上通过不意味着 warning-free，也不把两项 expectedFailure 计为已修复。
+这些是当时的结论数字，原始日志已随本地验收数据一并删除。以上通过不意味着
+warning-free，也不把两项 expectedFailure 计为已修复。
 
 ## 正反业务回归
 
@@ -52,10 +62,13 @@
 
 ## 申报书复核
 
-[仓库校正稿](<申报书.md>) 与桌面副本同步；原稿分别保存在本地忽略的 [repo original](<internal/submission-before-20261104/repo-original.md>)、[desktop original](<internal/submission-before-20261104/desktop-original.md>)。
+申报书正文（`docs/申报书.md`）保存在本地忽略目录，**不随公共仓库发布**。
+本轮已按"去掉 AI 腔"的要求重写一版，八个小节的结构保持不变，只改行文：
+删掉成片的加粗和对称排比句，把叠在一起的多重免责声明拆成单句，把
+"本次申报主体是……"这类总结腔改成直陈其事，数字和链接全部原样保留。
 
 - 已恢复 1–8 项，去掉坏表格与坏链接，修正 W74 / Rust 使用条件 / 显式 baseline / 实际六条示例 / reference-license 事实。
 - 已按核实的八项要求精简，未取得登录后的原始模板正文，因此不保证原样版式或单页打印。提交前请本人对照正式模板控制页数。
-- 公告要求本人撰写。这里做了 AI 辅助事实与格式校正，**不能作为“未使用 AI 编写”的证明，也不建议直接提交**；须本人审阅、重写定稿。
+- 公告要求本人撰写。这里做的是 AI 辅助的事实与格式校正，**不能作为"未使用 AI 编写"的证明**；须本人通读、按自己的口吻改写后再定稿。
 - 至少 10 个历史实质实现/回归提交可逐项复核：`d5a7404`、`97c07fc`、`24b77cf`、`6ba3812`、`c114681`、`d97b769`、`bed9736`、`9ac5b96`、`3a0fec7`、`3792f15`。没有把 33 次总提交数当作全部有效性证明。
 - 不保证比赛仍接受补交或最终评审通过；公开代码和最终材料须由申请人复核、更新、提交。

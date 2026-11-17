@@ -19,15 +19,24 @@ counts — plain, `for "test"` and `#cfg`-conditional alike.
   module descriptor or an unmodeled change requests every package; a manifest
   or descriptor change is a global input. The module root package is addressed
   as `.` by the runner.
-- Verified on this repository (root package plus `cmd/main`, `cmd/impact` and
-  four example modules) and by read-only planning of the public
-  [moonbitlang/x](https://github.com/moonbitlang/x) monorepo: a `decimal`
-  change selects 1 of 19 test-holding packages; an `encoding` change selects
-  4 of 19 through importers whose dependency is declared `for "test"`.
+- **Selective execution verified end to end on a public MoonBit module.** On
+  [moonbitlang/x](https://github.com/moonbitlang/x) pinned at commit
+  `6b67e08` (25 packages, 19 holding tests), an `encoding` change plans 4 of
+  19 packages and runs 175 of the suite's 795 tests; a `decimal` change plans
+  1 of 19 and runs 27. Both ran through `--run`. Injected faults were caught:
+  the 4-package selection failed exactly the three tests the full suite
+  failed, missing none, and the `decimal` fault was caught by the 1-package
+  selection. Cold wall time fell from 4.67s to 0.57s and 0.48s respectively;
+  the subject's single pre-existing failure is unrelated and appears in both
+  runs. Record: `docs/moonimpact-round5-verification.md`.
+- The pinned commit matters: the project's later `fs` package needs an
+  `@io.ReaderClosed` the core pinned by this toolchain lacks, so upstream
+  `HEAD` does not compile here. That is version skew, not a planning defect.
 - Cold-cache measurement on this repository: a full `moon test` after
   `moon clean` takes 5.4s and runs 555 tests; a CLI-only change plans `none`
   and `moon test` for the selected package takes 2.1s and runs no library
-  tests.
+  tests. That case demonstrates coverage reasoning, not saved work on a change
+  that needs testing.
 - **Symlinked documents no longer block every plan.** A non-regular file is
   refused only when its content can matter — a source, stylesheet or manifest;
   a linked `README.md` stays membership data. Four linked READMEs in
@@ -35,7 +44,6 @@ counts — plain, `for "test"` and `#cfg`-conditional alike.
 - The MoonBit planner is split into a filesystem wrapper and a pure planning
   function, so the package graph, strategies and evidence chains are
   unit-tested without a toolchain.
-
 
 ### MoonImpact real-project selective planning
 
@@ -47,9 +55,9 @@ change to `packages/core/src/common/formatDate.ts` produces a `related` plan
 selecting 71 of 135 test files. The clean tree runs the full suite in 37.1s and
 the selected subset in 20.9s; an injected `getFirstDayOfWeek` off-by-one is
 caught by the selected subset (and by the full suite), and reverting it
-restores green. The same three pre-existing failures — caused by duplicate
-component directories in the local working tree, unrelated to the change —
-appear in both runs.
+restores the pre-injection result. The same three pre-existing failures —
+caused by duplicate component directories in the local working tree, unrelated
+to the change — appear in both runs.
 
 - **`runner_dir` configuration** names the directory the test runner is
   configured in, for monorepos whose Vitest config is not at the analysis

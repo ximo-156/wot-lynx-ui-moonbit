@@ -3,7 +3,10 @@
 This records a local working-tree verification, not a release, remote CI result
 or a guarantee of selective test safety on arbitrary projects. The
 [round-three record](<moonimpact-round3-verification.md>) covers the JS/TS
-engine and stays valid; this record adds the MoonBit front end.
+engine and stays valid; this record adds the MoonBit front end. The
+[round-five record](<moonimpact-round5-verification.md>) later executes these
+plans with `--run` on the same public project, against the full suite, and
+injects faults to check what the selection catches.
 
 > **2026-11-13 re-verification** (moon 0.1.20261111): every number below was
 > reproduced — 555 native unit tests, 38 MoonImpact CLI regressions, 15 native

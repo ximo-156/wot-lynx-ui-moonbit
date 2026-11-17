@@ -344,14 +344,31 @@ Exit codes:
 
 ### MoonBit modules
 
-Read-only planning of the public
-[moonbitlang/x](https://github.com/moonbitlang/x) monorepo (25 packages, 19
-holding tests) needs no configuration:
+The public [moonbitlang/x](https://github.com/moonbitlang/x) monorepo (25
+packages, 19 holding tests) is planned with no configuration. Pinned at commit
+`6b67e08`, the plan was executed with `--run` and compared against the full
+suite:
 
-| Change | Strategy | Selected packages | Notes |
-| --- | --- | --- | --- |
-| `decimal/decimal.mbt` | related | 1 / 19 | leaf package; nothing imports it |
-| `encoding/encoding.mbt` | related | 4 / 19 | `crypto`, `fs` and `jwt` depend on it, declared `for "test"` |
+| Change | Strategy | Selected packages | Full suite | Selected run | Cold wall time |
+| --- | --- | --- | --- | --- | --- |
+| `decimal/decimal.mbt` | related | 1 / 19 | 795 tests | 27 tests | 4.67s → 0.48s |
+| `encoding/encoding.mbt` | related | 4 / 19 | 795 tests | 175 tests | 4.67s → 0.57s |
+
+The `encoding` selection is `crypto`, `encoding`, `fs` and `jwt`, reached
+through declared dependencies including the `for "test"` import from `crypto`.
+The `decimal` package is a leaf, so only its own package is selected.
+
+Injected faults were caught. Writing UTF-16 big-endian output as little-endian
+broke `encoding`, `crypto` and `jwt`: the 4-package selection failed exactly
+the three tests the 795-test full suite failed, missing none. A fault in
+`decimal`'s normalization was caught by the 1-package selection. The full
+record, including the one pre-existing unrelated failure in the subject
+project, is in the [round-five verification](<moonimpact-round5-verification.md>).
+
+The pinned commit is deliberate. The project's later `fs` package uses
+`@io.ReaderClosed`, which the core version pinned by this toolchain does not
+export, so upstream `HEAD` does not compile here — an upstream/toolchain
+version skew, not a planning defect.
 
 On this repository — itself a multi-module workspace (root package,
 `cmd/main`, `cmd/impact`, four example modules) — a cold-cache comparison
@@ -361,6 +378,11 @@ after `moon clean`:
 | --- | --- | --- |
 | Full suite (`moon test`) | 5.4s | 555 |
 | CLI-only change (`moon test cmd/impact`) | 2.1s | 0 — the plan is `none` |
+
+The second row shows what the planner concludes when no affected package holds
+tests; it is a statement about coverage, not a measurement of saved work on a
+change that needs testing. The round-five record carries the case where the
+selection does run a substantial share of the suite.
 
 ### JS/TS projects
 
