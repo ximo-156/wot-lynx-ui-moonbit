@@ -1,5 +1,7 @@
 # MoonImpact demo
 
+[English](<README.md>) | [简体中文](<README.zh-CN.md>)
+
 A synthetic Vue/TypeScript-style regression project with module dependencies
 and a non-imported stylesheet input. It does not contain business code.
 

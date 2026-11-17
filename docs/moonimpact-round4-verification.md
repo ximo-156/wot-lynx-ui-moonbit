@@ -1,5 +1,7 @@
 # MoonImpact round four: MoonBit module planning
 
+[English](<moonimpact-round4-verification.md>) | [简体中文](<moonimpact-round4-verification.zh-CN.md>)
+
 This records a local working-tree verification, not a release, remote CI result
 or a guarantee of selective test safety on arbitrary projects. The
 [round-three record](<moonimpact-round3-verification.md>) covers the JS/TS

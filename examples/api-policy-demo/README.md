@@ -1,11 +1,14 @@
 # API policy example
 
+[English](<README.md>) | [简体中文](<README.zh-CN.md>)
+
 Both modules compile and pass their tests. `before` is 0.2.0 and exports
 `greeting` plus `old_api`; `after` is 0.3.0 and removes `old_api`.
 
 From the moonlint checkout root:
 
 ```bash
+moon build --target native
 ROOT="$PWD"
 TOOLCHAIN="moon 0.1.20261102; moonc v0.10.19+bee578715"
 BIN="$ROOT/_build/native/debug/build/cmd/main/main.exe"

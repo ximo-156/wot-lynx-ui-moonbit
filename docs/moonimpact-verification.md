@@ -1,14 +1,17 @@
 # MoonImpact MVP local verification — 2026-11-10
 
+[English](<moonimpact-verification.md>) | [简体中文](<moonimpact-verification.zh-CN.md>)
+
 This is the initial MVP snapshot. See the [round-two record](<moonimpact-round2-verification.md>)
 for subsequent static-reader/style coverage, paired unibest measurements and
 updated test counts. Historical counts below are intentionally retained.
 
 ## Scope
 
-This record describes the current working tree, not a published release or a
-remote CI result. The original moonlint entry remains intact; MoonImpact is a
-new CLI and plan schema, not a renamed set of lint rules. No project commit,
+This record describes the working tree at the time of the initial MVP
+verification, not a published release, the current tree or a remote CI result.
+The original moonlint entry remains intact; MoonImpact is a new CLI and plan
+schema, not a renamed set of lint rules. No project commit,
 push, registration submission or dependency installation was performed for this
 verification.
 

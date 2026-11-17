@@ -1,5 +1,7 @@
 # MoonImpact round five: end-to-end selective execution on a public MoonBit module
 
+[English](<moonimpact-round5-verification.md>) | [简体中文](<moonimpact-round5-verification.zh-CN.md>)
+
 This record closes the gap left by the earlier rounds: the previous records
 measured **planning** on a public MoonBit module and **execution** on a JS/TS
 project, but never both on the same MoonBit tree. This round executes the
@@ -25,9 +27,10 @@ covers the JS/TS engine.
 
 The commit is pinned deliberately. The repository's later `fs` package uses
 `@io.ReaderClosed`, which the pinned local core (`0.10.21`) does not export, so
-the current upstream `HEAD` does not compile with this toolchain. That is an
-upstream/toolchain version skew, not a planning defect, and the measurement
-uses the newest commit that both compiles and runs its tests here.
+the upstream `HEAD` examined during this verification did not compile with
+that toolchain. That was an upstream/toolchain version skew, not a planning
+defect; the measurement used the newest commit found to compile and run its
+tests in that environment.
 
 ## Plan and execution, side by side
 

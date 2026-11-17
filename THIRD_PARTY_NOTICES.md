@@ -1,5 +1,7 @@
 # Third-party attribution
 
+[English](<THIRD_PARTY_NOTICES.md>) | [简体中文](<THIRD_PARTY_NOTICES.zh-CN.md>)
+
 ## wot-lynx-ui
 
 Source: <https://github.com/ximo-156/wot-lynx-ui>

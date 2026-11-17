@@ -1,5 +1,7 @@
 # Project Agents.md Guide
 
+[English](<AGENTS.md>) | [简体中文](<AGENTS.zh-CN.md>)
+
 This is a [MoonBit](https://docs.moonbitlang.com) project.
 
 You can browse and install extra skills here:

@@ -1,5 +1,7 @@
 # MoonImpact
 
+[English](<README.md>) | [简体中文](<README.zh-CN.md>)
+
 MoonImpact answers one question for a code change: **which tests should run,
 and why**. It is written in [MoonBit](https://www.moonbitlang.com/) and plans
 two project kinds:
@@ -51,9 +53,10 @@ Measured, not promised. On the public
 | `decimal/decimal.mbt` | 1 / 19 packages | 795 tests | 27 tests | 4.67s → 0.48s |
 
 Injected faults were caught by the selection. Writing UTF-16 big-endian output
-as little-endian broke `encoding`, `crypto` and `jwt`; the 4-package selection
-failed exactly the three tests the 795-test full suite failed, missing none. A
-fault in `decimal`'s normalization was caught by the 1-package selection.
+as little-endian caused two `encoding` test failures. Together with the
+pre-existing `crypto` failure, the 4-package selection failed exactly the same
+three tests as the 795-test full suite. A fault in `decimal`'s normalization
+was caught by the 1-package selection.
 Details, including the one pre-existing unrelated failure in the subject
 project, are in the [round-five record](<docs/moonimpact-round5-verification.md>).
 
@@ -93,9 +96,9 @@ The four strategies are honest about their own reach:
 
 | Strategy | Meaning |
 | --- | --- |
-| `related` | selected packages have a known dependency chain to the change |
-| `full` | the model cannot narrow the change safely, so every package is requested |
-| `none` | no affected package holds tests |
+| `related` | selected test files or packages have a known dependency chain to the change |
+| `full` | the model cannot narrow the change safely, so the full Vitest suite or every inventoried MoonBit test package is requested |
+| `none` | no changes, or no affected test files or packages with tests under the supported model |
 | `blocked` | an I/O or unsafe-path condition prevents execution |
 
 A plan is advisory and is never a passing test result. Nothing is executed
@@ -116,10 +119,11 @@ git -C /tmp/x-checkout checkout 6b67e08
 "$BIN" plan --file encoding/encoding.mbt --run /tmp/x-checkout
 ```
 
-The pinned commit is deliberate: the project's later `fs` package uses
-`@io.ReaderClosed`, which the core version pinned by this toolchain does not
-export, so upstream `HEAD` does not compile here. That is upstream/toolchain
-version skew, not a planning defect.
+The pinned commit is deliberate: during the round-five verification, the
+upstream `HEAD` used `@io.ReaderClosed` in its `fs` package, which the recorded
+local toolchain's core did not export. That checkout did not compile with that
+toolchain; this records version skew, not a planning defect or a claim about
+upstream's current build status.
 
 ## Verification records
 
@@ -128,7 +132,7 @@ boundaries stated in the record itself:
 
 | Record | Subject | What it establishes |
 | --- | --- | --- |
-| [MoonBit verification](<docs/moonimpact-verification.md>) | initial MVP | the JS/TS impact MVP on a first evaluation project |
+| [Initial MoonImpact verification](<docs/moonimpact-verification.md>) | initial MVP | the JS/TS impact MVP on a first evaluation project |
 | [Round two](<docs/moonimpact-round2-verification.md>) | MVP, extended | static readers, symbolic paths and stylesheet inputs |
 | [Round three](<docs/moonimpact-round3-verification.md>) | wot-lynx-ui (JS/TS) | whole-tree membership, declaration contract, real-project selective execution |
 | [Round four](<docs/moonimpact-round4-verification.md>) | moonbitlang/x (MoonBit) | the MoonBit front end and its planning measurements |
@@ -165,9 +169,10 @@ independently proven absence of copied code. This repository declares
 Apache-2.0 in [LICENSE](<LICENSE>); see [third-party attribution](<THIRD_PARTY_NOTICES.md>).
 
 The local manifest now targets **0.3.0** because public result fields and
-structural-check variants changed. The tested result is the current working
-tree, not a published release. The MoonBit module-planning work is committed
-(`1a5d8ce`, 2026-11-12); the tree is clean and no release tag exists yet.
+structural-check variants changed. The verification records describe specific local
+runs, not a published release. The MoonBit module-planning work was committed
+in `1a5d8ce` (2026-11-12); see the [verification records](#verification-records)
+for the scope of each run.
 
 ### What it does
 
@@ -213,6 +218,11 @@ moon build --target native
 ```
 
 ### Usage
+
+Run the linter from this checkout with `moon run cmd/main --`. Examples below
+that use the shorter `moonlint` command assume you have placed the built
+`_build/native/debug/build/cmd/main/main.exe` on your `PATH` as `moonlint`;
+`moon build` alone does not install that command.
 
 ```bash
 # Create a MoonBit starter config in the current directory
@@ -300,7 +310,8 @@ usage error (exit code 2).
 | `file` | `.js` `.jsx` `.ts` `.tsx` `.mjs` `.cjs` `.vue` `.svelte` `.astro` | 6 file rules | File-level: max-lines, max-line-length, no-trailing-whitespace, no-tabs, final-newline, no-duplicate-lines |
 | `imports` | `.js` `.jsx` `.ts` `.tsx` `.mjs` `.cjs` `.mts` `.cts` `.vue` `.svelte` `.astro` | 7 structural rules | Cross-file: no-unused-imports, no-duplicate-imports, no-unresolved-relative-imports, no-import-cycles, no-deep-relative-imports, no-require-imports, no-unused-exports |
 
-The `moonbit` preset checks top-level public items only. `*_test.mbt` and
+The `moonbit` preset's documentation and naming rules check top-level public
+items. Its call and TODO rules also inspect regular implementation code. `*_test.mbt` and
 `*_wbtest.mbt` are excluded recursively; `cmd/**` is excluded from the
 `no-println` rule because CLI entry points print by design.
 
@@ -348,6 +359,7 @@ matchers, nested within bounded parser limits:
   "severity": "warning",
   "message": "console.log without a lint exemption",
   "extensions": [".ts"],
+  "match_comments": true,
   "match": {
     "all": [
       { "contains": "console.log" },
@@ -358,6 +370,8 @@ matchers, nested within bounded parser limits:
 ```
 
 This fires on `console.log(x)` but not on `console.log(x) // moonlint-ok`.
+The explicit `match_comments` option lets the guard see the comment marker;
+this also makes the rule inspect literal text and comments as written.
 A bad regex nested inside a combinator is a config error (exit 2), reported
 with the path to the offending sub-matcher.
 
@@ -556,9 +570,9 @@ so a config used with `moonlint src` maps `@` to `.`, while one used with
 `moonlint .` maps `@` to `src`. A prefix matches on a segment boundary — `@`
 matches `@/x` but not the package `@scope/pkg` — and a longer prefix wins over
 a shorter one (`@/lib` before `@`). Absolute targets, `..` escapes and
-non-string values are configuration errors (exit 2). Aliases also make
-`no_unused_imports` no longer necessary for template bindings: a `.vue`
-binding such as `:src="logo"` is already counted as a usage.
+non-string values are configuration errors (exit 2). Independently of alias
+resolution, Vue template bindings such as `:src="logo"` count as usages for
+`no_unused_imports`.
 
 ### Inline Disable Comments
 
@@ -684,7 +698,7 @@ moonlint --preset moonbit examples/moonbit-demo/src
 
 ### Scan Modes
 
-By default, moonlint walks the directory tree recursively. Five alternative scan modes are available:
+By default, moonlint walks the directory tree recursively. Four alternative scan modes are available:
 
 ```bash
 # Only scan files changed since a git ref (ideal for CI)
@@ -849,7 +863,7 @@ Properties that make the cache safe:
 |-----------|--------|
 | Content-keyed | Each entry is keyed by a non-cryptographic hash of strictly decoded source (BOM/Unicode preserved); an edit, even whitespace, re-lints that file |
 | Config-aware | The cache stores a fingerprint of the effective rules, file rules, structural rules and scopes; any change invalidates every entry |
-| Self-healing | A missing, corrupt or version-mismatched cache file degrades to a full scan with a warning, never a wrong result |
+| Self-healing | A missing, empty or unreadable cache starts a full scan; a non-empty cache that fails parsing or version validation also emits a warning |
 | Structural-safe | Cached runs still collect project sources for cross-file checks, and refresh full dependency context under the same rules; context failures block the verdict |
 | Opt-in | Without `--incremental` no cache file is read or written |
 
@@ -906,6 +920,7 @@ Rules are defined in a JSON file (default: `moonlint.json`):
       "severity": "error",
       "message": "Must import from 'vue-lynx', not 'vue'",
       "extensions": [".vue", ".ts"],
+      "match_literals": true,
       "match": { "regex": "from[[:space:]]+['\"]vue['\"]" },
       "unless": { "regex": "from[[:space:]]+['\"]vue-lynx['\"]" }
     }
@@ -1156,19 +1171,21 @@ moon info && moon fmt
 
 [CI](<.github/workflows/ci.yml>) runs explicit native gates and compiles the
 examples. Its installer fetches latest, **not a pinned toolchain**; versions are
-recorded and interface/format drift is checked. **Remote CI has never started a
-job**: every run since 2026-10-20 fails in about two seconds with zero steps
-executed — the signature of the account-level billing lock recorded in commit
-`e318b9e` ("The job was not started because your account is locked due to a
-billing issue"). No remote test result exists either way; the commands above
-reproduce every gate locally on macOS/Linux. Current local evidence and known
-limits are in [verification notes](<docs/verification.md>) for the moonlint CLI
-and in the MoonImpact verification records
-([round three](<docs/moonimpact-round3-verification.md>),
-[round four](<docs/moonimpact-round4-verification.md>),
-[round five](<docs/moonimpact-round5-verification.md>)); historical wasm
-failures are not claimed fixed. The JS/TS legacy line matcher still sees literal text in two
-known expected-failure cases; they are not counted as repaired behavior.
+recorded and interface/format drift is checked. A historical CI failure recorded
+in commit `e318b9e` reported that the job could not start because of an account
+billing lock. That record does not establish the current remote CI status.
+The commands above cover the core local gates; CI also runs stability audits
+and builds/tests the example modules, as listed in the workflow.
+
+The [moonlint verification notes](<docs/verification.md>) describe the
+2026-11-04 run and its limitations, not the current test results. Later
+MoonImpact measurements are in
+[round three](<docs/moonimpact-round3-verification.md>),
+[round four](<docs/moonimpact-round4-verification.md>) and
+[round five](<docs/moonimpact-round5-verification.md>). The two former JS/TS
+literal-text expected failures are now ordinary regression tests: the default
+code view blanks literal contents. Historical wasm failures are not claimed
+fixed.
 
 `moonlint .` uses [the repository config](<moonlint.json>), which deliberately
 excludes the negative examples. No new blanket baseline was added to hide

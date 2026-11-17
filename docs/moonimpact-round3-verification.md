@@ -1,5 +1,7 @@
 # MoonImpact round three: whole-tree membership and real-project selective planning
 
+[English](<moonimpact-round3-verification.md>) | [简体中文](<moonimpact-round3-verification.zh-CN.md>)
+
 This records a local working-tree verification, not a release, remote CI result
 or a guarantee of selective test safety on arbitrary projects. The
 [round-two record](<moonimpact-round2-verification.md>) is retained separately;

@@ -1,5 +1,7 @@
 # MoonBit convention example
 
+[English](<README.md>) | [简体中文](<README.zh-CN.md>)
+
 This is a real dependency-free MoonBit module. Its valid source intentionally
 fails six team checks: camelCase function name, three empty/missing public docs,
 one syntactic unwrap call, and one TODO comment. `Some(...).unwrap()` is safe
@@ -9,6 +11,7 @@ The compiler already has optional W74 documentation checking.
 From the moonlint checkout root:
 
 ```bash
+moon build --target native
 (cd examples/moonbit-demo && moon check --target native && moon test --target native && moon build --target native)
 _build/native/debug/build/cmd/main/main.exe --preset moonbit examples/moonbit-demo/src
 # Expect exit 1: four errors and two warnings.

@@ -1,5 +1,7 @@
 # MoonImpact
 
+[English](<moonimpact.md>) | [简体中文](<moonimpact.zh-CN.md>)
+
 MoonImpact is a **change-impact and regression-test planning tool**, implemented
 in MoonBit. It reuses moonlint's source and filesystem foundations, but it does
 not check naming, formatting, documentation or release policy.
@@ -145,11 +147,12 @@ to the configuration file's directory.
   not traversed. `skip_dirs` replaces that list for projects whose tests
   genuinely read conventional build output.
 - **Membership is the whole tree; analysis is scoped.** Every regular file
-  minus noise directories is known membership, so a read or import of an
-  out-of-scope file resolves to a real leaf input. `include`/`exclude` decide
-  which files are parsed as sources. A changed file that nothing reads or
-  imports is reported as an unmodeled input; a changed file with a known
-  consumer — even outside the analysis scope — plans normally.
+  minus noise directories is known membership. `include`/`exclude` decide
+  which files are parsed as sources. Raw reads can resolve out-of-scope files
+  as leaf inputs; ordinary imports of out-of-scope code or styles still request
+  fallback unless explicit declarations cover the imported file's dependencies.
+  A changed file that nothing reads or imports is reported as an unmodeled input;
+  a known consumer can support selection when no other uncertainty requires fallback.
 - Default tests are `*.test` / `*.spec` in JS/TS-family extensions. Their glob
   paths support `*`, `?` and whole-segment `**`, not brace expansion.
 - Alias prefixes match segment boundaries and the longest prefix wins. An
@@ -292,7 +295,7 @@ preferable to unsupported selective execution.
 | Strategy | Behavior |
 | --- | --- |
 | `related` | Select inventoried tests reachable from changed inputs; attach one deterministic shortest known chain to each. |
-| `full` | Report why selective analysis is inconclusive or a global input changed; `--run` requests Vitest's full suite. |
+| `full` | Report why selective analysis is inconclusive or a global input changed; `--run` requests Vitest's unfiltered full suite, or runs every inventoried MoonBit test package. |
 | `none` | No changes, or no known reachable tests under the configured supported model. No test command is run. This is not a full-suite pass. |
 | `blocked` | Source I/O/encoding/unsafe-path failures, or no usable test inventory. Do not execute. |
 
@@ -359,16 +362,16 @@ through declared dependencies including the `for "test"` import from `crypto`.
 The `decimal` package is a leaf, so only its own package is selected.
 
 Injected faults were caught. Writing UTF-16 big-endian output as little-endian
-broke `encoding`, `crypto` and `jwt`: the 4-package selection failed exactly
-the three tests the 795-test full suite failed, missing none. A fault in
-`decimal`'s normalization was caught by the 1-package selection. The full
-record, including the one pre-existing unrelated failure in the subject
+introduced two failures in `encoding`; both the 4-package selection and the
+795-test full suite reported those failures plus the same pre-existing `crypto`
+failure. A fault in `decimal`'s normalization was caught by the 1-package
+selection. The full record, including the pre-existing unrelated failure in the subject
 project, is in the [round-five verification](<moonimpact-round5-verification.md>).
 
-The pinned commit is deliberate. The project's later `fs` package uses
-`@io.ReaderClosed`, which the core version pinned by this toolchain does not
-export, so upstream `HEAD` does not compile here — an upstream/toolchain
-version skew, not a planning defect.
+The pinned commit is deliberate. At the time of the round-five verification,
+the upstream `HEAD` examined used `@io.ReaderClosed` in `fs`, which that
+verification's pinned core did not export. It did not compile in that
+environment because of upstream/toolchain version skew, not a planning defect.
 
 On this repository — itself a multi-module workspace (root package,
 `cmd/main`, `cmd/impact`, four example modules) — a cold-cache comparison
@@ -400,9 +403,10 @@ holds the project's optional, git-ignored `.wot-ref` reference copy.
 | `formatDate.ts` | related | 71 / 135 | dedicated unit test plus transitive component and parity tests |
 | `host.ts` | related | 101 / 135 | `configureHost` is imported across the suite |
 
-The same project previously measured 618 sources / 2,241 edges / 319
-uncertainties and fell back to `full` on every change; the coverage above is
-what turned those measurements into selective plans. The project's
+The initial MVP evaluation of a different project, unibest, measured 618
+sources / 2,241 edges / 319 uncertainties and fell back to `full` for its two
+change inputs. Those figures are not a before/after comparison with this
+wot-lynx-ui evaluation. The latter project's
 manifest-driven test helpers (`component-roots.ts`, build scripts under
 `scripts/`) read trees their arguments name at runtime, so the demo
 configuration declares those reads explicitly with the `dependencies` contract

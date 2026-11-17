@@ -1,8 +1,12 @@
 # moonlint CLI integration tests
 
-This runner uses only the Python standard library. It invokes an **already built**
-native executable; it does not run `moon build` or `moon test` and does not install
-dependencies.
+[English](<README.md>) | [简体中文](<README.zh-CN.md>)
+
+[integration.py](integration.py) uses only the Python standard library. It invokes
+an **already built** native moonlint executable and does not build moonlint or
+install dependencies. The `policies` phase also invokes the installed MoonBit
+toolchain (`moon check`, `moon test`, `moon info`, and `moon tree`) on isolated
+fixtures; those compiler cases are skipped if `moon` is unavailable.
 
 ```sh
 # Build first, then run the suite against the native binary.
@@ -22,6 +26,15 @@ arguments. `--phase` accepts a phase name or `all` (default):
 | `git` | Git safety: option injection, merge-base PR semantics, true index contents, unmerged index, Git symlinks, renames |
 | `scope` | Global and rule-level `include` / `exclude` |
 | `output` | JSON reports, GitHub annotations, read/failure/skip metadata |
+| `presets` | Built-in presets, config inheritance, inline suppression, SARIF, initialization, and fixes |
+| `observable` | Match columns, comment/literal handling, summaries, and dry-run/fix output |
+| `incremental` | Content-based cache reuse, invalidation, malformed-cache fallback, and structural caching |
+| `structural` | Imports, exports, cycles, aliases, and dependency context |
+| `combinator` | Matcher composition and `unless` guards |
+| `demo` | Exact TypeScript demo output, summaries, and cache round trips |
+| `moonbit` | MoonBit demo output, preset equivalence, and exclusions |
+| `policies` | Package/API policies, compiler-backed fixtures, MoonBit syntax/fixes, and baseline v2 |
+| `git-context` | Immutable Git project context and isolation from worktree/config changes |
 
 ## Isolation
 
@@ -52,7 +65,8 @@ skipped on hosts that do not support creating symlinks.
   "no files selected" notice in text mode, and zero counters in JSON.
 - Consistent extension filters across tree/glob/stdin/stdin0/staged/changed modes;
   empty rule extension arrays scan all regular files.
-- Unknown/missing/conflicting CLI arguments, explicit unsupported incremental/watch,
+- Unknown/missing/conflicting CLI arguments and explicit rejection of unsupported
+  `--watch` / `--watch-interval` options,
   symlink skip/cycle protection, outside-root rejection, and I/O failures —
   including an unreadable subdirectory, which is an error rather than a silently
   partial scan.
@@ -97,6 +111,19 @@ skipped on hosts that do not support creating symlinks.
   skipped files, a final summary notice, and no forged commands from embedded
   newlines.
 
-Failures against the pre-repair executable are intentional regression evidence.
-No test is marked expectedFailure: the same command must become green once the
-implementation satisfies the agreed CLI contract.
+No test is marked `expectedFailure`; assertion failures are regressions against
+the CLI contract. Tests whose host prerequisites are unavailable may be skipped.
+
+## Separate MoonImpact runners
+
+These scripts are not included in `integration.py --phase all`:
+
+| Runner | Requirements and scope |
+|--------|------------------------|
+| [impact_integration.py](impact_integration.py) | Pass `--binary /absolute/path/to/impact.exe`; exercises planning and execution with isolated fixtures and fake runners. |
+| [impact_native.py](impact_native.py) | Run directly with Python; builds a temporary C driver using `cc` on macOS/Linux to test the native bridge. |
+| [impact_stability.py](impact_stability.py) | Pass `--binary`, `--project`, and optionally `--config` / `--samples`; audits an existing project without modifying it or running its tests. Skips without `--project`. |
+| [impact_vitest_smoke.py](impact_vitest_smoke.py) | Pass `--binary` and `--vitest-dir` containing `vitest.mjs`; requires existing Node.js and pnpm, runs a temporary synthetic fixture, and installs nothing. |
+
+Build the MoonImpact executable with `moon build --target native`; its default
+path is `_build/native/debug/build/cmd/impact/impact.exe`.

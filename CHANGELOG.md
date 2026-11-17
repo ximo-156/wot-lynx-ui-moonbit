@@ -1,5 +1,7 @@
 # Changelog
 
+[English](<CHANGELOG.md>) | [简体中文](<CHANGELOG.zh-CN.md>)
+
 All notable changes to this project are documented in this file.
 
 ## [Unreleased]
@@ -27,11 +29,13 @@ counts — plain, `for "test"` and `#cfg`-conditional alike.
   the 4-package selection failed exactly the three tests the full suite
   failed, missing none, and the `decimal` fault was caught by the 1-package
   selection. Cold wall time fell from 4.67s to 0.57s and 0.48s respectively;
-  the subject's single pre-existing failure is unrelated and appears in both
-  runs. Record: `docs/moonimpact-round5-verification.md`.
-- The pinned commit matters: the project's later `fs` package needs an
-  `@io.ReaderClosed` the core pinned by this toolchain lacks, so upstream
-  `HEAD` does not compile here. That is version skew, not a planning defect.
+  the subject's single pre-existing failure is unrelated and appears in the
+  full suite and the `encoding` selection, but not the `decimal` selection.
+  Record: [round five](<docs/moonimpact-round5-verification.md>).
+- The pinned commit matters: the upstream `HEAD` examined during round five
+  used `@io.ReaderClosed` in `fs`, which that verification's local core lacked.
+  That checkout did not compile with that toolchain because of version skew,
+  not a planning defect.
 - Cold-cache measurement on this repository: a full `moon test` after
   `moon clean` takes 5.4s and runs 555 tests; a CLI-only change plans `none`
   and `moon test` for the selected package takes 2.1s and runs no library
@@ -68,9 +72,11 @@ to the change — appear in both runs.
 
 - **Membership is the whole tree; analysis stays scoped.** The file walk no
   longer stops at the configured `include` boundary: every regular file minus
-  noise directories is known membership, so a read or import of an
-  out-of-scope file resolves to a real leaf input. Which files are parsed as
-  sources is still decided by `include`/`exclude` alone. Previously a test
+  noise directories is known membership, so a raw read of an out-of-scope
+  file can resolve to a real leaf input. Ordinary imports of out-of-scope code
+  or styles still request fallback unless explicit declarations cover their
+  dependencies. Which files are parsed as sources is still decided by
+  `include`/`exclude` alone. Previously a test
   reading `docs/` or `scripts/` was reported as an unresolved input purely
   because the walk never entered those directories.
 - **`style_load_paths` configuration** models Sass `loadPaths`: bare and
@@ -296,7 +302,7 @@ to the change — appear in both runs.
   unknown extensions) are unchanged: they have no literal-aware scanner.
 - **`lint_lines` takes three views** — code, literal and raw — instead of two.
   The engine picks the view per rule (`match_comments` > `match_literals` >
-  code view). This is a source-compatible-breaking change for external callers
+  code view). This is a source-incompatible change for external callers
   constructing views themselves, consistent with the 0.x interface policy.
 - **A regex literal after `=` is recognised.** `const re = /x/` was scanned as
   division, because the keyword-based `regex_ok` flag still saw the identifier
@@ -365,7 +371,10 @@ to the change — appear in both runs.
   division), and **`${...}` interpolations are scanned as code**, so nested
   strings, nested templates and comments inside them behave like code.
 
-### Tests
+### Tests (historical literal-view milestone)
+
+These counts describe the literal-view milestone, not the current total.
+Later MoonImpact verification rounds are linked above.
 
 - 395 whitebox unit tests pass on the native target (12 new: code-view
   literal blanking, interpolation handling, regex/division disambiguation,

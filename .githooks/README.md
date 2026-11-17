@@ -1,8 +1,14 @@
 # Git Hooks
 
+[English](<README.md>) | [简体中文](<README.zh-CN.md>)
+
 ## Pre-commit Hook
 
-This pre-commit hook performs automatic checks before finalizing your commit.
+The [pre-commit hook](pre-commit) runs `moon check` from the repository root
+before a commit. Install the MoonBit toolchain and make `moon` available on
+`PATH` before enabling it. A failed check blocks the commit. The hook uses the
+working tree and the module's default target; it does not limit checks to staged
+files or run formatting, tests, or moonlint.
 
 ### Usage Instructions
 
@@ -18,4 +24,4 @@ To use this pre-commit hook:
    git config core.hooksPath .githooks
    ```
 
-3. The hook will automatically run when you execute `git commit`
+3. The hook will automatically run when you execute `git commit`.

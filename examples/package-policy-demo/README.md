@@ -1,12 +1,15 @@
 # Package policy example
 
-This module is dependency-free and acyclic: root -> domain -> ui. Compilation
-permits the dependency; the supplied team policy forbids domain -> ui on native
+[English](<README.md>) | [简体中文](<README.zh-CN.md>)
+
+This module has no external dependencies and is acyclic: root -> domain -> ui.
+Compilation permits the dependency; the supplied team policy forbids domain -> ui on native
 source edges. It is deliberately not a compiler-rejected cycle example.
 
 From the moonlint checkout root:
 
 ```bash
+moon build --target native
 (cd examples/package-policy-demo && moon check --target native && moon test --target native && moon build --target native)
 (cd examples/package-policy-demo && moon tree --package --json --target native > graph.native.json)
 _build/native/debug/build/cmd/main/main.exe \

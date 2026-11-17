@@ -1,5 +1,7 @@
 # MoonImpact round two: static readers and stylesheet inputs
 
+[English](<moonimpact-round2-verification.md>) | [简体中文](<moonimpact-round2-verification.zh-CN.md>)
+
 This records a local working-tree verification, not a release, remote CI result
 or a guarantee of selective test safety on arbitrary projects. The
 [initial MVP record](<moonimpact-verification.md>) is retained separately.
