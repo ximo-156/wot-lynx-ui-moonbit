@@ -488,8 +488,10 @@ static void impact_moon_test(struct impact_result *r, const char *path,
   struct impact_buffer ignored_out = {0}, ignored_err = {0};
   if (timeout_ms < 1) { impact_fail(r, "test timeout must be positive"); return; }
   for (i = 0; i < length; ++i) if (!paths[i]) ++count;
-  if (!count || !length || paths[length - 1] != 0) {
-    impact_fail(r, "package selection requires a nonempty NUL-terminated path list"); return;
+  /* An empty payload is the explicit full-suite operation. A single NUL
+   * remains the filtered root package ("."). */
+  if (length && (!count || paths[length - 1] != 0)) {
+    impact_fail(r, "package selection requires a NUL-terminated path list"); return;
   }
   root = impact_root(r, path);
   if (!root) return;

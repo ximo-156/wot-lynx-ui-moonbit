@@ -58,6 +58,8 @@ pub fn impact_plan(String, Array[String], ImpactConfig, String, Array[ImpactIssu
 
 pub fn impact_run_moon_test(String, Array[String], Int32) -> Int32 raise
 
+pub fn impact_run_moon_test_full(String, Int32) -> Int32 raise
+
 pub fn impact_run_vitest(String, Array[String], Bool, Int32) -> Int32 raise
 
 pub fn impact_write_report_new(String, String) -> Unit raise

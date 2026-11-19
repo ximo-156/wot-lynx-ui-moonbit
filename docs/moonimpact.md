@@ -35,14 +35,34 @@ A MoonBit module is a tree of packages, each declared by a `moon.pkg`
 - every `moon.mod` / `moon.mod.json` under the root declares a module; a
   package resolves its imports against **its own** module, so nested and
   workspace modules never borrow the root module's name;
+- module `source` directories (text and JSON descriptors) re-anchor import
+  names to filesystem package paths, including nested modules;
+- inventory includes ordinary-source test blocks and executable `mbt` / `moonbit`
+  `test` and `check` documentation fences as well as dedicated test files;
 - every `import` block in a manifest counts — plain, `for "test"` and
   `#cfg(...)`-conditional alike — because a test-only dependency still decides
   whether that package's tests can observe a change;
 - a changed file selects the package that owns it (the longest package
   directory prefix; the module root package owns the rest) plus every package
   that transitively imports it, test-only imports included;
+- each test file contributes to the inventory of its owning package only, using
+  the same longest-prefix rule, so nested packages do not inflate parent counts;
 - the selected **packages** are the execution units: `--run` invokes
-  `moon test <package>` for each, the module root package addressed as `.`.
+  `moon test` with the selected filesystem package paths, the module root
+  package addressed as `.`. `full` instead runs unfiltered `moon test`, even
+  when the static inventory is empty.
+
+Manifest parsing ignores comments and metadata strings, decodes import paths,
+and preserves qualified aliases such as `@encoding/utf8`. Legacy JSON `import`,
+`test-import` and `wbtest-import` arrays (including path/alias objects) are also
+modeled. This is planning compatibility: newer MoonBit toolchains may require
+JSON manifests to be migrated before executing tests; MoonImpact does not migrate
+them. A changed `moon.work` requests full regression; workspace-only roots and
+complete cross-module dependency resolution are not established by this support.
+
+The [pinned corpus runner](<../tests/impact_moonbit_corpus.py>) checks actual runner
+inventory and optionally compares injected-fault failures with full execution.
+See the [seven-project verification record](<moonimpact-round7-verification.zh-CN.md>).
 
 Try it on this repository, which is itself a multi-module MoonBit workspace:
 
@@ -66,7 +86,8 @@ BIN="$PWD/_build/native/debug/build/cmd/impact/impact.exe"
 Conservative fallback is unchanged in spirit: an unparseable manifest, a
 missing module descriptor, a change outside every package or a manifest/descriptor
 change requests **every** package instead of pretending no test is affected.
-Symlinked sources, stylesheets and manifests are refused; a symlinked document
+MoonBit source is read only to inventory tests; read/UTF-8 failures block execution.
+Symlinked sources (including `.mbt.md`), stylesheets and manifests are refused; a symlinked ordinary document
 is membership data and does not block the plan.
 
 ## Build and try the local demo
@@ -295,7 +316,7 @@ preferable to unsupported selective execution.
 | Strategy | Behavior |
 | --- | --- |
 | `related` | Select inventoried tests reachable from changed inputs; attach one deterministic shortest known chain to each. |
-| `full` | Report why selective analysis is inconclusive or a global input changed; `--run` requests Vitest's unfiltered full suite, or runs every inventoried MoonBit test package. |
+| `full` | Report why selective analysis is inconclusive or a global input changed; `--run` requests Vitest's unfiltered full suite, or invokes unfiltered `moon test`, independent of the static inventory. |
 | `none` | No changes, or no known reachable tests under the configured supported model. No test command is run. This is not a full-suite pass. |
 | `blocked` | Source I/O/encoding/unsafe-path failures, or no usable test inventory. Do not execute. |
 

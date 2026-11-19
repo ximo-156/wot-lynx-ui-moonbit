@@ -54,7 +54,7 @@ moon run cmd/impact -- plan --file src/fees.ts \
 | 策略 | 含义 |
 | --- | --- |
 | `related` | 选中的测试文件或包与变更之间存在已知依赖链 |
-| `full` | 模型无法安全地缩小变更影响范围，因此请求完整 Vitest 套件或清单中所有包含测试的 MoonBit 包 |
+| `full` | 模型无法安全地缩小变更影响范围，因此请求完整 Vitest 套件或不带包过滤器的 `moon test` |
 | `none` | 没有变更，或在受支持模型下没有受影响的测试文件或含测试的包 |
 | `blocked` | I/O 或不安全路径条件阻止执行 |
 
@@ -88,6 +88,8 @@ git -C /tmp/x-checkout checkout 6b67e08
 | [第三轮](<docs/moonimpact-round3-verification.zh-CN.md>) | wot-lynx-ui（JS/TS） | 整棵目录树的成员集合、声明契约、真实项目中的选择性执行 |
 | [第四轮](<docs/moonimpact-round4-verification.zh-CN.md>) | moonbitlang/x（MoonBit） | MoonBit 前端及其规划测量 |
 | [第五轮](<docs/moonimpact-round5-verification.zh-CN.md>) | moonbitlang/x（MoonBit） | 在固定提交上进行端到端选择性执行和故障注入 |
+
+[第六轮](<docs/moonimpact-round6-verification.zh-CN.md>)记录 source 布局、内联测试与全量执行的修复；[第七轮](<docs/moonimpact-round7-verification.zh-CN.md>)将固定版本语料扩展到 7 个公开项目，并提供库存核验及故障注入运行器。
 
 ## moonlint 检查器
 

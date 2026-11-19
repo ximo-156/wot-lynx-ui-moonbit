@@ -91,6 +91,9 @@ class ImpactCLI(unittest.TestCase):
         self.write("lib_test.mbt", 'test "lib" { assert_eq(lib(), 1) }\n')
         self.write("cli/moon.pkg", 'import {\n  "fixture/mod" @lib,\n}\n')
         self.write("cli/main.mbt", "fn main { println(@lib.lib()) }\n")
+        self.write("cli/child/moon.pkg", "")
+        self.write("cli/child/child.mbt", "pub fn child() -> Int32 { 2 }\n")
+        self.write("cli/child/child_test.mbt", 'test "child" { assert_eq(child(), 2) }\n')
 
     def fake_runner(self, code=0):
         bindir = self.owner / "bin"
@@ -412,9 +415,17 @@ const source = fs.readFileSync('src/value.ts', 'utf8')
         self.write_moonbit_fixture()
         doc = self.bare_plan("--file", "moon.mod")
         self.assertEqual(doc["strategy"], "full")
+        self.assertEqual(doc["tests"], ["", "cli/child"])
         self.assertTrue(
             any(r.startswith("global-input-changed") for r in doc["reasons"])
         )
+
+    def test_moonbit_nested_package_test_is_not_counted_for_parent(self):
+        self.write_moonbit_fixture()
+        child = self.bare_plan("--file", "cli/child/child.mbt")
+        self.assertEqual(child["strategy"], "related")
+        self.assertEqual(child["tests"], ["cli/child"])
+        self.assertEqual(child["inventory"], ["", "cli/child"])
 
     def test_moonbit_run_executes_moon_test_per_package(self):
         self.write_moonbit_fixture()
@@ -423,6 +434,80 @@ const source = fs.readFileSync('src/value.ts', 'utf8')
         executed = json.loads(self.marker.read_text())
         # The module root package is addressed as the current directory.
         self.assertEqual(executed["argv"], ["test", "."])
+
+    def test_moonbit_full_run_intentionally_has_no_package_filters(self):
+        self.write_moonbit_fixture()
+        self.fake_runner(code=1)
+        result = self.invoke_bare("--file", "moon.mod", "--run", "--format", "json", expected=1)
+        doc = json.loads(result.stdout)
+        self.assertEqual(doc["strategy"], "full")
+        self.assertTrue(doc["inventory"])
+        self.assertEqual(json.loads(self.marker.read_text()), {
+            "argv": ["test"],
+            "cwd": str(self.root),
+        })
+        self.assertIn("RUNNER_STDOUT", result.stderr)
+        self.assertIn("RUNNER_STDERR", result.stderr)
+
+    def test_moonbit_source_layout_inline_and_documentation_tests(self):
+        self.write("moon.mod", 'name = "fixture/mod"\nsource = "src"\n')
+        self.write("src/base/moon.pkg", "")
+        self.write("src/base/value.mbt", 'pub fn value() -> Int { 1 }\ntest { assert_eq(value(), 1) }\n')
+        self.write("src/use/moon.pkg", 'import { "fixture/mod/base", }\n')
+        self.write("src/use/README.mbt.md", '```mbt check\ntest { assert_true(true) }\n```\n')
+        doc = self.bare_plan("--file", "src/base/value.mbt")
+        self.assertEqual(doc["strategy"], "related")
+        self.assertEqual(doc["tests"], ["src/base", "src/use"])
+        self.assertEqual(doc["issues"], [])
+        self.fake_runner()
+        self.invoke_bare("--file", "src/base/value.mbt", "--run")
+        self.assertEqual(json.loads(self.marker.read_text())["argv"], ["test", "./src/base", "./src/use"])
+
+    def test_moonbit_full_runs_with_empty_static_inventory(self):
+        self.write("moon.mod", 'name = "fixture/mod"\n')
+        self.write("moon.pkg", "")
+        self.write("lib.mbt", "pub fn value() -> Int { 1 }\n")
+        self.fake_runner()
+        result = self.invoke_bare("--file", "moon.mod", "--run", "--format", "json")
+        doc = json.loads(result.stdout)
+        self.assertEqual(doc["strategy"], "full")
+        self.assertEqual(doc["inventory"], [])
+        self.assertEqual(json.loads(self.marker.read_text())["argv"], ["test"])
+
+    def test_moonbit_invalid_utf8_sources_block(self):
+        self.write_moonbit_fixture()
+        self.write("bad.mbt", b"\xff\xfe")
+        self.assertEqual(self.bare_plan("--file", "lib.mbt", expected=2)["strategy"], "blocked")
+
+    def test_moonbit_symlinked_documentation_tests_block(self):
+        self.write_moonbit_fixture()
+        self.write("examples.txt", "```mbt test\ntest {}\n```\n")
+        (self.root / "README.mbt.md").symlink_to(self.root / "examples.txt")
+        doc = self.bare_plan("--file", "lib.mbt", expected=2)
+        self.assertEqual(doc["strategy"], "blocked")
+        self.assertTrue(any(i["reason"].startswith("unsafe:") for i in doc["issues"]))
+
+    def test_moonbit_json_imports_include_whitebox_and_blackbox_consumers(self):
+        self.write("moon.mod.json", json.dumps({"name": "fixture/mod"}))
+        for name in ("base", "normal", "black", "white"):
+            self.write(f"{name}/value.mbt", "test { assert_true(true) }\n")
+        self.write("base/moon.pkg.json", "{}")
+        for name, key in (("normal", "import"), ("black", "test-import"), ("white", "wbtest-import")):
+            self.write(f"{name}/moon.pkg.json", json.dumps({key: ["fixture/mod/base"]}))
+        doc = self.bare_plan("--file", "base/value.mbt")
+        self.assertEqual(doc["strategy"], "related")
+        self.assertEqual(doc["tests"], ["base", "black", "normal", "white"])
+        self.assertEqual(doc["issues"], [])
+
+    def test_moonbit_workspace_change_uses_unfiltered_full_run(self):
+        self.write_moonbit_fixture()
+        self.write("moon.work", 'members = ["."]\n')
+        self.fake_runner()
+        result = self.invoke_bare("--file", "moon.work", "--run", "--format", "json")
+        doc = json.loads(result.stdout)
+        self.assertEqual(doc["strategy"], "full")
+        self.assertIn("global-input-changed: moon.work", doc["reasons"])
+        self.assertEqual(json.loads(self.marker.read_text())["argv"], ["test"])
 
     def test_no_config_and_no_moonbit_module_is_an_error(self):
         result = self.invoke_bare("--file", "src/value.ts", expected=2)

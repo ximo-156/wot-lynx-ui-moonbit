@@ -78,6 +78,8 @@ python3 tests/integration.py \
 |--------|------------------------|
 | [impact_integration.py](<impact_integration.py>) | 传入 `--binary /absolute/path/to/impact.exe`；通过隔离的测试样例和模拟运行器验证计划生成与执行。 |
 | [impact_native.py](<impact_native.py>) | 直接使用 Python 运行；在 macOS/Linux 上使用 `cc` 构建临时 C 驱动程序，测试原生桥接。 |
+| [impact_moonbit_corpus.py](<impact_moonbit_corpus.py>) | 传入 `--binary` 和多个 `--project NAME=DIR`，使用[语料清单](<impact_moonbit_corpus.json>)中固定提交的干净检出目录。执行全量测试，并将 `moon test --outline` 与静态库存对照；加 `--mutate` 会临时注入声明的故障、逐项比较失败集合，之后恢复源码原始字节。不克隆、不改工具链、不更新快照；`moon` 可能解析依赖并写入构建产物。 |
+| [impact_moonbit_corpus_test.py](<impact_moonbit_corpus_test.py>) | 5 项无额外依赖的测试，覆盖运行器证据解析和异常时的源码恢复，纳入 CI。 |
 | [impact_stability.py](<impact_stability.py>) | 传入 `--binary`、`--project`，以及可选的 `--config` / `--samples`；审查现有项目，不修改项目或运行其测试。未传入 `--project` 时跳过。 |
 | [impact_vitest_smoke.py](<impact_vitest_smoke.py>) | 传入 `--binary` 和包含 `vitest.mjs` 的 `--vitest-dir`；要求已安装 Node.js 和 pnpm，运行临时的人工构造测试样例，不安装任何内容。 |
 

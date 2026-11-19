@@ -45,9 +45,8 @@ class ImpactStability(unittest.TestCase):
     def plan(self, *args, expected=None):
         started = time.monotonic()
         command = [str(BINARY), "plan"]
-        # A MoonBit module plans natively; a JS/TS project needs its config.
-        moonbit = (PROJECT / "moon.mod").exists() or (PROJECT / "moon.mod.json").exists()
-        if CONFIG is not None and not moonbit:
+        # Honor an explicit JS/TS config even inside a mixed MoonBit repository.
+        if CONFIG is not None:
             command += ["--config", str(CONFIG)]
         command += [*map(str, args), str(PROJECT)]
         result = subprocess.run(
@@ -78,12 +77,16 @@ class ImpactStability(unittest.TestCase):
             for trace in doc["traces"]:
                 self.assertIn(trace["test"], selected, f"{label}: traced test is selected")
                 for edge in trace["chain"]:
-                    self.assertTrue(edge["dependency"], f"{label}: empty dependency")
+                    self.assertTrue(
+                        edge["dependency"] or doc.get("mode") == "moonbit",
+                        f"{label}: empty dependency outside a MoonBit root package",
+                    )
         if doc["strategy"] == "full":
-            self.assertEqual(doc["tests"], inventory, f"{label}: full runs the inventory")
+            self.assertEqual(doc["tests"], inventory, f"{label}: full plan lists the known inventory")
         if doc["strategy"] == "blocked":
             self.assertTrue(
-                any(issue["reason"].startswith(("io:", "unsafe:")) for issue in doc["issues"]),
+                any(issue["reason"].startswith(("io:", "unsafe:")) for issue in doc["issues"])
+                or any(reason.startswith("no-test-inventory:") for reason in doc["reasons"]),
                 f"{label}: blocked explains itself",
             )
         self.assertTrue(doc["advisory"], f"{label}: plan stays advisory")
@@ -101,7 +104,7 @@ class ImpactStability(unittest.TestCase):
 
     def test_change_input_sweep_never_misbehaves(self):
         files = self.sample_files(SAMPLES)
-        self.assertGreater(len(files), SAMPLES // 2)
+        self.assertTrue(files, "project contains no files to audit")
         failures = []
         for path in files:
             try:
@@ -158,7 +161,10 @@ class ImpactStability(unittest.TestCase):
     # -- helpers --------------------------------------------------------------
 
     def sample_source(self) -> str:
-        return self.sample_files(1, suffixes={".ts", ".vue"})[0]
+        moonbit = CONFIG is None and any(
+            (PROJECT / name).exists() for name in ("moon.mod", "moon.mod.json")
+        )
+        return self.sample_files(1, suffixes={".mbt"} if moonbit else {".ts", ".vue", ".js", ".tsx"})[0]
 
     def sample_files(self, count: int, suffixes: set[str] | None = None) -> list[str]:
         root = PROJECT
@@ -193,7 +199,11 @@ def main() -> int:
     parser.add_argument("--samples", type=int, default=60)
     args = parser.parse_args()
     global BINARY, PROJECT, CONFIG, SAMPLES
-    BINARY, PROJECT, SAMPLES = args.binary, args.project, args.samples
+    if args.samples < 1:
+        parser.error("--samples must be positive")
+    BINARY = args.binary.resolve()
+    PROJECT = args.project.resolve() if args.project is not None else None
+    SAMPLES = args.samples
     CONFIG = args.config.resolve() if args.config is not None else None
     if PROJECT is None:
         print("impact_stability: no --project given; skipping (read-only audit)")

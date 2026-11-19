@@ -40,14 +40,13 @@ pub fn impact_has_moonbit_module(root : String) -> Bool {
 fn impact_mbt_starts_with(
   chars : Array[Char],
   start : Int32,
-  keyword : String,
+  keyword : Array[Char],
 ) -> Bool {
-  let key = keyword.to_array()
-  if start + key.length() > chars.length() {
+  if start + keyword.length() > chars.length() {
     return false
   }
-  for k in 0..<key.length() {
-    if chars[start + k] != key[k] {
+  for k in 0..<keyword.length() {
+    if chars[start + k] != keyword[k] {
       return false
     }
   }
@@ -123,7 +122,7 @@ fn impact_mbt_text_name(source : String) -> String? {
   // Legacy text manifest: name = "module/name"
   for line in source.split("\n") {
     let trimmed = line.trim()
-    if !impact_mbt_starts_with(trimmed.to_array(), 0, "name") {
+    if !impact_mbt_starts_with(trimmed.to_array(), 0, "name".to_array()) {
       continue
     }
     let rest = trimmed.to_array()
@@ -153,86 +152,126 @@ fn impact_mbt_text_name(source : String) -> String? {
 }
 
 ///|
-/// Extract the quoted specifiers of one `import`/`test-import` block. A
-/// missing block means no dependencies (Some([])); a malformed block is None.
+/// Read imports from either manifest syntax. Skip comments and metadata
+/// strings; reject malformed/unknown import forms instead of losing edges.
 fn impact_mbt_manifest_imports(
   source : String,
   keyword : String,
 ) -> Array[String]? {
-  // A manifest may hold several blocks: plain imports, `for "test"` imports
-  // and `#cfg(...)`-conditional imports all name dependencies, so every block
-  // is scanned, not only the first.
-  let chars = source.to_array()
+  if source.trim().has_prefix("{") {
+    return impact_mbt_json_imports(source, keyword)
+  }
+  let tokens = match api_gate_lex(source) {
+    Ok(tokens) => tokens
+    Err(_) => return None
+  }
   let specs : Array[String] = []
-  let mut found = false
+  let seen : Set[String] = Set([])
   let mut i = 0
-  while i < chars.length() {
-    if impact_mbt_starts_with(chars, i, keyword) {
-      let before_ok = i == 0 || !impact_mbt_ident_char(chars[i - 1])
-      let after = if i + keyword.length() < chars.length() {
-        chars[i + keyword.length()]
+  while i < tokens.length() {
+    let mut j = i
+    let matched = if keyword == "import" {
+      tokens[i].kind == 0 &&
+      tokens[i].text == "import" &&
+      (i == 0 || tokens[i - 1].text != "-")
+    } else {
+      let prefix = if keyword == "test-import" { "test" } else { "wbtest" }
+      if i + 2 < tokens.length() &&
+        tokens[i].text == prefix &&
+        tokens[i + 1].text == "-" &&
+        tokens[i + 2].text == "import" {
+        j = i + 2
+        true
       } else {
-        ' '
-      }
-      // "test-import" contains "import": the plain keyword must not be
-      // followed by an identifier continuation such as '-'.
-      let after_ok = if keyword == "import" { after != '-' } else { true }
-      if before_ok && after_ok {
-        let mut j = i + keyword.length()
-        while j < chars.length() && impact_mbt_space(chars[j]) {
-          j += 1
-        }
-        if j < chars.length() && chars[j] == '{' {
-          let mut depth = 1
-          let mut k = j + 1
-          while k < chars.length() && depth > 0 {
-            let c = chars[k]
-            if c == '"' {
-              let mut end = k + 1
-              while end < chars.length() && chars[end] != '"' {
-                if chars[end] == '\\' {
-                  end += 1
-                }
-                end += 1
-              }
-              if end >= chars.length() {
-                return None
-              }
-              let spec = String::from_array(chars[k + 1:end])
-              if !specs.contains(spec) {
-                specs.push(spec)
-              }
-              k = end + 1
-              continue
-            }
-            if c == '{' {
-              depth += 1
-            } else if c == '}' {
-              depth -= 1
-            }
-            k += 1
-          }
-          if depth != 0 {
-            return None
-          }
-          found = true
-          i = k
-          continue
-        }
+        false
       }
     }
-    i += 1
+    if matched {
+      j += 1
+      if j >= tokens.length() || tokens[j].text != "{" {
+        return None
+      }
+      let end = tokens[j].mate
+      j += 1
+      while j < end {
+        let value = @json.parse(tokens[j].text) catch { _ => return None }
+        let spec = match value {
+          Json::String(path) if path != "" => path
+          _ => return None
+        }
+        if !seen.contains(spec) {
+          seen.add(spec)
+          specs.push(spec)
+        }
+        j += 1
+        if j < end && tokens[j].text == "@" {
+          j += 1
+          if j >= end || tokens[j].kind != 0 {
+            return None
+          }
+          j += 1
+          // Qualified aliases such as @encoding/utf8 and @immut/vector
+          // are valid MoonBit package aliases; they do not add imports.
+          while j < end && tokens[j].text == "/" {
+            j += 1
+            if j >= end || tokens[j].kind != 0 {
+              return None
+            }
+            j += 1
+          }
+        }
+        if j < end {
+          if tokens[j].text != "," {
+            return None
+          }
+          j += 1
+        }
+      }
+      i = end + 1
+    } else if tokens[i].mate > i {
+      i = tokens[i].mate + 1
+    } else {
+      i += 1
+    }
   }
   Some(specs)
 }
 
 ///|
-fn impact_mbt_ident_char(c : Char) -> Bool {
-  (c >= 'a' && c <= 'z') ||
-  (c >= 'A' && c <= 'Z') ||
-  (c >= '0' && c <= '9') ||
-  c == '_' ||
-  c == '-'
+fn impact_mbt_json_imports(source : String, keyword : String) -> Array[String]? {
+  let parsed = @json.parse(source, max_nesting_depth=32) catch {
+    _ => return None
+  }
+  let entries = match parsed {
+    Json::Object(obj) =>
+      match obj.get(keyword) {
+        None => return Some([])
+        Some(Json::Array(entries)) => entries
+        _ => return None
+      }
+    _ => return None
+  }
+  let specs : Array[String] = []
+  let seen : Set[String] = Set([])
+  for entry in entries {
+    let path = match entry {
+      Json::String(path) => path
+      Json::Object(obj) =>
+        match obj.get("path") {
+          Some(Json::String(path)) => path
+          _ => return None
+        }
+      _ => return None
+    }
+    if path == "" {
+      return None
+    }
+    if !seen.contains(path) {
+      seen.add(path)
+      specs.push(path)
+    }
+  }
+  Some(specs)
 }
 
 ///|
@@ -261,6 +300,87 @@ fn impact_mbt_resolve(
 }
 
 ///|
+/// Read the source directory without changing the filesystem package keys.
+/// Invalid/unsupported source values must fall back, never invent import edges.
+fn impact_mbt_source_dir(
+  module_dir : String,
+  sources : Array[(String, String)],
+) -> String? {
+  let prefix = if module_dir == "" { "" } else { module_dir + "/" }
+  for (path, source) in sources {
+    if path != prefix + "moon.mod" && path != prefix + "moon.mod.json" {
+      continue
+    }
+    let mut value = "."
+    if path.has_suffix(".json") {
+      let json = @json.parse(source, max_nesting_depth=8) catch {
+        _ => return None
+      }
+      match json {
+        Json::Object(obj) =>
+          match obj.get("source") {
+            None => ()
+            Some(Json::String(dir)) => value = dir
+            _ => return None
+          }
+        _ => return None
+      }
+    } else {
+      let mut found = false
+      for line in source.split("\n") {
+        let chars = line.trim().to_array()
+        if !moonbit_match_word(chars, 0, "source") {
+          continue
+        }
+        if found {
+          return None
+        }
+        found = true
+        let mut i = moonbit_skip_spaces(chars, 6)
+        if i >= chars.length() || chars[i] != '=' {
+          return None
+        }
+        i = moonbit_skip_spaces(chars, i + 1)
+        if i >= chars.length() || chars[i] != '"' {
+          return None
+        }
+        let start = i
+        i += 1
+        while i < chars.length() && chars[i] != '"' {
+          if chars[i] == '\\' {
+            i += 1
+          }
+          i += 1
+        }
+        if i >= chars.length() {
+          return None
+        }
+        let parsed = @json.parse(String::from_array(chars[start:i + 1])) catch {
+          _ => return None
+        }
+        match parsed {
+          Json::String(dir) => value = dir
+          _ => return None
+        }
+        let tail = String::from_array(chars[i + 1:]).trim().to_owned()
+        if tail != "" && !tail.has_prefix("//") {
+          return None
+        }
+      }
+    }
+    if value == "." || value == "" {
+      return Some(module_dir)
+    }
+    let dir = normalize_relative(value) catch { _ => return None }
+    if dir.contains("\\") {
+      return None
+    }
+    return Some(prefix + dir)
+  }
+  None
+}
+
+///|
 /// Build the package graph from the manifests found in membership.
 fn impact_mbt_packages(
   membership : Set[String],
@@ -270,6 +390,10 @@ fn impact_mbt_packages(
   let packages : Array[ImpactMbtPackage] = []
   let issues : Array[ImpactIssue] = []
   let manifests : Array[String] = []
+  let source_by_path : Map[String, String] = Map([])
+  for (path, text) in sources {
+    source_by_path.set(path, text)
+  }
   for path in membership.iter() {
     let name = match path.rev_split_once("/") {
       Some((_, name)) => name
@@ -285,13 +409,7 @@ fn impact_mbt_packages(
       Some((parent, _)) => parent.to_owned()
       None => ""
     }
-    let mut collected : String? = None
-    for (path, text) in sources {
-      if path == manifest {
-        collected = Some(text)
-      }
-    }
-    let source = match collected {
+    let source = match source_by_path.get(manifest) {
       Some(text) => text
       None => {
         issues.push({
@@ -325,6 +443,21 @@ fn impact_mbt_packages(
         continue
       }
     }
+    let wbtest_imports = match
+      impact_mbt_manifest_imports(source, "wbtest-import") {
+      Some(specs) => specs
+      None => {
+        issues.push({
+          file: manifest,
+          line: 0,
+          reason: "moonbit: package manifest wbtest-import block is malformed",
+        })
+        continue
+      }
+    }
+    for spec in wbtest_imports {
+      test_imports.push(spec)
+    }
     let (module_dir, module_name) = match impact_mbt_module_of(dir, modules) {
       Some(pair) => pair
       None => {
@@ -336,65 +469,110 @@ fn impact_mbt_packages(
         continue
       }
     }
-    let resolved : Array[String] = []
-    for spec in imports {
-      match impact_mbt_resolve(spec, module_name, module_dir) {
-        Some(target) => if !resolved.contains(target) { resolved.push(target) }
-        None => ()
+    let source_dir = match impact_mbt_source_dir(module_dir, sources) {
+      Some(dir) => dir
+      None => {
+        issues.push({
+          file: manifest,
+          line: 0,
+          reason: "moonbit: unsupported module source directory",
+        })
+        continue
       }
     }
-    let resolved_tests : Array[String] = []
-    for spec in test_imports {
-      match impact_mbt_resolve(spec, module_name, module_dir) {
+    if source_dir != "" &&
+      dir != source_dir &&
+      !dir.has_prefix(source_dir + "/") {
+      continue
+    }
+    let resolved : Array[String] = []
+    let seen_imports : Set[String] = Set([])
+    for spec in imports {
+      match impact_mbt_resolve(spec, module_name, source_dir) {
         Some(target) =>
-          if !resolved_tests.contains(target) {
-            resolved_tests.push(target)
+          if !seen_imports.contains(target) {
+            seen_imports.add(target)
+            resolved.push(target)
           }
         None => ()
       }
     }
-    let prefix = if dir == "" { "" } else { dir + "/" }
-    let mut has_tests = false
-    for path in membership.iter() {
-      if path.has_prefix(prefix) &&
-        (path.has_suffix("_test.mbt") || path.has_suffix("_wbtest.mbt")) {
-        has_tests = true
+    let resolved_tests : Array[String] = []
+    let seen_test_imports : Set[String] = Set([])
+    for spec in test_imports {
+      match impact_mbt_resolve(spec, module_name, source_dir) {
+        Some(target) =>
+          if !seen_test_imports.contains(target) {
+            seen_test_imports.add(target)
+            resolved_tests.push(target)
+          }
+        None => ()
       }
     }
     packages.push({
       path: dir,
       imports: resolved,
       test_imports: resolved_tests,
-      has_tests,
+      has_tests: false,
     })
+  }
+  // Count a test only for the package that owns it. This matches changed-file
+  // ownership and prevents nested packages' tests inflating parent inventory.
+  let package_paths : Set[String] = Set([])
+  for item in packages {
+    package_paths.add(item.path)
+  }
+  let tests_by_package : Set[String] = Set([])
+  for path in membership.iter() {
+    let inline_tests = match source_by_path.get(path) {
+      Some(text) => impact_mbt_source_contains_tests(path, text)
+      None => false
+    }
+    if path.has_suffix("_test.mbt") ||
+      path.has_suffix("_wbtest.mbt") ||
+      inline_tests {
+      match impact_mbt_owner(path, package_paths) {
+        Some(owner) => tests_by_package.add(owner)
+        None => ()
+      }
+    }
+  }
+  for i in 0..<packages.length() {
+    let current = packages[i]
+    packages[i] = {
+      path: current.path,
+      imports: current.imports,
+      test_imports: current.test_imports,
+      has_tests: tests_by_package.contains(current.path),
+    }
   }
   (packages, issues)
 }
 
 ///|
-/// The package that owns a file: the longest package directory prefix. The
-/// module root package ("") owns everything no other package claims.
-fn impact_mbt_owner(
-  file : String,
-  packages : Array[ImpactMbtPackage],
-) -> String? {
-  let mut best : String? = None
-  for package in packages {
-    if package.path == "" {
-      if best is None {
-        best = Some("")
-      }
-    } else if file.has_prefix(package.path + "/") {
-      let longer = match best {
-        Some(current) => package.path.length() > current.length()
-        None => true
-      }
-      if longer {
-        best = Some(package.path)
-      }
+/// The package that owns a file: the nearest package directory ancestor. The
+/// module root package ("") owns everything no other package claims. Walking
+/// parent segments is boundary-safe ("pkg" never captures "pkg2") and avoids
+/// scanning all packages for every test or changed input.
+fn impact_mbt_owner(file : String, package_paths : Set[String]) -> String? {
+  let mut dir = match file.rev_split_once("/") {
+    Some((parent, _)) => parent.to_owned()
+    None => ""
+  }
+  while dir != "" {
+    if package_paths.contains(dir) {
+      return Some(dir)
+    }
+    dir = match dir.rev_split_once("/") {
+      Some((parent, _)) => parent.to_owned()
+      None => ""
     }
   }
-  best
+  if package_paths.contains("") {
+    Some("")
+  } else {
+    None
+  }
 }
 
 ///|
@@ -407,6 +585,7 @@ fn impact_mbt_global_input(path : String) -> Bool {
   }
   name == "moon.mod" ||
   name == "moon.mod.json" ||
+  name == "moon.work" ||
   name == "moon.pkg" ||
   name == "moon.pkg.json"
 }
@@ -445,7 +624,14 @@ pub fn impact_moonbit_plan(
   }
   let walk_paths : Array[String] = []
   let walk_issues : Array[ImpactIssue] = []
-  impact_collect_paths(absolute, "", config, walk_paths, walk_issues)
+  impact_collect_paths(
+    absolute,
+    "",
+    config,
+    walk_paths,
+    walk_issues,
+    moonbit=true,
+  )
   walk_paths.sort_by(impact_path_order)
   let observed = observations.copy()
   for issue in walk_issues {
@@ -461,11 +647,23 @@ pub fn impact_moonbit_plan(
     if name == "moon.mod" ||
       name == "moon.mod.json" ||
       name == "moon.pkg" ||
-      name == "moon.pkg.json" {
-      let text = @fs.read_file_to_string(join_path(absolute, path)) catch {
-        _ => raise Failure("moonbit: cannot read module manifest: " + path)
+      name == "moon.pkg.json" ||
+      path.has_suffix(".mbt") ||
+      path.has_suffix(".mbt.md") {
+      try {
+        if rooted_source_kind(absolute, path) != 1 {
+          raise Failure("not a regular file")
+        }
+        let text = read_source(join_path(absolute, path))
+        sources.push((path, text))
+      } catch {
+        error =>
+          observed.push({
+            file: path,
+            line: 0,
+            reason: "io: " + error_message(error),
+          })
       }
-      sources.push((path, text))
     }
   }
   sources.sort_by((a, b) => impact_path_order(a.0, b.0))
@@ -529,6 +727,14 @@ fn impact_moonbit_plan_from(
   let origins : Map[String, String] = Map([])
   let parent : Map[String, ImpactMbtEdge] = Map([])
   let queue : Array[String] = []
+  let package_paths : Set[String] = Set([])
+  let test_packages : Set[String] = Set([])
+  for item in packages {
+    package_paths.add(item.path)
+    if item.has_tests {
+      test_packages.add(item.path)
+    }
+  }
   for path in normalized {
     if impact_mbt_global_input(path) {
       reasons.push("global-input-changed: " + path)
@@ -542,7 +748,7 @@ fn impact_moonbit_plan_from(
       )
       continue
     }
-    match impact_mbt_owner(path, packages) {
+    match impact_mbt_owner(path, package_paths) {
       Some(owner) =>
         if !origins.contains(owner) {
           origins.set(owner, path)
@@ -570,8 +776,7 @@ fn impact_moonbit_plan_from(
   let traces : Array[ImpactTrace] = []
   let selected : Array[String] = []
   for package in affected {
-    let has_tests = packages.any(item => item.path == package && item.has_tests)
-    if !has_tests {
+    if !test_packages.contains(package) {
       continue
     }
     selected.push(package)
@@ -645,7 +850,7 @@ fn impact_moonbit_plan_from(
   let blocked = unique_issues.any(issue => {
     issue.reason.has_prefix("io:") || issue.reason.has_prefix("unsafe:")
   })
-  let strategy = if blocked || inventory.is_empty() {
+  let strategy = if blocked || (inventory.is_empty() && reasons.is_empty()) {
     if inventory.is_empty() {
       reasons.push(
         "no-test-inventory: no package in this module contains tests",

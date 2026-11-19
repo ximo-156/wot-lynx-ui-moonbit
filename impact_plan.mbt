@@ -722,6 +722,7 @@ fn impact_collect_paths(
   config : ImpactConfig,
   paths : Array[String],
   issues : Array[ImpactIssue],
+  moonbit~ : Bool = false,
 ) -> Unit raise {
   let directory = if dir == "" { root } else { join_path(root, dir) }
   let entries = @fs.read_dir(directory)
@@ -732,12 +733,13 @@ fn impact_collect_paths(
     let rel = if dir == "" { name } else { dir + "/" + name }
     let kind = source_path_kind(join_path(root, rel))
     if kind == 2 {
-      impact_collect_paths(root, rel, config, paths, issues)
+      impact_collect_paths(root, rel, config, paths, issues, moonbit~)
     } else if kind == 1 {
       paths.push(rel)
     } else if impact_in_scope(config, rel) &&
       (
         impact_source_extension(rel) ||
+        (moonbit && (rel.has_suffix(".mbt") || rel.has_suffix(".mbt.md"))) ||
         impact_any_style_extension(rel) ||
         impact_manifest_name(rel)
       ) {

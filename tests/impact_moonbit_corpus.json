@@ -1,0 +1,52 @@
+{
+  "version": 1,
+  "projects": {
+    "css": {
+      "repository": "https://github.com/mizchi/css",
+      "commit": "1c2aaa038277b411a78e80b1c4c7ff3a029b6bbf",
+      "module": "mizchi/css", "source": "src",
+      "mutations": [
+        {"name": "class-specificity", "path": "src/selector/specificity.mbt", "before": "Class(_) => { a: 0, b: 1, c: 0, }", "after": "Class(_) => { a: 0, b: 0, c: 1, }"},
+        {"name": "id-specificity", "path": "src/selector/specificity.mbt", "before": "Id(_) => { a: 1, b: 0, c: 0, }", "after": "Id(_) => Specificity::zero()"}
+      ]
+    },
+    "quickcheck": {
+      "repository": "https://github.com/moonbitlang/quickcheck",
+      "commit": "d1149a8eceb995776a6f53977058fc13c47fa443",
+      "module": "moonbitlang/quickcheck", "source": "src",
+      "mutations": [{"name": "debug-label", "path": "src/laws/axiom.mbt", "before": "\"Equivalence\",", "after": "\"Pair\","}]
+    },
+    "regexp": {
+      "repository": "https://github.com/moonbitlang/regexp.mbt",
+      "commit": "24f7b7d2059638096a763773972cebb7379a5c37",
+      "module": "moonbitlang/regexp", "source": "",
+      "mutations": [{"name": "word-underscore", "path": "internal/unicode/chars.mbt", "before": "return c is ('a'..<='z' | 'A'..<='Z' | '0'..<='9' | '_')", "after": "return c is ('a'..<='z' | 'A'..<='Z' | '0'..<='9')"}]
+    },
+    "clap": {
+      "repository": "https://github.com/TheWaWaR/clap.mbt",
+      "commit": "fa59e575cfd538acd7c8149e9a714ca86f217816",
+      "module": "TheWaWaR/clap", "source": "src",
+      "mutations": [
+        {"name": "one-arity", "path": "src/arg.mbt", "before": "One => length == 1", "after": "One => length == 2"},
+        {"name": "short-flag", "path": "src/arg.mbt", "before": "Flag(short~, ..) if short != null_short => Some(short)", "after": "Flag(short~, ..) if short != null_short => None"}
+      ]
+    },
+    "csv": {
+      "repository": "https://github.com/moonbit-community/NyaCSV",
+      "commit": "19ab9ca861f13a0663dc6e168b764507fa0e76ba",
+      "module": "moonbit-community/NyaCSV", "source": "",
+      "mutations": [{"name": "row-count", "path": "nyacsv.mbt", "before": "let row_count = self.rows.length()", "after": "let row_count = self.rows.length() + 1"}]
+    },
+    "xml": {
+      "repository": "https://github.com/moonbit-community/xml-mbt",
+      "commit": "bf5d07e5a81a60c36a1263d6537a2570d9e4d828",
+      "module": "Milky2018/xml", "source": "src",
+      "mutations": [{"name": "less-than-escape", "path": "src/escape.mbt", "before": "'<' => buf.write_string(\"&lt;\")", "after": "'<' => buf.write_string(\"&gt;\")"}]
+    },
+    "prettyprinter": {
+      "repository": "https://github.com/moonbit-community/prettyprinter",
+      "commit": "683b8386d8b2d289b0f49a3e079bea50f120df2e",
+      "module": "moonbit-community/prettyprinter", "source": "", "mutations": []
+    }
+  }
+}

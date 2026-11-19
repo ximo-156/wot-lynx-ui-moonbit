@@ -97,7 +97,7 @@ The four strategies are honest about their own reach:
 | Strategy | Meaning |
 | --- | --- |
 | `related` | selected test files or packages have a known dependency chain to the change |
-| `full` | the model cannot narrow the change safely, so the full Vitest suite or every inventoried MoonBit test package is requested |
+| `full` | the model cannot narrow the change safely, so the full Vitest suite or unfiltered `moon test` is requested |
 | `none` | no changes, or no affected test files or packages with tests under the supported model |
 | `blocked` | an I/O or unsafe-path condition prevents execution |
 
@@ -137,6 +137,8 @@ boundaries stated in the record itself:
 | [Round three](<docs/moonimpact-round3-verification.md>) | wot-lynx-ui (JS/TS) | whole-tree membership, declaration contract, real-project selective execution |
 | [Round four](<docs/moonimpact-round4-verification.md>) | moonbitlang/x (MoonBit) | the MoonBit front end and its planning measurements |
 | [Round five](<docs/moonimpact-round5-verification.md>) | moonbitlang/x (MoonBit) | end-to-end selective execution and fault injection on a pinned commit |
+
+[Round six (Chinese)](<docs/moonimpact-round6-verification.zh-CN.md>) records the source-layout, inline-test and full-execution fixes. [Round seven (Chinese)](<docs/moonimpact-round7-verification.zh-CN.md>) expands the pinned corpus to seven public projects, with executable inventory and fault comparisons.
 
 ## The moonlint linter
 

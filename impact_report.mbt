@@ -60,9 +60,17 @@ pub fn render_impact_json(plan : ImpactPlan) -> String {
     }),
     "limitations": impact_json_strings([
       "Selection uses supported static dependencies and explicit configuration, not complete language semantics.",
-      "No test success is established by this plan; --run executes trusted project code using the local Vitest installation.",
+      if plan.mode == "moonbit" {
+        "No test success is established by this plan; --run executes trusted project code using the local MoonBit toolchain."
+      } else {
+        "No test success is established by this plan; --run executes trusted project code using the local Vitest installation."
+      },
       "Git input describes changes; analyzed sources are a live working tree, not an atomic repository snapshot.",
-      "Full fallback requests all tests from Vitest; the runner may discover additional tests beyond this inventory.",
+      if plan.mode == "moonbit" {
+        "Full fallback runs unfiltered moon test; the runner may discover additional tests beyond this static inventory."
+      } else {
+        "Full fallback requests all tests from Vitest; the runner may discover additional tests beyond this inventory."
+      },
     ]),
   }).stringify(indent=2)
 }
@@ -225,7 +233,7 @@ pub fn render_impact_html(plan : ImpactPlan) -> String {
     )
   }
   out.write_string(
-    "</ul><p class=\"muted\">The live working tree is not an atomic Git snapshot. Full fallback runs Vitest's full suite, which may include files outside this inventory.</p></section>",
+    "</ul><p class=\"muted\">The live working tree is not an atomic Git snapshot. Full fallback runs the runner's unfiltered full suite, which may include tests outside this static inventory.</p></section>",
   )
   out.write_string("<section><h2>Selected tests</h2><ul>")
   for path in plan.tests {

@@ -42,6 +42,7 @@ jobs:
           test -x "$BINARY"
           python3 tests/impact_integration.py --binary "$BINARY"
           python3 tests/impact_native.py
+          python3 tests/impact_moonbit_corpus_test.py
       - name: Audit MoonImpact stability on a MoonBit module
         run: |
           # This checkout is itself a multi-module MoonBit workspace: the audit

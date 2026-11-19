@@ -48,7 +48,7 @@ extern "C" fn impact_result_free(result : ImpactNativeResult) -> Unit = "moonimp
 
 ///|
 /// Operations: 0 Git changes; 1 selected Vitest tests; 2 all Vitest tests;
-/// 3 publish a report without overwriting any existing path.
+/// 3 publish a report without overwriting any existing path; 4 MoonBit tests.
 #cfg(all(target="native", not(platform="windows")))
 fn impact_native_operation(
   operation : Int32,
@@ -188,6 +188,25 @@ pub fn impact_run_moon_test(
     4,
     native_os_string(root, "test root"),
     payload,
+    timeout_ms,
+  )
+  code
+}
+
+///|
+/// Explicitly run the runner's complete MoonBit suite without package filters.
+/// This does not depend on the planner's static test inventory.
+pub fn impact_run_moon_test_full(
+  root : String,
+  timeout_ms : Int32,
+) -> Int32 raise {
+  if timeout_ms <= 0 {
+    raise Failure("test timeout must be positive")
+  }
+  let (_, code) = impact_native_operation(
+    4,
+    native_os_string(root, "test root"),
+    @utf8.encode(""),
     timeout_ms,
   )
   code

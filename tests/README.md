@@ -122,6 +122,8 @@ These scripts are not included in `integration.py --phase all`:
 |--------|------------------------|
 | [impact_integration.py](impact_integration.py) | Pass `--binary /absolute/path/to/impact.exe`; exercises planning and execution with isolated fixtures and fake runners. |
 | [impact_native.py](impact_native.py) | Run directly with Python; builds a temporary C driver using `cc` on macOS/Linux to test the native bridge. |
+| [impact_moonbit_corpus.py](impact_moonbit_corpus.py) | Supply `--binary` and repeated `--project NAME=DIR` for clean checkouts at the commits in [the corpus manifest](impact_moonbit_corpus.json). Runs the project's full suite and compares `moon test --outline` with static inventory; `--mutate` additionally injects declared faults and compares failure identities. Restores source bytes after each fault. No clones, toolchain changes or snapshot updates; `moon` may resolve dependencies and write build outputs. |
+| [impact_moonbit_corpus_test.py](impact_moonbit_corpus_test.py) | Five dependency-free tests for runner evidence parsing and source restoration on failed execution; included in CI. |
 | [impact_stability.py](impact_stability.py) | Pass `--binary`, `--project`, and optionally `--config` / `--samples`; audits an existing project without modifying it or running its tests. Skips without `--project`. |
 | [impact_vitest_smoke.py](impact_vitest_smoke.py) | Pass `--binary` and `--vitest-dir` containing `vitest.mjs`; requires existing Node.js and pnpm, runs a temporary synthetic fixture, and installs nothing. |
 

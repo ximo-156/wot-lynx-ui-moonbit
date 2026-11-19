@@ -156,7 +156,11 @@ fn impact_main(args : Array[String]) -> Int32 raise {
     )
   }
   let child_code = if moonbit {
-    @lib.impact_run_moon_test(root, plan.tests, opts.timeout_ms)
+    if full {
+      @lib.impact_run_moon_test_full(root, opts.timeout_ms)
+    } else {
+      @lib.impact_run_moon_test(root, plan.tests, opts.timeout_ms)
+    }
   } else {
     @lib.impact_run_vitest(run_root, run_tests, full, opts.timeout_ms)
   }

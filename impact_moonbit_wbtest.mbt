@@ -17,6 +17,9 @@ fn impact_mbt_fixture_sources() -> Array[(String, String)] {
     ),
     ("extra/helper.mbt", "pub fn helper() -> Int32 { 2 }\n"),
     ("extra/helper_test.mbt", "test \"helper\" { assert_eq(helper(), 2) }\n"),
+    ("cli/child/moon.pkg", ""),
+    ("cli/child/child.mbt", "pub fn child() -> Int32 { 4 }\n"),
+    ("cli/child/child_test.mbt", "test \"child\" { assert_eq(child(), 4) }\n"),
     ("nested/moon.mod", "name = \"demo/nested\"\n\nversion = \"0.1.0\"\n"),
     ("nested/pkg/moon.pkg", "import {\n  \"demo/nested/other\" @other,\n}\n"),
     ("nested/pkg/use.mbt", "pub fn use() -> Int32 { @other.value() }\n"),
@@ -98,6 +101,16 @@ test "moonbit manifests may hold several import blocks" {
     impact_mbt_manifest_imports(duplicated, "import"),
     Some(["demo/mod"]),
   )
+  let duplicates = "import {\n  \"demo/mod\" @lib,\n  \"demo/mod\" @lib2,\n}\n" +
+    "test-import {\n  \"demo/mod\" @lib,\n  \"demo/mod\" @lib2,\n}\n"
+  assert_eq(
+    impact_mbt_manifest_imports(duplicates, "import"),
+    Some(["demo/mod"]),
+  )
+  assert_eq(
+    impact_mbt_manifest_imports(duplicates, "test-import"),
+    Some(["demo/mod"]),
+  )
 }
 
 ///|
@@ -132,14 +145,22 @@ test "moonbit file ownership is the longest package prefix" {
     impact_mbt_fixture_sources(),
   )
   assert_eq(issues.length(), 0)
-  assert_eq(impact_mbt_owner("lib.mbt", packages), Some(""))
-  assert_eq(impact_mbt_owner("cli/main.mbt", packages), Some("cli"))
-  assert_eq(impact_mbt_owner("extra/helper.mbt", packages), Some("extra"))
+  let package_paths = Set::from_iter(packages.map(item => item.path).iter())
+  assert_eq(impact_mbt_owner("lib.mbt", package_paths), Some(""))
+  assert_eq(impact_mbt_owner("cli/main.mbt", package_paths), Some("cli"))
   assert_eq(
-    impact_mbt_owner("nested/pkg/use.mbt", packages),
+    impact_mbt_owner("cli/child/child_test.mbt", package_paths),
+    Some("cli/child"),
+  )
+  assert_eq(impact_mbt_owner("extra/helper.mbt", package_paths), Some("extra"))
+  assert_true(packages.any(item => item.path == "cli" && !item.has_tests))
+  assert_true(packages.any(item => item.path == "cli/child" && item.has_tests))
+  assert_eq(
+    impact_mbt_owner("nested/pkg/use.mbt", package_paths),
     Some("nested/pkg"),
   )
-  assert_eq(impact_mbt_owner("README.md", packages), Some(""))
+  assert_eq(impact_mbt_owner("README.md", package_paths), Some(""))
+  assert_eq(impact_mbt_owner("cli2/main.mbt", package_paths), Some(""))
 }
 
 ///|
@@ -159,6 +180,7 @@ test "moonbit package graph connects importers transitively" {
   let has_tests = packages.map(package => (package.path, package.has_tests))
   assert_true(has_tests.contains(("", true)))
   assert_true(has_tests.contains(("cli", false)))
+  assert_true(has_tests.contains(("cli/child", true)))
   assert_true(has_tests.contains(("extra", true)))
 }
 
@@ -167,11 +189,11 @@ test "moonbit plan selects owning packages and every importer" {
   let plan = impact_mbt_fixture_plan(["lib.mbt"])
   assert_eq(plan.mode, "moonbit")
   assert_eq(plan.strategy, "related")
-  // The root package and its test-holding importer run; the CLI importer has
-  // no tests and is affected but not selected.
+  // The root package and test-holding importer run. The CLI package itself has
+  // no tests, and its nested test package has no dependency on the root.
   assert_eq(plan.tests, ["", "extra"])
   assert_eq(plan.affected, ["", "cli", "extra"])
-  assert_eq(plan.inventory, ["", "extra"])
+  assert_eq(plan.inventory, ["", "cli/child", "extra"])
   let mut trace : ImpactTrace? = None
   for candidate in plan.traces {
     if candidate.test_file == "extra" {
@@ -187,6 +209,18 @@ test "moonbit plan selects owning packages and every importer" {
   assert_eq(trace.chain[1].dependency, "")
   assert_eq(trace.chain[1].dependent, "extra")
   assert_eq(trace.chain[1].kind, "imports")
+}
+
+///|
+test "moonbit nested package tests do not inflate parent inventory" {
+  let plan = impact_mbt_fixture_plan(["cli/child/child.mbt"])
+  assert_eq(plan.strategy, "related")
+  assert_eq(plan.tests, ["cli/child"])
+  assert_true(!plan.inventory.contains("cli"))
+  assert_true(plan.inventory.contains("cli/child"))
+  let all = impact_mbt_fixture_plan(["moon.pkg"])
+  assert_eq(all.strategy, "full")
+  assert_eq(all.tests, ["", "cli/child", "extra"])
 }
 
 ///|
