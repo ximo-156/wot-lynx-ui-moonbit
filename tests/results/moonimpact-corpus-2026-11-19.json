@@ -1,0 +1,521 @@
+{
+  "version": 1,
+  "toolchain": "moon 0.1.20261111 (8b8d15b 2026-11-11) ~/.moon/bin/moon\nmoonc v0.10.21+f125caab5 (2026-11-11) ~/.moon/bin/moonc\nmoonrun 0.1.20261111 (8b8d15b 2026-11-11) ~/.moon/bin/moonrun",
+  "mutated": true,
+  "binary_sha256": "bc2d8a731d2c90a5e55bcb24dab814a53ae6bf203fef2b05b4b2f92edbd81908",
+  "corpus_sha256": "d29211c2f0761cc0628bdeb7e857a7006fb063fe905526d12ee82b8a9270dc2f",
+  "projects": {
+    "css": {
+      "commit": "1c2aaa038277b411a78e80b1c4c7ff3a029b6bbf",
+      "repository": "https://github.com/mizchi/css",
+      "baseline": {
+        "exit": 0,
+        "seconds": 2.165,
+        "total": 1666,
+        "passed": 1666,
+        "failed": 0,
+        "failure_tests": []
+      },
+      "inventory": {
+        "runner_packages": [
+          "src",
+          "src/animation",
+          "src/cascade",
+          "src/computed",
+          "src/diagnostics",
+          "src/media",
+          "src/parser",
+          "src/selector",
+          "src/style",
+          "src/token",
+          "src/values",
+          "src/wpt"
+        ],
+        "inventory": [
+          "src",
+          "src/animation",
+          "src/cascade",
+          "src/computed",
+          "src/diagnostics",
+          "src/media",
+          "src/parser",
+          "src/selector",
+          "src/style",
+          "src/token",
+          "src/values",
+          "src/wpt"
+        ],
+        "conservative_extras": [],
+        "deterministic": true
+      },
+      "mutations": [
+        {
+          "name": "class-specificity",
+          "path": "src/selector/specificity.mbt",
+          "status": "matched",
+          "strategy": "related",
+          "selected_packages": [
+            "src",
+            "src/cascade",
+            "src/computed",
+            "src/parser",
+            "src/selector",
+            "src/wpt"
+          ],
+          "selected": {
+            "exit": 1,
+            "seconds": 2.522,
+            "total": 1329,
+            "passed": 1322,
+            "failed": 7,
+            "failure_tests": [
+              "[mizchi/css] test selector/specificity_wbtest.mbt:16 (\"specificity - class selector\") failed",
+              "[mizchi/css] test selector/specificity_wbtest.mbt:197 (\"specificity - :not() takes argument specificity\") failed",
+              "[mizchi/css] test selector/specificity_wbtest.mbt:227 (\"specificity - combined :not() with element\") failed",
+              "[mizchi/css] test selector/specificity_wbtest.mbt:272 (\"specificity - :has() takes argument specificity\") failed",
+              "[mizchi/css] test selector/specificity_wbtest.mbt:317 (\"specificity - complex real-world selector\") failed",
+              "[mizchi/css] test selector/specificity_wbtest.mbt:44 (\"specificity - compound selector\") failed",
+              "[mizchi/css] test selector/specificity_wbtest.mbt:74 (\"specificity - mixed selector\") failed"
+            ]
+          },
+          "full": {
+            "exit": 2,
+            "seconds": 0.572,
+            "total": 1666,
+            "passed": 1659,
+            "failed": 7,
+            "failure_tests": [
+              "[mizchi/css] test selector/specificity_wbtest.mbt:16 (\"specificity - class selector\") failed",
+              "[mizchi/css] test selector/specificity_wbtest.mbt:197 (\"specificity - :not() takes argument specificity\") failed",
+              "[mizchi/css] test selector/specificity_wbtest.mbt:227 (\"specificity - combined :not() with element\") failed",
+              "[mizchi/css] test selector/specificity_wbtest.mbt:272 (\"specificity - :has() takes argument specificity\") failed",
+              "[mizchi/css] test selector/specificity_wbtest.mbt:317 (\"specificity - complex real-world selector\") failed",
+              "[mizchi/css] test selector/specificity_wbtest.mbt:44 (\"specificity - compound selector\") failed",
+              "[mizchi/css] test selector/specificity_wbtest.mbt:74 (\"specificity - mixed selector\") failed"
+            ]
+          }
+        },
+        {
+          "name": "id-specificity",
+          "path": "src/selector/specificity.mbt",
+          "status": "matched",
+          "strategy": "related",
+          "selected_packages": [
+            "src",
+            "src/cascade",
+            "src/computed",
+            "src/parser",
+            "src/selector",
+            "src/wpt"
+          ],
+          "selected": {
+            "exit": 1,
+            "seconds": 1.905,
+            "total": 1329,
+            "passed": 1320,
+            "failed": 9,
+            "failure_tests": [
+              "[mizchi/css] test cascade/cascade_wbtest.mbt:354 (\"specificity - ID beats class\") failed",
+              "[mizchi/css] test selector/specificity_wbtest.mbt:212 (\"specificity - :not() with ID\") failed",
+              "[mizchi/css] test selector/specificity_wbtest.mbt:242 (\"specificity - :is() takes highest argument\") failed",
+              "[mizchi/css] test selector/specificity_wbtest.mbt:272 (\"specificity - :has() takes argument specificity\") failed",
+              "[mizchi/css] test selector/specificity_wbtest.mbt:287 (\"specificity - :not() with multiple compound arguments picks max\") failed",
+              "[mizchi/css] test selector/specificity_wbtest.mbt:30 (\"specificity - id selector\") failed",
+              "[mizchi/css] test selector/specificity_wbtest.mbt:317 (\"specificity - complex real-world selector\") failed",
+              "[mizchi/css] test selector/specificity_wbtest.mbt:44 (\"specificity - compound selector\") failed",
+              "[mizchi/css] test selector/specificity_wbtest.mbt:74 (\"specificity - mixed selector\") failed"
+            ]
+          },
+          "full": {
+            "exit": 2,
+            "seconds": 0.797,
+            "total": 1666,
+            "passed": 1657,
+            "failed": 9,
+            "failure_tests": [
+              "[mizchi/css] test cascade/cascade_wbtest.mbt:354 (\"specificity - ID beats class\") failed",
+              "[mizchi/css] test selector/specificity_wbtest.mbt:212 (\"specificity - :not() with ID\") failed",
+              "[mizchi/css] test selector/specificity_wbtest.mbt:242 (\"specificity - :is() takes highest argument\") failed",
+              "[mizchi/css] test selector/specificity_wbtest.mbt:272 (\"specificity - :has() takes argument specificity\") failed",
+              "[mizchi/css] test selector/specificity_wbtest.mbt:287 (\"specificity - :not() with multiple compound arguments picks max\") failed",
+              "[mizchi/css] test selector/specificity_wbtest.mbt:30 (\"specificity - id selector\") failed",
+              "[mizchi/css] test selector/specificity_wbtest.mbt:317 (\"specificity - complex real-world selector\") failed",
+              "[mizchi/css] test selector/specificity_wbtest.mbt:44 (\"specificity - compound selector\") failed",
+              "[mizchi/css] test selector/specificity_wbtest.mbt:74 (\"specificity - mixed selector\") failed"
+            ]
+          }
+        }
+      ]
+    },
+    "quickcheck": {
+      "commit": "d1149a8eceb995776a6f53977058fc13c47fa443",
+      "repository": "https://github.com/moonbitlang/quickcheck",
+      "baseline": {
+        "exit": 0,
+        "seconds": 7.372,
+        "total": 252,
+        "passed": 252,
+        "failed": 0,
+        "failure_tests": []
+      },
+      "inventory": {
+        "runner_packages": [
+          "src/feat",
+          "src/internal/rose",
+          "src/internal/state",
+          "src/internal/testing",
+          "src/internal/testing/tutorial_en",
+          "src/internal/testing/tutorial_zh",
+          "src/internal/utils",
+          "src/laws",
+          "src/modifiers",
+          "src/property"
+        ],
+        "inventory": [
+          "src/feat",
+          "src/internal/benchmark",
+          "src/internal/rose",
+          "src/internal/state",
+          "src/internal/testing",
+          "src/internal/testing/tutorial_en",
+          "src/internal/testing/tutorial_zh",
+          "src/internal/utils",
+          "src/laws",
+          "src/modifiers",
+          "src/property"
+        ],
+        "conservative_extras": [
+          "src/internal/benchmark"
+        ],
+        "deterministic": true
+      },
+      "mutations": [
+        {
+          "name": "debug-label",
+          "path": "src/laws/axiom.mbt",
+          "status": "matched",
+          "strategy": "related",
+          "selected_packages": [
+            "src/internal/testing",
+            "src/internal/testing/tutorial_en",
+            "src/internal/testing/tutorial_zh",
+            "src/laws"
+          ],
+          "selected": {
+            "exit": 1,
+            "seconds": 7.202,
+            "total": 172,
+            "passed": 171,
+            "failed": 1,
+            "failure_tests": [
+              "[moonbitlang/quickcheck] test laws/axiom.mbt:22 (\"Equivalence debug output is opaque\") failed"
+            ]
+          },
+          "full": {
+            "exit": 2,
+            "seconds": 6.297,
+            "total": 252,
+            "passed": 251,
+            "failed": 1,
+            "failure_tests": [
+              "[moonbitlang/quickcheck] test laws/axiom.mbt:22 (\"Equivalence debug output is opaque\") failed"
+            ]
+          }
+        }
+      ]
+    },
+    "regexp": {
+      "commit": "24f7b7d2059638096a763773972cebb7379a5c37",
+      "repository": "https://github.com/moonbitlang/regexp.mbt",
+      "baseline": {
+        "exit": 0,
+        "seconds": 1.455,
+        "total": 157,
+        "passed": 157,
+        "failed": 0,
+        "failure_tests": []
+      },
+      "inventory": {
+        "runner_packages": [
+          "",
+          "internal/ast",
+          "internal/parse",
+          "internal/unicode",
+          "internal/vm"
+        ],
+        "inventory": [
+          "",
+          "internal/ast",
+          "internal/parse",
+          "internal/unicode",
+          "internal/vm"
+        ],
+        "conservative_extras": [],
+        "deterministic": true
+      },
+      "mutations": [
+        {
+          "name": "word-underscore",
+          "path": "internal/unicode/chars.mbt",
+          "status": "matched",
+          "strategy": "related",
+          "selected_packages": [
+            "",
+            "internal/ast",
+            "internal/parse",
+            "internal/unicode",
+            "internal/vm"
+          ],
+          "selected": {
+            "exit": 1,
+            "seconds": 1.361,
+            "total": 157,
+            "passed": 156,
+            "failed": 1,
+            "failure_tests": [
+              "[moonbitlang/regexp] test internal/unicode/chars.mbt:89 (\"is word char\") failed"
+            ]
+          },
+          "full": {
+            "exit": 2,
+            "seconds": 0.176,
+            "total": 157,
+            "passed": 156,
+            "failed": 1,
+            "failure_tests": [
+              "[moonbitlang/regexp] test internal/unicode/chars.mbt:89 (\"is word char\") failed"
+            ]
+          }
+        }
+      ]
+    },
+    "clap": {
+      "commit": "fa59e575cfd538acd7c8149e9a714ca86f217816",
+      "repository": "https://github.com/TheWaWaR/clap.mbt",
+      "baseline": {
+        "exit": 0,
+        "seconds": 0.276,
+        "total": 15,
+        "passed": 15,
+        "failed": 0,
+        "failure_tests": []
+      },
+      "inventory": {
+        "runner_packages": [
+          "src"
+        ],
+        "inventory": [
+          "src"
+        ],
+        "conservative_extras": [],
+        "deterministic": true
+      },
+      "mutations": [
+        {
+          "name": "one-arity",
+          "path": "src/arg.mbt",
+          "status": "survived_full_suite",
+          "strategy": "related",
+          "selected_packages": [
+            "src"
+          ],
+          "selected": {
+            "exit": 0,
+            "seconds": 0.607,
+            "total": 15,
+            "passed": 15,
+            "failed": 0,
+            "failure_tests": []
+          },
+          "full": {
+            "exit": 0,
+            "seconds": 0.052,
+            "total": 15,
+            "passed": 15,
+            "failed": 0,
+            "failure_tests": []
+          }
+        },
+        {
+          "name": "short-flag",
+          "path": "src/arg.mbt",
+          "status": "matched",
+          "strategy": "related",
+          "selected_packages": [
+            "src"
+          ],
+          "selected": {
+            "exit": 1,
+            "seconds": 0.579,
+            "total": 15,
+            "passed": 10,
+            "failed": 5,
+            "failure_tests": [
+              "[TheWaWaR/clap] test parser_test.mbt:136 (\"parse short flag argument\") failed",
+              "[TheWaWaR/clap] test parser_test.mbt:248 (\"parse custom value\") failed",
+              "[TheWaWaR/clap] test parser_test.mbt:311 (\"simple global argument\") failed",
+              "[TheWaWaR/clap] test parser_test.mbt:55 (\"parse simple flag argument\") failed",
+              "[TheWaWaR/clap] test parser_test.mbt:80 (\"parse simple subcmd\") failed"
+            ]
+          },
+          "full": {
+            "exit": 2,
+            "seconds": 0.068,
+            "total": 15,
+            "passed": 10,
+            "failed": 5,
+            "failure_tests": [
+              "[TheWaWaR/clap] test parser_test.mbt:136 (\"parse short flag argument\") failed",
+              "[TheWaWaR/clap] test parser_test.mbt:248 (\"parse custom value\") failed",
+              "[TheWaWaR/clap] test parser_test.mbt:311 (\"simple global argument\") failed",
+              "[TheWaWaR/clap] test parser_test.mbt:55 (\"parse simple flag argument\") failed",
+              "[TheWaWaR/clap] test parser_test.mbt:80 (\"parse simple subcmd\") failed"
+            ]
+          }
+        }
+      ]
+    },
+    "csv": {
+      "commit": "19ab9ca861f13a0663dc6e168b764507fa0e76ba",
+      "repository": "https://github.com/moonbit-community/NyaCSV",
+      "baseline": {
+        "exit": 0,
+        "seconds": 0.266,
+        "total": 47,
+        "passed": 47,
+        "failed": 0,
+        "failure_tests": []
+      },
+      "inventory": {
+        "runner_packages": [
+          ""
+        ],
+        "inventory": [
+          ""
+        ],
+        "conservative_extras": [],
+        "deterministic": true
+      },
+      "mutations": [
+        {
+          "name": "row-count",
+          "path": "nyacsv.mbt",
+          "status": "matched",
+          "strategy": "related",
+          "selected_packages": [
+            ""
+          ],
+          "selected": {
+            "exit": 1,
+            "seconds": 0.476,
+            "total": 47,
+            "passed": 44,
+            "failed": 3,
+            "failure_tests": [
+              "[moonbit-community/NyaCSV] test README.mbt.md:102 (\"readme/array_input\") failed",
+              "[moonbit-community/NyaCSV] test README.mbt.md:23 (\"readme/quick_start\") failed",
+              "[moonbit-community/NyaCSV] test nyacsv_test.mbt:247 (\"@NyaCSV.CSV::shape/header_only_csv\") failed"
+            ]
+          },
+          "full": {
+            "exit": 2,
+            "seconds": 0.049,
+            "total": 47,
+            "passed": 44,
+            "failed": 3,
+            "failure_tests": [
+              "[moonbit-community/NyaCSV] test README.mbt.md:102 (\"readme/array_input\") failed",
+              "[moonbit-community/NyaCSV] test README.mbt.md:23 (\"readme/quick_start\") failed",
+              "[moonbit-community/NyaCSV] test nyacsv_test.mbt:247 (\"@NyaCSV.CSV::shape/header_only_csv\") failed"
+            ]
+          }
+        }
+      ]
+    },
+    "xml": {
+      "commit": "bf5d07e5a81a60c36a1263d6537a2570d9e4d828",
+      "repository": "https://github.com/moonbit-community/xml-mbt",
+      "baseline": {
+        "exit": 0,
+        "seconds": 1.435,
+        "total": 1821,
+        "passed": 1821,
+        "failed": 0,
+        "failure_tests": []
+      },
+      "inventory": {
+        "runner_packages": [
+          "src"
+        ],
+        "inventory": [
+          "src"
+        ],
+        "conservative_extras": [],
+        "deterministic": true
+      },
+      "mutations": [
+        {
+          "name": "less-than-escape",
+          "path": "src/escape.mbt",
+          "status": "matched",
+          "strategy": "related",
+          "selected_packages": [
+            "src"
+          ],
+          "selected": {
+            "exit": 1,
+            "seconds": 1.669,
+            "total": 1821,
+            "passed": 1816,
+            "failed": 5,
+            "failure_tests": [
+              "[Milky2018/xml] test escape_test.mbt:19 (\"escape special characters\") failed",
+              "[Milky2018/xml] test escape_test.mbt:53 (\"escape mixed content\") failed",
+              "[Milky2018/xml] test parser_properties_test.mbt:44 (\"property/Writer preserves generated Unicode text and attributes\") failed",
+              "[Milky2018/xml] test parser_properties_test.mbt:75 (\"property/internal entities preserve escaped text and authored reference spans\") failed",
+              "[Milky2018/xml] test writer_test.mbt:184 (\"write text with escaping\") failed"
+            ]
+          },
+          "full": {
+            "exit": 2,
+            "seconds": 0.711,
+            "total": 1821,
+            "passed": 1816,
+            "failed": 5,
+            "failure_tests": [
+              "[Milky2018/xml] test escape_test.mbt:19 (\"escape special characters\") failed",
+              "[Milky2018/xml] test escape_test.mbt:53 (\"escape mixed content\") failed",
+              "[Milky2018/xml] test parser_properties_test.mbt:44 (\"property/Writer preserves generated Unicode text and attributes\") failed",
+              "[Milky2018/xml] test parser_properties_test.mbt:75 (\"property/internal entities preserve escaped text and authored reference spans\") failed",
+              "[Milky2018/xml] test writer_test.mbt:184 (\"write text with escaping\") failed"
+            ]
+          }
+        }
+      ]
+    },
+    "prettyprinter": {
+      "commit": "683b8386d8b2d289b0f49a3e079bea50f120df2e",
+      "repository": "https://github.com/moonbit-community/prettyprinter",
+      "baseline": {
+        "exit": 0,
+        "seconds": 0.047,
+        "total": 7,
+        "passed": 7,
+        "failed": 0,
+        "failure_tests": []
+      },
+      "inventory": {
+        "runner_packages": [
+          ""
+        ],
+        "inventory": [
+          ""
+        ],
+        "conservative_extras": [],
+        "deterministic": true
+      },
+      "mutations": []
+    }
+  },
+  "errors": {}
+}
