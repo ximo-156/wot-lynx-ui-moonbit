@@ -212,6 +212,11 @@ test "workspace parser supports comments and rejects malformed membership" {
     ),
     None,
   )
+  assert_eq(
+    impact_mbt_workspace_members("members = [\"./lib\", \"lib\"]\n"),
+    None,
+  )
+  assert_eq(impact_mbt_workspace_members("members = [\"C:/outside\"]\n"), None)
 }
 
 ///|

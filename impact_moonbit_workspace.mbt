@@ -45,12 +45,17 @@ fn impact_mbt_workspace_members(source : String) -> Array[String]? {
             _ => return None
           }
         }
-        if raw.contains("\\") || raw.contains("*") || raw.contains("?") {
+        if raw.contains("\\") ||
+          raw.contains(":") ||
+          raw.contains("*") ||
+          raw.contains("?") ||
+          raw.contains("[") ||
+          raw.contains("]") ||
+          raw.contains("\u{0}") ||
+          paths.contains(path) {
           return None
         }
-        if !paths.contains(path) {
-          paths.push(path)
-        }
+        paths.push(path)
         i += 1
         if i < end {
           if tokens[i].text != "," {
@@ -68,6 +73,67 @@ fn impact_mbt_workspace_members(source : String) -> Array[String]? {
     }
   }
   members
+}
+
+///|
+/// A symlinked member directory must not turn an incomplete inventory into an
+/// executable full plan. Check every member path component without following it.
+fn impact_mbt_check_workspace_dirs(
+  root : String,
+  sources : Array[(String, String)],
+  issues : Array[ImpactIssue],
+) -> Unit {
+  for (path, source) in sources {
+    if path != "moon.work" && !path.has_suffix("/moon.work") {
+      continue
+    }
+    let workspace_dir = impact_parent(path)
+    let paths = match impact_mbt_workspace_members(source) {
+      Some(value) => value
+      None => continue
+    }
+    for member in paths {
+      let joined = if workspace_dir == "" {
+        member
+      } else if member == "" {
+        workspace_dir
+      } else {
+        workspace_dir + "/" + member
+      }
+      if joined == "" {
+        continue
+      }
+      try {
+        let mut current = root
+        for segment in joined.split("/") {
+          current = join_path(current, segment.to_owned())
+          let kind = source_path_kind(current)
+          if kind == 0 {
+            break
+          }
+          if kind != 2 {
+            issues.push({
+              file: path,
+              line: 0,
+              reason: "unsafe: workspace member is not a regular directory: " +
+              joined,
+            })
+            break
+          }
+        }
+      } catch {
+        error =>
+          issues.push({
+            file: path,
+            line: 0,
+            reason: "io: workspace member " +
+            joined +
+            ": " +
+            error_message(error),
+          })
+      }
+    }
+  }
 }
 
 ///|

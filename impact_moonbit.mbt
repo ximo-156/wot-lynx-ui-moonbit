@@ -342,25 +342,6 @@ fn impact_mbt_packages(
 ) -> (Array[ImpactMbtPackage], Array[ImpactIssue]) {
   let packages : Array[ImpactMbtPackage] = []
   let issues : Array[ImpactIssue] = []
-  let targets : Array[ImpactMbtModuleTarget] = []
-  for (dir, name) in modules {
-    if workspace_members is Some(members) && !members.contains(dir) {
-      continue
-    }
-    match impact_mbt_source_dir(dir, sources) {
-      Some(source_dir) => targets.push({ dir, name, source_dir, })
-      None =>
-        issues.push({
-          file: if dir == "" {
-            "moon.mod"
-          } else {
-            dir + "/moon.mod"
-          },
-          line: 0,
-          reason: "moonbit: unsupported module source directory",
-        })
-    }
-  }
   let manifests : Array[String] = []
   let source_by_path : Map[String, String] = Map([])
   for (path, text) in sources {
@@ -380,23 +361,6 @@ fn impact_mbt_packages(
     let dir = match manifest.rev_split_once("/") {
       Some((parent, _)) => parent.to_owned()
       None => ""
-    }
-    let (module_dir, _) = match impact_mbt_module_of(dir, modules) {
-      Some(pair) => pair
-      None => {
-        // Manifests outside all workspace members are not runner packages.
-        if workspace_members is None {
-          issues.push({
-            file: manifest,
-            line: 0,
-            reason: "moonbit: package has no enclosing module descriptor",
-          })
-        }
-        continue
-      }
-    }
-    if workspace_members is Some(members) && !members.contains(module_dir) {
-      continue
     }
     let source = match source_by_path.get(manifest) {
       Some(text) => text
@@ -530,21 +494,6 @@ fn impact_mbt_packages(
   let package_paths : Set[String] = Set([])
   for item in packages {
     package_paths.add(item.path)
-  }
-  for item in packages {
-    for target in item.imports + item.test_imports {
-      if !package_paths.contains(target) {
-        issues.push({
-          file: if item.path == "" {
-            "moon.pkg"
-          } else {
-            item.path + "/moon.pkg"
-          },
-          line: 0,
-          reason: "moonbit: unresolved local package import: " + target,
-        })
-      }
-    }
   }
   let tests_by_package : Set[String] = Set([])
   for path in membership.iter() {
@@ -695,7 +644,6 @@ pub fn impact_moonbit_plan(
       name == "moon.work" ||
       name == "moon.pkg" ||
       name == "moon.pkg.json" ||
-      name == "moon.work" ||
       path.has_suffix(".mbt") ||
       path.has_suffix(".mbt.md") {
       try {

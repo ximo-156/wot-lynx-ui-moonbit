@@ -23,23 +23,9 @@ Two project kinds are planned:
 | **MoonBit module/workspace** (default) | root holds `moon.mod` / `moon.mod.json` or `moon.work`, no `--config` | package | `moon test <package>` per selected package |
 | **JS/TS project** | explicit `--config moonimpact.json` | test file | `pnpm exec vitest run` with `./test-path` filters |
 
-The MoonBit path needs no configuration. Without `moon.work`, modules are
-planned independently as before. At a workspace root, MoonImpact reads a
-bounded `moon.work` form: a nonempty literal `members = [...]` list of
-root-relative module directories. It inventories only those members and
-resolves declared local imports across them. `.` names the workspace root when
-it is itself a member; glob patterns, dynamic expressions, duplicate paths,
-missing member descriptors, duplicate module identities, references to discovered
-nonmember modules and ambiguous local imports are not inferred. Unsupported or
-incomplete workspace metadata requests the full test suite; symlinked member
-directories block execution.
-
-All package manifests in active members are read directly. Every import block
-counts — plain, `for "test"` and `#cfg(...)`-conditional alike — because a
-test-only dependency still decides whether a package's tests can observe a
-change. A changed file selects its owning package plus every package that
-transitively imports it, including importers in other workspace members. A
-changed `moon.work` itself requests the full suite.
+The MoonBit path needs no configuration at all: the package graph is read from
+the `moon.pkg` manifests in the tree. The JS/TS path keeps the explicit,
+inert-configuration contract documented below.
 
 ## MoonBit modules
 
@@ -71,12 +57,12 @@ and preserves qualified aliases such as `@encoding/utf8`. Legacy JSON `import`,
 `test-import` and `wbtest-import` arrays (including path/alias objects) are also
 modeled. This is planning compatibility: newer MoonBit toolchains may require
 JSON manifests to be migrated before executing tests; MoonImpact does not migrate
-them. A changed `moon.work` requests full regression. Workspace roots are recognized
-without a root module descriptor; explicit, root-contained `members` entries
-limit the inventory to declared modules. Imports between modules declared in the
-same nearest workspace are traced; possible local imports outside that boundary
-remain uncertain and request full regression. Other workspace settings are not
-used for dependency planning.
+them. At a workspace root, explicit root-contained `members` entries scope the
+inventory; imports between modules in the same nearest workspace are traced.
+The supported membership form is a literal `members = [...]` list. Dynamic or
+glob entries, duplicate or unsafe paths, and possible local imports outside the
+workspace boundary request full regression. Symlinked member directories block execution, and a changed `moon.work` requests
+full regression. Other workspace settings are not used for dependency planning.
 
 The [pinned corpus runner](<../tests/impact_moonbit_corpus.py>) checks actual runner
 inventory and optionally compares injected-fault failures with full execution.
