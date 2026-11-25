@@ -20,12 +20,26 @@ Two project kinds are planned:
 
 | Kind | Detection | Test unit | Runner (`--run`) |
 | --- | --- | --- | --- |
-| **MoonBit module** (default) | root holds `moon.mod` / `moon.mod.json`, no `--config` | package | `moon test <package>` per selected package |
+| **MoonBit module/workspace** (default) | root holds `moon.mod` / `moon.mod.json` or `moon.work`, no `--config` | package | `moon test <package>` per selected package |
 | **JS/TS project** | explicit `--config moonimpact.json` | test file | `pnpm exec vitest run` with `./test-path` filters |
 
-The MoonBit path needs no configuration at all: the package graph is read from
-the `moon.pkg` manifests in the tree. The JS/TS path keeps the explicit,
-inert-configuration contract documented below.
+The MoonBit path needs no configuration. Without `moon.work`, modules are
+planned independently as before. At a workspace root, MoonImpact reads a
+bounded `moon.work` form: a nonempty literal `members = [...]` list of
+root-relative module directories. It inventories only those members and
+resolves declared local imports across them. `.` names the workspace root when
+it is itself a member; glob patterns, dynamic expressions, duplicate paths,
+missing member descriptors, duplicate module identities, references to discovered
+nonmember modules and ambiguous local imports are not inferred. Unsupported or
+incomplete workspace metadata requests the full test suite; symlinked member
+directories block execution.
+
+All package manifests in active members are read directly. Every import block
+counts — plain, `for "test"` and `#cfg(...)`-conditional alike — because a
+test-only dependency still decides whether a package's tests can observe a
+change. A changed file selects its owning package plus every package that
+transitively imports it, including importers in other workspace members. A
+changed `moon.work` itself requests the full suite.
 
 ## MoonBit modules
 
@@ -73,6 +87,9 @@ Try it on this repository, which is itself a multi-module MoonBit workspace:
 ```sh
 moon build --target native
 BIN="$PWD/_build/native/debug/build/cmd/impact/impact.exe"
+
+# A synthetic workspace with cross-module and test-only imports.
+"$BIN" plan --file shared/shared.mbt examples/workspace-demo
 
 # A library change selects the root package and its importers.
 "$BIN" plan --file impact_plan.mbt .

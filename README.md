@@ -6,11 +6,13 @@ MoonImpact answers one question for a code change: **which tests should run,
 and why**. It is written in [MoonBit](https://www.moonbitlang.com/) and plans
 two project kinds:
 
-- **MoonBit modules** (no configuration needed): the package graph is read
-  from the `moon.pkg` manifests in the tree — every module under the root,
-  every `import` block including `for "test"` and `#cfg` ones. A changed file
+- **MoonBit modules and workspaces** (no configuration needed): package graphs
+  are read from `moon.pkg` manifests. A root `moon.work` limits discovery to
+  its explicit members and enables declared imports between member modules;
+  ordinary, `for "test"` and `#cfg` import blocks all count. A changed file
   selects its owning package plus every transitive importer, and `--run`
-  invokes `moon test` per selected package.
+  invokes `moon test` per selected package. Unsupported workspace syntax falls
+  back to the full suite.
 - **JS/TS projects** (explicit `moonimpact.json`): static imports, bounded
   file-read and reader-wrapper inference, CSS/SCSS input chains, literal
   `import.meta.glob` patterns, directory reads and existence checks.
@@ -31,6 +33,10 @@ moon build --target native
 moon run cmd/impact -- plan --file impact_plan.mbt .
 moon run cmd/impact -- plan --file cmd/impact/main.mbt .
 
+# A MoonBit workspace with declared cross-module imports.
+moon run cmd/impact -- plan --file shared/shared.mbt \
+  examples/workspace-demo
+
 # A JS/TS project with its explicit configuration.
 moon run cmd/impact -- plan --file src/fees.ts \
   --config examples/impact-demo/moonimpact.json examples/impact-demo
@@ -38,9 +44,10 @@ moon run cmd/impact -- plan --file src/fees.ts \
 
 Planning never runs tests, builds or installs dependencies; only `--run`
 executes the project's own runner with fixed arguments. Read the
-[MoonImpact guide](<docs/moonimpact.md>) for both modes, the synthetic
-[demo](<examples/impact-demo/README.md>), Git input, JSON/HTML reports and
-execution safety.
+[MoonImpact guide](<docs/moonimpact.md>) for both modes, the synthetic JS/TS
+[demo](<examples/impact-demo/README.md>) and MoonBit
+[workspace fixture](<examples/workspace-demo/moon.work>), Git input, JSON/HTML
+reports and execution safety.
 
 Measured, not promised. On the public
 [moonbitlang/x](https://github.com/moonbitlang/x) monorepo, pinned at commit
@@ -83,14 +90,16 @@ selection, and why a run must fall back to the full suite or be blocked.
 
 | Kind | Detection | Test unit | Runner (`--run`) |
 | --- | --- | --- | --- |
-| **MoonBit module** (default) | root holds `moon.mod` / `moon.mod.json`, no `--config` | package | `moon test <package>` per selected package |
+| **MoonBit module/workspace** (default) | root holds `moon.mod` / `moon.mod.json` or `moon.work`, no `--config` | package | `moon test <package>` per selected package |
 | **JS/TS project** | explicit `--config moonimpact.json` | test file | `pnpm exec vitest run` with `./test-path` filters |
 
 For a MoonBit module the package graph is read straight from the `moon.pkg`
-manifests: every import block counts — plain, `for "test"` and
-`#cfg(...)`-conditional alike — because a test-only dependency still decides
-whether a package's tests can observe a change. A changed file selects the
-package that owns it plus every package that transitively imports it.
+manifests. At a workspace root, `moon.work` explicitly scopes inventory to its
+member modules and declared local imports connect packages across those
+members. Its supported form is a nonempty literal `members = [...]` list of
+root-relative directories; unsupported syntax, missing members or ambiguous
+local imports request the full suite. A changed file selects the package that
+owns it plus every package that transitively imports it.
 
 The four strategies are honest about their own reach:
 

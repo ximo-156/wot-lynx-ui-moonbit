@@ -16,10 +16,12 @@ MoonImpact 是使用 MoonBit 实现的**变更影响和回归测试计划工具*
 
 | 类型 | 检测方式 | 测试单元 | 运行器（`--run`） |
 | --- | --- | --- | --- |
-| **MoonBit 模块**（默认） | 根目录包含 `moon.mod` / `moon.mod.json`，未提供 `--config` | 包 | 对每个选中包执行 `moon test <package>` |
+| **MoonBit 模块/工作区**（默认） | 根目录包含 `moon.mod` / `moon.mod.json` 或 `moon.work`，未提供 `--config` | 包 | 对每个选中包执行 `moon test <package>` |
 | **JS/TS 项目** | 显式 `--config moonimpact.json` | 测试文件 | 带 `./test-path` 过滤器的 `pnpm exec vitest run` |
 
-MoonBit 路径完全无需配置：包图从目录树中的 `moon.pkg` 清单读取。JS/TS 路径保留下文所述的显式、纯数据配置契约。
+MoonBit 路径无需配置。没有 `moon.work` 时，各模块仍独立规划。工作区根目录支持受限的 `moon.work` 格式：非空的字面量 `members = [...]` 根目录相对模块目录列表。库存仅包含这些成员，并在成员之间解析清单声明的本地导入。若工作区根目录本身也是成员，可用 `.` 表示；不支持 glob、动态表达式或重复路径。缺少成员描述文件、模块标识重复、引用了已发现但未加入工作区的模块，或本地导入有歧义时，不会猜测依赖，而会请求完整测试套件；成员目录是符号链接时则阻止执行。
+
+工作区的所有活动成员清单都会读取。清单中的每个导入块均计入——普通、`for "test"` 和 `#cfg(...)` 条件块一视同仁——因为仅测试依赖仍决定该包的测试能否观察到变更。文件变更会选中其所属包及所有传递导入方，包括其他工作区成员中的包。`moon.work` 本身发生变化时也会请求全量回归。JS/TS 路径仍要求显式配置，配置契约见下文。
 
 ## MoonBit 模块
 
@@ -42,6 +44,9 @@ MoonBit 模块是由包组成的目录树，每个包由 `moon.pkg`（或 `moon.
 ```sh
 moon build --target native
 BIN="$PWD/_build/native/debug/build/cmd/impact/impact.exe"
+
+# 显式工作区示例：跨模块依赖与测试专用导入。
+"$BIN" plan --file shared/shared.mbt examples/workspace-demo
 
 # 库变更选中根包及其导入方。
 "$BIN" plan --file impact_plan.mbt .

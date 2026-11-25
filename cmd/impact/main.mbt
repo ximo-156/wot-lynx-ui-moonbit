@@ -35,12 +35,12 @@ fn impact_main(args : Array[String]) -> Int32 raise {
     return 0
   }
   let root = @lib.canonical_root(opts.root)
-  // Without an explicit configuration the planner looks for a MoonBit module
-  // and plans it natively; a JS/TS project still needs its moonimpact.json.
+  // Without an explicit configuration, a MoonBit module or workspace is
+  // planned from manifests; a JS/TS project still needs its moonimpact.json.
   let moonbit = opts.config_path is None && @lib.impact_has_moonbit_module(root)
   if opts.config_path is None && !moonbit {
     raise Failure(
-      "no --config given and no MoonBit module found at the root; supply a moonimpact.json for a JS/TS project",
+      "no --config given and no MoonBit module or workspace found at the root; supply a moonimpact.json for a JS/TS project",
     )
   }
   let config = match opts.config_path {
@@ -343,8 +343,8 @@ fn print_impact_help() -> Unit {
       "  --timeout-ms <n>    Positive timeout for --run (default: 60000 milliseconds)",
       "  -h, --help          Print help", "", "The default command only plans: it does not test, build or install dependencies.",
       "Git input requires the repository root and reads live working-tree changes, not HEAD blobs.",
-      "Without --config a MoonBit module (moon.mod/moon.mod.json) is planned natively: changed",
-      "files select their owning packages plus every transitive importer, and --run invokes moon",
+      "Without --config a MoonBit module (moon.mod/moon.mod.json) or workspace (moon.work) is planned:",
+      "changed files select their owning packages plus every transitive importer; --run invokes moon",
       "test per selected package. A JS/TS project needs a moonimpact.json.", "Related mode passes ./test-path arguments; full fallback runs all Vitest tests.",
       "None and blocked strategies NEVER invoke a test process. Test output goes to stderr.",
       "A plan is advisory, not proof that unselected tests cannot fail.", "Exit: 0 plan completed/tests passed; 1 test process failed; 2 usage/IO/blocked/startup/timeout.",

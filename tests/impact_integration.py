@@ -509,6 +509,83 @@ const source = fs.readFileSync('src/value.ts', 'utf8')
         self.assertIn("global-input-changed: moon.work", doc["reasons"])
         self.assertEqual(json.loads(self.marker.read_text())["argv"], ["test"])
 
+    def write_workspace_fixture(self):
+        fixture = Path(__file__).resolve().parents[1] / "examples" / "workspace-demo"
+        for directory, dirs, files in os.walk(fixture):
+            dirs[:] = [name for name in dirs if name not in ("_build", ".mooncakes")]
+            for name in files:
+                if name in ("moon.work", "moon.mod", "moon.pkg") or name.endswith(".mbt"):
+                    path = Path(directory) / name
+                    self.write(path.relative_to(fixture), path.read_bytes())
+
+    def test_workspace_root_discovers_cross_module_and_test_only_dependencies(self):
+        self.write_workspace_fixture()
+        self.fake_runner()
+        doc = self.bare_plan("--file", "shared/shared.mbt")
+        self.assertEqual(doc["mode"], "moonbit")
+        self.assertEqual(doc["strategy"], "related")
+        self.assertEqual(doc["tests"], ["app", "app/testonly", "shared"])
+        self.assertEqual(doc["inventory"], ["app", "app/testonly", "isolated", "shared"])
+        self.assertEqual(doc["issues"], [])
+        trace = next(t for t in doc["traces"] if t["test"] == "app/testonly")
+        self.assertEqual(trace["chain"][-1]["dependency"], "shared")
+        self.assertEqual(trace["chain"][-1]["dependent"], "app/testonly")
+        self.assertFalse(self.marker.exists())
+
+    def test_workspace_run_filters_packages_from_the_workspace_root(self):
+        self.write_workspace_fixture()
+        self.fake_runner()
+        self.invoke_bare("--file", "shared/shared.mbt", "--run")
+        self.assertEqual(json.loads(self.marker.read_text()), {
+            "argv": ["test", "./app", "./app/testonly", "./shared"],
+            "cwd": str(self.root),
+        })
+
+    def test_workspace_unknown_syntax_and_missing_members_do_not_return_none(self):
+        self.write_workspace_fixture()
+        for work in ('members = ["shared", "missing"]', 'members = dynamic()'):
+            self.write("moon.work", work)
+            doc = self.bare_plan("--file", "shared/shared.mbt")
+            self.assertEqual(doc["strategy"], "full")
+            self.assertTrue(doc["issues"])
+
+    def test_workspace_nonmembers_are_not_inventoried(self):
+        self.write_workspace_fixture()
+        self.write("moon.work", 'members = ["shared", "isolated"]\n')
+        doc = self.bare_plan("--file", "shared/shared.mbt")
+        self.assertEqual(doc["strategy"], "related")
+        self.assertEqual(doc["tests"], ["shared"])
+        self.assertEqual(doc["inventory"], ["isolated", "shared"])
+
+    def test_workspace_symlinked_descriptor_blocks_execution(self):
+        self.write_workspace_fixture()
+        self.fake_runner()
+        work = self.root / "moon.work"
+        target = self.owner / "workspace-data"
+        target.write_bytes(work.read_bytes())
+        work.unlink()
+        work.symlink_to(target)
+        doc = self.bare_plan("--file", "shared/shared.mbt", "--run", expected=2)
+        self.assertEqual(doc["strategy"], "blocked")
+        self.assertFalse(self.marker.exists())
+
+    def test_workspace_symlinked_member_blocks_full_execution(self):
+        self.write_workspace_fixture()
+        self.fake_runner()
+        (self.root / "linked").symlink_to(self.root / "shared", target_is_directory=True)
+        self.write("moon.work", 'members = ["app", "linked"]\n')
+        doc = self.bare_plan("--file", "app/app.mbt", "--run", expected=2)
+        self.assertEqual(doc["strategy"], "blocked")
+        self.assertTrue(any(i["reason"].startswith("unsafe:") for i in doc["issues"]))
+        self.assertFalse(self.marker.exists())
+
+    def test_explicit_js_config_still_wins_at_a_workspace_root(self):
+        self.write_workspace_fixture()
+        doc = self.plan("--file", "src/value.ts")
+        self.assertEqual(doc["mode"], "js-ts")
+        self.assertEqual(doc["strategy"], "related")
+        self.assertEqual(doc["tests"], ["test/value.test.ts"])
+
     def test_no_config_and_no_moonbit_module_is_an_error(self):
         result = self.invoke_bare("--file", "src/value.ts", expected=2)
         self.assertIn("moonimpact:", result.stderr)

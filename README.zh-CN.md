@@ -4,7 +4,7 @@
 
 MoonImpact 针对一次代码变更回答一个问题：**应该运行哪些测试，以及为什么**。它使用 [MoonBit](https://www.moonbitlang.com/) 编写，支持为两类项目生成测试计划：
 
-- **MoonBit 模块**（无需配置）：从目录树中的 `moon.pkg` 清单读取包依赖图，涵盖根目录下的每个模块、每个 `import` 块，包括 `for "test"` 和 `#cfg` 块。文件变更会选中其所属包及所有直接或间接导入它的包；`--run` 会针对每个选中的包调用 `moon test`。
+- **MoonBit 模块与工作区**（无需配置）：从 `moon.pkg` 清单读取包依赖图。根目录存在 `moon.work` 时，仅分析显式列出的成员模块，并连接成员模块之间已声明的导入；普通、`for "test"` 和 `#cfg` 导入块都会计入。文件变更会选中其所属包及所有传递导入方；`--run` 会针对每个选中的包调用 `moon test`。无法识别的工作区语法会回退到完整测试套件。
 - **JS/TS 项目**（显式提供 `moonimpact.json`）：支持静态导入、有界的文件读取与读取器包装函数推断、CSS/SCSS 输入链、字面量 `import.meta.glob` 模式、目录读取和存在性检查。
 
 无论哪种模式，计划都**可解释**：每个选中的测试都附有一条确定性的最短证据链；对于模型检测到但尚未建模的情况，会请求运行完整测试套件，而不会悄然宣称“没有影响”。计划只是建议，绝不等同于测试通过结果。
@@ -18,12 +18,16 @@ moon build --target native
 moon run cmd/impact -- plan --file impact_plan.mbt .
 moon run cmd/impact -- plan --file cmd/impact/main.mbt .
 
+# MoonBit 工作区：跨模块依赖由成员清单显式声明。
+moon run cmd/impact -- plan --file shared/shared.mbt \
+  examples/workspace-demo
+
 # 使用显式配置的 JS/TS 项目。
 moon run cmd/impact -- plan --file src/fees.ts \
   --config examples/impact-demo/moonimpact.json examples/impact-demo
 ```
 
-生成计划不会运行测试、构建或安装依赖；只有 `--run` 才会使用固定参数执行项目自身的运行器。两种模式、合成[演示](<examples/impact-demo/README.zh-CN.md>)、Git 输入、JSON/HTML 报告及执行安全性，详见 [MoonImpact 指南](<docs/moonimpact.zh-CN.md>)。
+生成计划不会运行测试、构建或安装依赖；只有 `--run` 才会使用固定参数执行项目自身的运行器。两种模式、JS/TS 合成[演示](<examples/impact-demo/README.zh-CN.md>)与 MoonBit [工作区样例](<examples/workspace-demo/moon.work>)、Git 输入、JSON/HTML 报告及执行安全性，详见 [MoonImpact 指南](<docs/moonimpact.zh-CN.md>)。
 
 以下是实测结果，而非承诺。在公开的 [moonbitlang/x](https://github.com/moonbitlang/x) 单体仓库中，固定到提交 `6b67e08`（25 个包，其中 19 个包含测试），使用 **`--run` 执行计划**，并与完整测试套件对比：
 
@@ -44,10 +48,10 @@ moon run cmd/impact -- plan --file src/fees.ts \
 
 | 类型 | 检测方式 | 测试单元 | 运行器（`--run`） |
 | --- | --- | --- | --- |
-| **MoonBit 模块**（默认） | 根目录包含 `moon.mod` / `moon.mod.json`，未指定 `--config` | 包 | 为每个选中的包执行 `moon test <package>` |
+| **MoonBit 模块/工作区**（默认） | 根目录包含 `moon.mod` / `moon.mod.json` 或 `moon.work`，未指定 `--config` | 包 | 为每个选中的包执行 `moon test <package>` |
 | **JS/TS 项目** | 显式指定 `--config moonimpact.json` | 测试文件 | 执行 `pnpm exec vitest run`，使用 `./test-path` 过滤器 |
 
-对于 MoonBit 模块，包依赖图直接从 `moon.pkg` 清单读取：所有导入块都会计入，包括普通块、`for "test"` 块和带 `#cfg(...)` 条件的块，因为仅供测试使用的依赖同样决定一个包的测试是否能观察到变更。文件变更会选中其所属包及所有直接或间接导入该包的包。
+对于 MoonBit 模块，包依赖图直接从 `moon.pkg` 清单读取。若根目录有 `moon.work`，清单只纳入显式成员模块，并解析成员模块之间已声明的本地导入。当前支持非空的字面量 `members = [...]` 根目录相对路径列表；不支持的语法、缺失成员或有歧义的本地导入都会请求完整测试套件。文件变更会选中其所属包及所有直接或间接导入该包的包。
 
 四种策略如实表达各自的适用范围：
 

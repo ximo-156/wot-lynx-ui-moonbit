@@ -143,6 +143,7 @@ test "moonbit file ownership is the longest package prefix" {
     Set::from_iter(impact_mbt_fixture_paths().iter()),
     modules,
     impact_mbt_fixture_sources(),
+    None,
   )
   assert_eq(issues.length(), 0)
   let package_paths = Set::from_iter(packages.map(item => item.path).iter())
@@ -171,6 +172,7 @@ test "moonbit package graph connects importers transitively" {
     Set::from_iter(impact_mbt_fixture_paths().iter()),
     modules,
     impact_mbt_fixture_sources(),
+    None,
   )
   assert_eq(issues.length(), 0)
   let by_path = packages.map(package => (package.path, package.imports))
