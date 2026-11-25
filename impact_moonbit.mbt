@@ -19,38 +19,18 @@ priv struct ImpactMbtPackage {
 }
 
 ///|
-/// Whether the root is a MoonBit module: the new JSON descriptor or the
-/// legacy text one. Detection never reads project code.
+/// Whether the root contains a MoonBit module or workspace descriptor.
+/// Detection never evaluates project code.
 pub fn impact_has_moonbit_module(root : String) -> Bool {
-  try {
-    ignore(@fs.read_file_to_string(join_path(root, "moon.mod.json")))
-    true
-  } catch {
-    _ =>
-      try {
-        ignore(@fs.read_file_to_string(join_path(root, "moon.mod")))
-        true
-      } catch {
-        _ => false
-      }
-  }
-}
-
-///|
-fn impact_mbt_starts_with(
-  chars : Array[Char],
-  start : Int32,
-  keyword : Array[Char],
-) -> Bool {
-  if start + keyword.length() > chars.length() {
-    return false
-  }
-  for k in 0..<keyword.length() {
-    if chars[start + k] != keyword[k] {
-      return false
+  for name in ["moon.mod", "moon.mod.json", "moon.work"] {
+    let kind = source_path_kind(join_path(root, name)) catch {
+      _ => return true
+    }
+    if kind != 0 {
+      return true
     }
   }
-  true
+  false
 }
 
 ///|
@@ -93,10 +73,9 @@ fn impact_mbt_modules(
     } else {
       impact_mbt_text_name(source)
     }
-    match name {
-      Some(module) => modules.push((dir, module))
-      None => ()
-    }
+    // Preserve an invalid descriptor as a module boundary. Its packages must
+    // not silently borrow an ancestor module's name.
+    modules.push((dir, name.unwrap_or("")))
   }
   modules.sort_by((a, b) => impact_path_order(b.0, a.0))
   modules
@@ -117,38 +96,53 @@ fn impact_mbt_module_of(
 }
 
 ///|
-/// The module name from `moon.mod.json` or the legacy `moon.mod`.
-fn impact_mbt_text_name(source : String) -> String? {
-  // Legacy text manifest: name = "module/name"
-  for line in source.split("\n") {
-    let trimmed = line.trim()
-    if !impact_mbt_starts_with(trimmed.to_array(), 0, "name".to_array()) {
-      continue
-    }
-    let rest = trimmed.to_array()
-    let mut i = 4
-    while i < rest.length() && impact_mbt_space(rest[i]) {
+/// Read one top-level string assignment using the same literal decoding as
+/// import paths. Comments, nested values and duplicate assignments cannot
+/// invent a module name or source directory.
+fn impact_mbt_text_string(
+  source : String,
+  key : String,
+  default_value : String?,
+) -> String? {
+  let tokens = match api_gate_lex(source) {
+    Ok(tokens) => tokens
+    Err(_) => return None
+  }
+  let mut value = default_value
+  let mut found = false
+  let mut i = 0
+  while i < tokens.length() {
+    if tokens[i].kind == 0 && tokens[i].text == key {
+      if found || i + 2 >= tokens.length() || tokens[i + 1].text != "=" {
+        return None
+      }
+      let parsed = @json.parse(tokens[i + 2].text) catch { _ => return None }
+      // MoonBit descriptor assignments are line-oriented. Reject a value with
+      // trailing tokens instead of silently accepting a malformed manifest.
+      if i + 3 < tokens.length() && tokens[i + 3].line == tokens[i + 2].line {
+        return None
+      }
+      value = match parsed {
+        Json::String(text) => Some(text)
+        _ => return None
+      }
+      found = true
+      i += 3
+    } else if tokens[i].mate > i {
+      i = tokens[i].mate + 1
+    } else {
       i += 1
-    }
-    if i >= rest.length() || rest[i] != '=' {
-      continue
-    }
-    i += 1
-    while i < rest.length() && impact_mbt_space(rest[i]) {
-      i += 1
-    }
-    if i >= rest.length() || rest[i] != '"' {
-      continue
-    }
-    let mut end = i + 1
-    while end < rest.length() && rest[end] != '"' {
-      end += 1
-    }
-    if end < rest.length() && end > i + 1 {
-      return Some(String::from_array(rest[i + 1:end]))
     }
   }
-  None
+  value
+}
+
+///|
+fn impact_mbt_text_name(source : String) -> String? {
+  match impact_mbt_text_string(source, "name", None) {
+    Some(name) if name != "" => Some(name)
+    _ => None
+  }
 }
 
 ///|
@@ -275,11 +269,6 @@ fn impact_mbt_json_imports(source : String, keyword : String) -> Array[String]? 
 }
 
 ///|
-fn impact_mbt_space(c : Char) -> Bool {
-  c == ' ' || c == '\t' || c == '\n' || c == '\r'
-}
-
-///|
 /// Resolve one manifest specifier to a package path inside this module, or
 /// None when it names an external module.
 fn impact_mbt_resolve(
@@ -326,46 +315,9 @@ fn impact_mbt_source_dir(
         _ => return None
       }
     } else {
-      let mut found = false
-      for line in source.split("\n") {
-        let chars = line.trim().to_array()
-        if !moonbit_match_word(chars, 0, "source") {
-          continue
-        }
-        if found {
-          return None
-        }
-        found = true
-        let mut i = moonbit_skip_spaces(chars, 6)
-        if i >= chars.length() || chars[i] != '=' {
-          return None
-        }
-        i = moonbit_skip_spaces(chars, i + 1)
-        if i >= chars.length() || chars[i] != '"' {
-          return None
-        }
-        let start = i
-        i += 1
-        while i < chars.length() && chars[i] != '"' {
-          if chars[i] == '\\' {
-            i += 1
-          }
-          i += 1
-        }
-        if i >= chars.length() {
-          return None
-        }
-        let parsed = @json.parse(String::from_array(chars[start:i + 1])) catch {
-          _ => return None
-        }
-        match parsed {
-          Json::String(dir) => value = dir
-          _ => return None
-        }
-        let tail = String::from_array(chars[i + 1:]).trim().to_owned()
-        if tail != "" && !tail.has_prefix("//") {
-          return None
-        }
+      value = match impact_mbt_text_string(source, "source", Some(".")) {
+        Some(dir) => dir
+        None => return None
       }
     }
     if value == "." || value == "" {
@@ -386,6 +338,7 @@ fn impact_mbt_packages(
   membership : Set[String],
   modules : Array[(String, String)],
   sources : Array[(String, String)],
+  workspaces~ : Array[ImpactMbtWorkspace] = [],
 ) -> (Array[ImpactMbtPackage], Array[ImpactIssue]) {
   let packages : Array[ImpactMbtPackage] = []
   let issues : Array[ImpactIssue] = []
@@ -469,6 +422,18 @@ fn impact_mbt_packages(
         continue
       }
     }
+    match impact_mbt_workspace_member_status(module_dir, workspaces) {
+      Some(false) => continue
+      _ => ()
+    }
+    if module_name == "" {
+      issues.push({
+        file: manifest,
+        line: 0,
+        reason: "moonbit: package belongs to an invalid module descriptor",
+      })
+      continue
+    }
     let source_dir = match impact_mbt_source_dir(module_dir, sources) {
       Some(dir) => dir
       None => {
@@ -488,7 +453,11 @@ fn impact_mbt_packages(
     let resolved : Array[String] = []
     let seen_imports : Set[String] = Set([])
     for spec in imports {
-      match impact_mbt_resolve(spec, module_name, source_dir) {
+      match
+        impact_mbt_local_import(
+          spec, module_dir, module_name, source_dir, modules, workspaces, sources,
+          manifest, issues,
+        ) {
         Some(target) =>
           if !seen_imports.contains(target) {
             seen_imports.add(target)
@@ -500,7 +469,11 @@ fn impact_mbt_packages(
     let resolved_tests : Array[String] = []
     let seen_test_imports : Set[String] = Set([])
     for spec in test_imports {
-      match impact_mbt_resolve(spec, module_name, source_dir) {
+      match
+        impact_mbt_local_import(
+          spec, module_dir, module_name, source_dir, modules, workspaces, sources,
+          manifest, issues,
+        ) {
         Some(target) =>
           if !seen_test_imports.contains(target) {
             seen_test_imports.add(target)
@@ -531,7 +504,7 @@ fn impact_mbt_packages(
     if path.has_suffix("_test.mbt") ||
       path.has_suffix("_wbtest.mbt") ||
       inline_tests {
-      match impact_mbt_owner(path, package_paths) {
+      match impact_mbt_owner_in_module(path, package_paths, modules) {
         Some(owner) => tests_by_package.add(owner)
         None => ()
       }
@@ -572,6 +545,28 @@ fn impact_mbt_owner(file : String, package_paths : Set[String]) -> String? {
     Some("")
   } else {
     None
+  }
+}
+
+///|
+/// Attribute a file only to a package in its nearest module. A parent
+/// module-root package must not absorb files across a nested module boundary.
+fn impact_mbt_owner_in_module(
+  file : String,
+  package_paths : Set[String],
+  modules : Array[(String, String)],
+) -> String? {
+  let module_dir = match impact_mbt_module_of(impact_parent(file), modules) {
+    Some((module_dir, _)) => module_dir
+    None => return None
+  }
+  let owner = match impact_mbt_owner(file, package_paths) {
+    Some(owner) => owner
+    None => return None
+  }
+  match impact_mbt_module_of(owner, modules) {
+    Some((owner_module, _)) if owner_module == module_dir => Some(owner)
+    _ => None
   }
 }
 
@@ -646,6 +641,7 @@ pub fn impact_moonbit_plan(
     }
     if name == "moon.mod" ||
       name == "moon.mod.json" ||
+      name == "moon.work" ||
       name == "moon.pkg" ||
       name == "moon.pkg.json" ||
       path.has_suffix(".mbt") ||
@@ -694,8 +690,13 @@ fn impact_moonbit_plan_from(
       reason: "moonbit: no module descriptor found; the package graph is unknown",
     })
   }
+  let workspaces = impact_mbt_workspaces(sources, modules, issues)
+  impact_mbt_descriptor_issues(sources, modules, issues)
   let (packages, package_issues) = impact_mbt_packages(
-    membership, modules, sources,
+    membership,
+    modules,
+    sources,
+    workspaces~,
   )
   for issue in package_issues {
     issues.push(issue)
@@ -748,7 +749,16 @@ fn impact_moonbit_plan_from(
       )
       continue
     }
-    match impact_mbt_owner(path, package_paths) {
+    match impact_mbt_module_of(impact_parent(path), modules) {
+      Some((module_dir, _)) =>
+        if impact_mbt_workspace_member_status(module_dir, workspaces)
+          is Some(false) {
+          reasons.push("unmodeled-changed-input: " + path)
+          continue
+        }
+      None => ()
+    }
+    match impact_mbt_owner_in_module(path, package_paths, modules) {
       Some(owner) =>
         if !origins.contains(owner) {
           origins.set(owner, path)

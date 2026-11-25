@@ -57,8 +57,12 @@ and preserves qualified aliases such as `@encoding/utf8`. Legacy JSON `import`,
 `test-import` and `wbtest-import` arrays (including path/alias objects) are also
 modeled. This is planning compatibility: newer MoonBit toolchains may require
 JSON manifests to be migrated before executing tests; MoonImpact does not migrate
-them. A changed `moon.work` requests full regression; workspace-only roots and
-complete cross-module dependency resolution are not established by this support.
+them. A changed `moon.work` requests full regression. Workspace roots are recognized
+without a root module descriptor; explicit, root-contained `members` entries
+limit the inventory to declared modules. Imports between modules declared in the
+same nearest workspace are traced; possible local imports outside that boundary
+remain uncertain and request full regression. Other workspace settings are not
+used for dependency planning.
 
 The [pinned corpus runner](<../tests/impact_moonbit_corpus.py>) checks actual runner
 inventory and optionally compares injected-fault failures with full execution.

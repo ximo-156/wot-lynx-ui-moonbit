@@ -8,14 +8,15 @@ All notable changes to this project are documented in this file.
 
 ### MoonBit module planning
 
-MoonImpact now plans MoonBit modules natively: without `--config`, a root
-holding `moon.mod`/`moon.mod.json` is analyzed as a package graph read from the
-`moon.pkg` manifests themselves — no toolchain invocation, no project code
-executed. A changed file selects the packages that own it plus every package
-that transitively imports them; `--run` invokes `moon test` per selected
-package. Every module under the root is discovered, so nested and workspace
-modules resolve imports against their own module, and every `import` block
-counts — plain, `for "test"` and `#cfg`-conditional alike.
+MoonImpact now plans MoonBit modules and explicit MoonBit workspaces natively:
+without `--config`, a root holding `moon.mod`, `moon.mod.json` or `moon.work` is
+analyzed from its `moon.pkg` manifests — no toolchain invocation, no project code
+executed. In a workspace, the explicit `members` list limits the inventory to
+registered modules, and imports between modules in that workspace are linked.
+A changed file selects the packages that own it plus every package that
+transitively imports them; `--run` invokes `moon test` per selected package.
+Nested modules still resolve imports against their own module, and every `import`
+block counts — plain, `for "test"` and `#cfg`-conditional alike.
 
 - The plan keeps the advisory contract: an unparseable manifest, a missing
   module descriptor or an unmodeled change requests every package; a manifest

@@ -705,6 +705,7 @@ fn impact_manifest_name(path : String) -> Bool {
   }
   name == "moon.mod" ||
   name == "moon.mod.json" ||
+  name == "moon.work" ||
   name == "moon.pkg" ||
   name == "moon.pkg.json" ||
   name == "package.json" ||

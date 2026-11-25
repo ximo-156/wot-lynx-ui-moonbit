@@ -33,7 +33,7 @@ MoonBit 模块是由包组成的目录树，每个包由 `moon.pkg`（或 `moon.
 - 每个测试文件只计入其所属包的测试清单，并使用相同的最长前缀规则，因此嵌套包不会增加父包的测试计数；
 - 选中的**包**是执行单元：`--run` 将选中的实际包路径传给 `moon test`，模块根包用 `.` 指定。`full` 则执行不带包过滤器的 `moon test`，不依赖静态测试清单是否为空。
 
-清单解析会跳过注释和元数据字符串、解码导入路径，并保留 `@encoding/utf8` 这类限定别名。旧 JSON 清单的 `import`、`test-import`、`wbtest-import` 数组（包括 path/alias 对象）也参与建图。这是规划兼容性：新版 MoonBit 工具链可能要求先迁移 JSON 清单才能执行测试，MoonImpact 不会自动迁移。`moon.work` 变更会请求全量回归；这不代表已经实现仅含工作区描述文件的根目录发现或完整的跨模块解析。
+清单解析会跳过注释和元数据字符串、解码导入路径，并保留 `@encoding/utf8` 这类限定别名。旧 JSON 清单的 `import`、`test-import`、`wbtest-import` 数组（包括 path/alias 对象）也参与建图。这是规划兼容性：新版 MoonBit 工具链可能要求先迁移 JSON 清单才能执行测试，MoonImpact 不会自动迁移。仅含 `moon.work` 的工作区根目录也会被识别；明确列出的根目录内 `members` 决定测试清单范围，同一最近工作区成员间的导入会参与分析。`moon.work` 变更会请求全量回归；格式错误或不支持的成员声明也会保守回退到全量。其他工作区设置不参与依赖规划。
 
 新增[固定版本语料运行器](<../tests/impact_moonbit_corpus.py>)，对照实际运行器库存，并可选择注入故障、逐项比较选择性与全量的失败集合。见[七项目验证记录](<moonimpact-round7-verification.zh-CN.md>)。
 
