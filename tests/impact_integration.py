@@ -427,7 +427,7 @@ const source = fs.readFileSync('src/value.ts', 'utf8')
         self.assertEqual(child["tests"], ["cli/child"])
         self.assertEqual(child["inventory"], ["", "cli/child"])
 
-    def test_moonbit_run_executes_moon_test_per_package(self):
+    def test_moonbit_run_executes_one_moon_test_for_selected_package(self):
         self.write_moonbit_fixture()
         self.fake_runner()
         self.invoke_bare("--file", "lib.mbt", "--run")

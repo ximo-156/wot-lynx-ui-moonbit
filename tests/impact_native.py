@@ -296,10 +296,13 @@ class NativeTests(unittest.TestCase):
         self.assertNotIn(b'cannot start', result.stderr)
 
     def test_timeout_terminates_and_reaps_the_runner(self):
-        env, log, _ = self.fake_pnpm()
-        env['IMPACT_SHIM_MODE'] = 'timeout'
+        env, log, pnpm = self.fake_pnpm()
+        # Avoid charging Python interpreter startup against the short deadline.
+        # exec keeps the logged shell PID as the runner that must be reaped.
+        pnpm.write_text('#!/bin/sh\nprintf \'{"pid":%s}\\n\' "$$" > "$IMPACT_SHIM_LOG"\n'
+                        'exec /bin/sleep 20\n', encoding='utf-8')
         start = time.monotonic()
-        result = self.invoke('run', self.root, '0', '350', 'test/a.ts', env=env)
+        result = self.invoke('run', self.root, '0', '1000', 'test/a.ts', env=env)
         self.expect_exit(result, 2)
         self.assertIn(b'timed out', result.stderr)
         self.assertLess(time.monotonic() - start, 4)

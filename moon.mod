@@ -11,11 +11,11 @@
 
 name = "ximo-156/moonlint"
 
-version = "0.3.0"
+version = "0.3.1"
 
 readme = "README.md"
 
-repository = "https://github.com/ximo-156/wot-lynx-ui-moonbit"
+repository = "https://github.com/ximo-156/MoonRipple"
 
 license = "Apache-2.0"
 

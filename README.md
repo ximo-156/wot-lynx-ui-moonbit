@@ -11,8 +11,8 @@ two project kinds:
   its explicit members and enables declared imports between member modules;
   ordinary, `for "test"` and `#cfg` import blocks all count. A changed file
   selects its owning package plus every transitive importer, and `--run`
-  invokes `moon test` per selected package. Unsupported workspace syntax falls
-  back to the full suite.
+  invokes `moon test` once with the selected package paths. Unsupported workspace
+  syntax falls back to the full suite.
 - **JS/TS projects** (explicit `moonimpact.json`): static imports, bounded
   file-read and reader-wrapper inference, CSS/SCSS input chains, literal
   `import.meta.glob` patterns, directory reads and existence checks.
@@ -26,10 +26,14 @@ The model can only prove the links it can see. A dependency that is never
 declared in a manifest is invisible to it, so a plan is not proof that every
 affected package was selected.
 
+Building and running require **moonc 1.0.0-rc1 or newer**. Check the active
+compiler before building:
+
 ```sh
+python3 tests/check_toolchain.py
 moon build --target native
 
-# A MoonBit module: this repository is one.
+# A MoonBit module: this repository's root has no moon.work.
 moon run cmd/impact -- plan --file impact_plan.mbt .
 moon run cmd/impact -- plan --file cmd/impact/main.mbt .
 
@@ -90,7 +94,7 @@ selection, and why a run must fall back to the full suite or be blocked.
 
 | Kind | Detection | Test unit | Runner (`--run`) |
 | --- | --- | --- | --- |
-| **MoonBit module/workspace** (default) | root holds `moon.mod` / `moon.mod.json` or `moon.work`, no `--config` | package | `moon test <package>` per selected package |
+| **MoonBit module/workspace** (default) | root holds `moon.mod` / `moon.mod.json` or `moon.work`, no `--config` | package | one `moon test <package>...` invocation with all selected package paths |
 | **JS/TS project** | explicit `--config moonimpact.json` | test file | `pnpm exec vitest run` with `./test-path` filters |
 
 For a MoonBit module the package graph is read straight from the `moon.pkg`
@@ -179,11 +183,11 @@ the compatibility presets. This is a reference/porting relationship, not an
 independently proven absence of copied code. This repository declares
 Apache-2.0 in [LICENSE](<LICENSE>); see [third-party attribution](<THIRD_PARTY_NOTICES.md>).
 
-The local manifest now targets **0.3.0** because public result fields and
-structural-check variants changed. The verification records describe specific local
-runs, not a published release. The MoonBit module-planning work was committed
-in `1a5d8ce` (2026-11-12); see the [verification records](#verification-records)
-for the scope of each run.
+The local manifest now targets **0.3.1**, published as
+`ximo-156/moonlint@0.3.1`, following changes to public result fields and
+structural-check variants. The verification records describe specific local
+runs. The MoonBit module-planning work was committed in `1a5d8ce` (2026-11-12);
+see the [verification records](#verification-records) for the scope of each run.
 
 ### What it does
 
@@ -223,8 +227,8 @@ the tokenizer and import-graph layers.
 
 ```bash
 # Clone and build
-git clone https://github.com/ximo-156/wot-lynx-ui-moonbit
-cd wot-lynx-ui-moonbit
+git clone https://github.com/ximo-156/MoonRipple
+cd MoonRipple
 moon build --target native
 ```
 
@@ -1164,10 +1168,14 @@ unit-tested in isolation.
 ## Development and verification
 
 The executable requires the **native backend on macOS/Linux** for filesystem,
-Git and UTC-date operations. Building it requires MoonBit plus a C toolchain;
-using the built executable does not require a Node.js or Rust toolchain.
+Git and UTC-date operations. Building it requires **moonc 1.0.0-rc1 or newer**
+plus a C toolchain; using the built executable does not require a Node.js or
+Rust toolchain.
 
 ```bash
+moon version --all
+python3 tests/check_toolchain_test.py
+python3 tests/check_toolchain.py
 moon check --target native
 moon test --target native
 moon build --target native
@@ -1180,13 +1188,19 @@ moon info && moon fmt
 # Review generated interface/source diffs, then rerun affected gates.
 ```
 
-[CI](<.github/workflows/ci.yml>) runs explicit native gates and compiles the
-examples. Its installer fetches latest, **not a pinned toolchain**; versions are
-recorded and interface/format drift is checked. A historical CI failure recorded
-in commit `e318b9e` reported that the job could not start because of an account
-billing lock. That record does not establish the current remote CI status.
-The commands above cover the core local gates; CI also runs stability audits
-and builds/tests the example modules, as listed in the workflow.
+[CI](<.github/workflows/ci.yml>) checks the **moonc 1.0.0-rc1 minimum** before
+running the native gates. Its installer fetches latest, **not a pinned
+toolchain**; actual versions are recorded and interface/format drift is checked.
+It sets up Node.js 22 and pnpm 10.24.0 for a real Vitest 3.2.6 smoke test, runs
+stability audits, and builds/tests the example modules. The explicit workspace
+`examples/workspace-demo` runs `moon check`, `moon test` and `moon build` at its
+workspace root, followed by MoonImpact's
+`plan --file shared/shared.mbt --run examples/workspace-demo` execution gate.
+
+A historical CI failure recorded in commit `e318b9e` reported that the job could
+not start because of an account billing lock. That record does not establish
+the current remote CI status. The commands above cover the core local gates;
+the workflow lists the additional runner and example gates.
 
 The [moonlint verification notes](<docs/verification.md>) describe the
 2026-11-04 run and its limitations, not the current test results. Later

@@ -20,7 +20,7 @@ Two project kinds are planned:
 
 | Kind | Detection | Test unit | Runner (`--run`) |
 | --- | --- | --- | --- |
-| **MoonBit module/workspace** (default) | root holds `moon.mod` / `moon.mod.json` or `moon.work`, no `--config` | package | `moon test <package>` per selected package |
+| **MoonBit module/workspace** (default) | root holds `moon.mod` / `moon.mod.json` or `moon.work`, no `--config` | package | one `moon test <package>...` invocation with all selected package paths |
 | **JS/TS project** | explicit `--config moonimpact.json` | test file | `pnpm exec vitest run` with `./test-path` filters |
 
 The MoonBit path needs no configuration at all: the package graph is read from
@@ -48,7 +48,7 @@ A MoonBit module is a tree of packages, each declared by a `moon.pkg`
 - each test file contributes to the inventory of its owning package only, using
   the same longest-prefix rule, so nested packages do not inflate parent counts;
 - the selected **packages** are the execution units: `--run` invokes
-  `moon test` with the selected filesystem package paths, the module root
+  `moon test` once with all selected filesystem package paths, the module root
   package addressed as `.`. `full` instead runs unfiltered `moon test`, even
   when the static inventory is empty.
 
@@ -68,9 +68,12 @@ The [pinned corpus runner](<../tests/impact_moonbit_corpus.py>) checks actual ru
 inventory and optionally compares injected-fault failures with full execution.
 See the [seven-project verification record](<moonimpact-round7-verification.zh-CN.md>).
 
-Try it on this repository, which is itself a multi-module MoonBit workspace:
+Build with **moonc 1.0.0-rc1 or newer**; check the active compiler first. This
+repository's root is a MoonBit module without `moon.work`; the explicit
+workspace example is `examples/workspace-demo`:
 
 ```sh
+python3 tests/check_toolchain.py
 moon build --target native
 BIN="$PWD/_build/native/debug/build/cmd/impact/impact.exe"
 
@@ -401,9 +404,7 @@ the upstream `HEAD` examined used `@io.ReaderClosed` in `fs`, which that
 verification's pinned core did not export. It did not compile in that
 environment because of upstream/toolchain version skew, not a planning defect.
 
-On this repository — itself a multi-module workspace (root package,
-`cmd/main`, `cmd/impact`, four example modules) — a cold-cache comparison
-after `moon clean`:
+A recorded cold-cache comparison on this repository after `moon clean`:
 
 | Run | Wall time | Tests |
 | --- | --- | --- |

@@ -14,7 +14,7 @@ analyzed from its `moon.pkg` manifests — no toolchain invocation, no project c
 executed. In a workspace, the explicit `members` list limits the inventory to
 registered modules, and imports between modules in that workspace are linked.
 A changed file selects the packages that own it plus every package that
-transitively imports them; `--run` invokes `moon test` per selected package.
+transitively imports them; `--run` invokes `moon test` once with all selected package paths.
 Nested modules still resolve imports against their own module, and every `import`
 block counts — plain, `for "test"` and `#cfg`-conditional alike.
 

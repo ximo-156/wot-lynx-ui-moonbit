@@ -4,7 +4,7 @@
 /// names its dependencies. The package graph is read from those manifests:
 /// no toolchain invocation, no project code executed. A changed file selects
 /// the packages that own it plus every package that transitively imports
-/// them; execution is `moon test` per selected package.
+/// them; execution is one `moon test` invocation with all selected packages.
 priv struct ImpactMbtEdge {
   dependency : String
   kind : String

@@ -16,7 +16,7 @@ MoonImpact 是使用 MoonBit 实现的**变更影响和回归测试计划工具*
 
 | 类型 | 检测方式 | 测试单元 | 运行器（`--run`） |
 | --- | --- | --- | --- |
-| **MoonBit 模块/工作区**（默认） | 根目录包含 `moon.mod` / `moon.mod.json` 或 `moon.work`，未提供 `--config` | 包 | 对每个选中包执行 `moon test <package>` |
+| **MoonBit 模块/工作区**（默认） | 根目录包含 `moon.mod` / `moon.mod.json` 或 `moon.work`，未提供 `--config` | 包 | 一次执行 `moon test <package>...`，传入所有选中包路径 |
 | **JS/TS 项目** | 显式 `--config moonimpact.json` | 测试文件 | 带 `./test-path` 过滤器的 `pnpm exec vitest run` |
 
 MoonBit 路径完全无需配置：包图从目录树中的 `moon.pkg` 清单读取。JS/TS 路径保留下文所述的显式、纯数据配置契约。
@@ -31,15 +31,16 @@ MoonBit 模块是由包组成的目录树，每个包由 `moon.pkg`（或 `moon.
 - 清单中的每个 `import` 块均计入——普通、`for "test"` 和 `#cfg(...)` 条件块一视同仁——因为仅测试依赖仍决定该包的测试能否观察到变更；
 - 变更文件选中其所属包（最长的包目录前缀；模块根包拥有其余文件），以及每个传递导入它的包，包括仅测试导入；
 - 每个测试文件只计入其所属包的测试清单，并使用相同的最长前缀规则，因此嵌套包不会增加父包的测试计数；
-- 选中的**包**是执行单元：`--run` 将选中的实际包路径传给 `moon test`，模块根包用 `.` 指定。`full` 则执行不带包过滤器的 `moon test`，不依赖静态测试清单是否为空。
+- 选中的**包**是执行单元：`--run` 将所有选中的实际包路径传给一次 `moon test` 调用，模块根包用 `.` 指定。`full` 则执行不带包过滤器的 `moon test`，不依赖静态测试清单是否为空。
 
 清单解析会跳过注释和元数据字符串、解码导入路径，并保留 `@encoding/utf8` 这类限定别名。旧 JSON 清单的 `import`、`test-import`、`wbtest-import` 数组（包括 path/alias 对象）也参与建图。这是规划兼容性：新版 MoonBit 工具链可能要求先迁移 JSON 清单才能执行测试，MoonImpact 不会自动迁移。工作区根目录无需 `moon.mod` 即可识别；根目录相对的字面量 `members = [...]` 限定模块范围，同一最近工作区中的成员模块导入会建边。不支持 glob/动态成员，重复或不安全路径以及工作区边界外可能的本地依赖会回退到全量；符号链接成员目录会阻止执行。`moon.work` 变更也会请求全量回归，其他工作区设置不参与依赖规划。
 
 新增[固定版本语料运行器](<../tests/impact_moonbit_corpus.py>)，对照实际运行器库存，并可选择注入故障、逐项比较选择性与全量的失败集合。见[七项目验证记录](<moonimpact-round7-verification.zh-CN.md>)。
 
-可在本仓库上试用，本仓库本身就是多模块 MoonBit 工作区：
+构建要求 **moonc 1.0.0-rc1 或更新版本**，可先检查当前编译器。本仓库根目录是 MoonBit 模块，没有 `moon.work`；显式工作区样例位于 `examples/workspace-demo`：
 
 ```sh
+python3 tests/check_toolchain.py
 moon build --target native
 BIN="$PWD/_build/native/debug/build/cmd/impact/impact.exe"
 
@@ -229,7 +230,7 @@ monorepo 通常在包目录而非分析根目录配置运行器。`runner_dir` �
 
 刻意固定了该提交。第五轮验证时检查的上游 `HEAD` 在 `fs` 中使用 `@io.ReaderClosed`，而该次验证固定的 core 未导出该项。由于上游/工具链版本不匹配，它在该环境中无法编译，这并非计划缺陷。
 
-在本仓库上——它本身是多模块工作区（根包、`cmd/main`、`cmd/impact`、四个示例模块）——执行 `moon clean` 后的冷缓存比较：
+本仓库在执行 `moon clean` 后的一次冷缓存比较记录：
 
 | 运行 | 实际耗时 | 测试数 |
 | --- | --- | --- |

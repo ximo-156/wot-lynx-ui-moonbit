@@ -345,7 +345,7 @@ fn print_impact_help() -> Unit {
       "Git input requires the repository root and reads live working-tree changes, not HEAD blobs.",
       "Without --config a MoonBit module (moon.mod/moon.mod.json) or workspace (moon.work) is planned:",
       "changed files select their owning packages plus every transitive importer; --run invokes moon",
-      "test per selected package. A JS/TS project needs a moonimpact.json.", "Related mode passes ./test-path arguments; full fallback runs all Vitest tests.",
+      "test once, passing all selected package paths. A JS/TS project needs a moonimpact.json.", "Related mode passes ./test-path arguments; full fallback runs all Vitest tests.",
       "None and blocked strategies NEVER invoke a test process. Test output goes to stderr.",
       "A plan is advisory, not proof that unselected tests cannot fail.", "Exit: 0 plan completed/tests passed; 1 test process failed; 2 usage/IO/blocked/startup/timeout.",
     ].join("\n"),

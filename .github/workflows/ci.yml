@@ -1,5 +1,5 @@
-# CI uses the native filesystem/Git bridge on Linux. Installer is latest,
-# not pinned: record exact versions and fail on format/interface drift.
+# CI uses the native filesystem/Git bridge on Linux. The official latest
+# installer is not pinned: enforce moonc >= 1.0.0-rc1 and record exact versions.
 name: CI
 
 on:
@@ -19,8 +19,11 @@ jobs:
         run: |
           curl -fsSL https://cli.moonbitlang.com/install/unix.sh | bash
           echo "$HOME/.moon/bin" >> "$GITHUB_PATH"
-      - name: Record toolchain versions (not pinned)
-        run: moon version --all
+      - name: Verify compiler minimum and record toolchain versions
+        run: |
+          moon version --all
+          python3 tests/check_toolchain_test.py
+          python3 tests/check_toolchain.py
       - name: Type-check native
         run: moon check --target native
       - name: Test native
@@ -31,6 +34,21 @@ jobs:
           git diff --exit-code -- '*.mbt' '*.mbti'
       - name: Build native CLI
         run: moon build --target native
+      - name: Set up Node.js for the real Vitest smoke test
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Set up pnpm for the real test runner
+        uses: pnpm/action-setup@v4
+        with:
+          version: '10.24.0'
+      - name: Test selective execution with real Vitest
+        run: |
+          npm install --prefix "$RUNNER_TEMP/moonimpact-vitest" \
+            --ignore-scripts --no-audit --no-fund --save-exact vitest@3.2.6
+          python3 tests/impact_vitest_smoke.py \
+            --binary "$PWD/_build/native/debug/build/cmd/impact/impact.exe" \
+            --vitest-dir "$RUNNER_TEMP/moonimpact-vitest/node_modules/vitest"
       - name: Test native CLI
         run: |
           BINARY="$PWD/_build/native/debug/build/cmd/main/main.exe"
@@ -45,8 +63,8 @@ jobs:
           python3 tests/impact_moonbit_corpus_test.py
       - name: Audit MoonImpact stability on a MoonBit module
         run: |
-          # This checkout is itself a multi-module MoonBit workspace: the audit
-          # plans it natively (no configuration) through file and Git modes.
+          # The repository root is a MoonBit module. The audit plans it
+          # natively (no configuration) through file and Git modes.
           python3 tests/impact_stability.py \
             --binary "$PWD/_build/native/debug/build/cmd/impact/impact.exe" \
             --project "$PWD" \
@@ -66,8 +84,12 @@ jobs:
             --samples 20
       - name: Build and test MoonBit examples
         run: |
-          for module in examples/moonbit-demo examples/package-policy-demo examples/api-policy-demo/before examples/api-policy-demo/after; do
+          for module in examples/moonbit-demo examples/package-policy-demo examples/api-policy-demo/before examples/api-policy-demo/after examples/workspace-demo; do
             (cd "$module" && moon check --target native && moon test --target native && moon build --target native)
           done
+      - name: Run the selected MoonBit workspace tests
+        run: |
+          _build/native/debug/build/cmd/impact/impact.exe plan \
+            --file shared/shared.mbt --run examples/workspace-demo
       - name: Lint repository under its committed scope
         run: _build/native/debug/build/cmd/main/main.exe .

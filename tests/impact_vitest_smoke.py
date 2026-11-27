@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Optional real-Vitest smoke in an owned synthetic fixture; installs nothing.
+"""Real-Vitest smoke used by CI in an owned fixture; installs nothing.
 
 Pass --vitest-dir pointing at an existing trusted Vitest installation. Only its
 package code is linked; all tests, Vite cache and fault injection live in a new

@@ -8,8 +8,16 @@ install dependencies. The `policies` phase also invokes the installed MoonBit
 toolchain (`moon check`, `moon test`, `moon info`, and `moon tree`) on isolated
 fixtures; those compiler cases are skipped if `moon` is unavailable.
 
+Building the executable and running compiler-backed cases require
+**moonc 1.0.0-rc1 or newer**. [check_toolchain_test.py](<check_toolchain_test.py>)
+checks version-boundary parsing; [check_toolchain.py](<check_toolchain.py>)
+enforces the minimum against the active `moonc -v`. CI runs both:
+
 ```sh
-# Build first, then run the suite against the native binary.
+# Check the toolchain, build, then run the suite against the native binary.
+moon version --all
+python3 tests/check_toolchain_test.py
+python3 tests/check_toolchain.py
 moon build --target native
 python3 tests/integration.py \
   --binary "$PWD/_build/native/debug/build/cmd/main/main.exe" \
@@ -125,7 +133,12 @@ These scripts are not included in `integration.py --phase all`:
 | [impact_moonbit_corpus.py](impact_moonbit_corpus.py) | Supply `--binary` and repeated `--project NAME=DIR` for clean checkouts at the commits in [the corpus manifest](impact_moonbit_corpus.json). Runs the project's full suite and compares `moon test --outline` with static inventory; `--mutate` additionally injects declared faults and compares failure identities. Restores source bytes after each fault. No clones, toolchain changes or snapshot updates; `moon` may resolve dependencies and write build outputs. |
 | [impact_moonbit_corpus_test.py](impact_moonbit_corpus_test.py) | Five dependency-free tests for runner evidence parsing and source restoration on failed execution; included in CI. |
 | [impact_stability.py](impact_stability.py) | Pass `--binary`, `--project`, and optionally `--config` / `--samples`; audits an existing project without modifying it or running its tests. Skips without `--project`. |
-| [impact_vitest_smoke.py](impact_vitest_smoke.py) | Pass `--binary` and `--vitest-dir` containing `vitest.mjs`; requires existing Node.js and pnpm, runs a temporary synthetic fixture, and installs nothing. |
+| [impact_vitest_smoke.py](impact_vitest_smoke.py) | Pass `--binary` and `--vitest-dir` containing `vitest.mjs`; requires existing Node.js and pnpm, runs a temporary synthetic fixture, and installs nothing itself. CI supplies Node.js 22, pnpm 10.24.0 and Vitest 3.2.6 installed under a temporary prefix, then runs this smoke test. |
 
 Build the MoonImpact executable with `moon build --target native`; its default
 path is `_build/native/debug/build/cmd/impact/impact.exe`.
+
+[CI](<../.github/workflows/ci.yml>) also runs native check/test/build at the
+[workspace example](<../examples/workspace-demo/moon.work>) root, then invokes
+MoonImpact with `plan --file shared/shared.mbt --run examples/workspace-demo`
+to exercise selected-package execution across member modules.

@@ -4,17 +4,20 @@
 
 MoonImpact 针对一次代码变更回答一个问题：**应该运行哪些测试，以及为什么**。它使用 [MoonBit](https://www.moonbitlang.com/) 编写，支持为两类项目生成测试计划：
 
-- **MoonBit 模块与工作区**（无需配置）：从 `moon.pkg` 清单读取包依赖图。根目录存在 `moon.work` 时，仅分析显式列出的成员模块，并连接成员模块之间已声明的导入；普通、`for "test"` 和 `#cfg` 导入块都会计入。文件变更会选中其所属包及所有传递导入方；`--run` 会针对每个选中的包调用 `moon test`。无法识别的工作区语法会回退到完整测试套件。
+- **MoonBit 模块与工作区**（无需配置）：从 `moon.pkg` 清单读取包依赖图。根目录存在 `moon.work` 时，仅分析显式列出的成员模块，并连接成员模块之间已声明的导入；普通、`for "test"` 和 `#cfg` 导入块都会计入。文件变更会选中其所属包及所有传递导入方；`--run` 会调用一次 `moon test`，传入所有选中包的路径。无法识别的工作区语法会回退到完整测试套件。
 - **JS/TS 项目**（显式提供 `moonimpact.json`）：支持静态导入、有界的文件读取与读取器包装函数推断、CSS/SCSS 输入链、字面量 `import.meta.glob` 模式、目录读取和存在性检查。
 
 无论哪种模式，计划都**可解释**：每个选中的测试都附有一条确定性的最短证据链；对于模型检测到但尚未建模的情况，会请求运行完整测试套件，而不会悄然宣称“没有影响”。计划只是建议，绝不等同于测试通过结果。
 
 模型只能证明它能看到的关联。清单中从未声明的依赖对模型不可见，因此，计划不能证明所有受影响的包都已被选中。
 
+构建与运行要求 **moonc 1.0.0-rc1 或更新版本**，可先检查当前编译器：
+
 ```sh
+python3 tests/check_toolchain.py
 moon build --target native
 
-# MoonBit 模块：本仓库就是一个。
+# MoonBit 模块：本仓库根目录没有 moon.work。
 moon run cmd/impact -- plan --file impact_plan.mbt .
 moon run cmd/impact -- plan --file cmd/impact/main.mbt .
 
@@ -48,7 +51,7 @@ moon run cmd/impact -- plan --file src/fees.ts \
 
 | 类型 | 检测方式 | 测试单元 | 运行器（`--run`） |
 | --- | --- | --- | --- |
-| **MoonBit 模块/工作区**（默认） | 根目录包含 `moon.mod` / `moon.mod.json` 或 `moon.work`，未指定 `--config` | 包 | 为每个选中的包执行 `moon test <package>` |
+| **MoonBit 模块/工作区**（默认） | 根目录包含 `moon.mod` / `moon.mod.json` 或 `moon.work`，未指定 `--config` | 包 | 一次执行 `moon test <package>...`，传入所有选中包路径 |
 | **JS/TS 项目** | 显式指定 `--config moonimpact.json` | 测试文件 | 执行 `pnpm exec vitest run`，使用 `./test-path` 过滤器 |
 
 对于 MoonBit 模块，包依赖图直接从 `moon.pkg` 清单读取。若根目录有 `moon.work`，清单只纳入显式成员模块，并解析成员模块之间已声明的本地导入。当前支持非空的字面量 `members = [...]` 根目录相对路径列表；不支持的语法、缺失成员或有歧义的本地导入都会请求完整测试套件。文件变更会选中其所属包及所有直接或间接导入该包的包。
@@ -109,7 +112,7 @@ git -C /tmp/x-checkout checkout 6b67e08
 
 moonlint 最初是 Vue Lynx 组件库 [`ximo-156/wot-lynx-ui`](https://github.com/ximo-156/wot-lynx-ui) 中代码审查 lint 脚本的 MoonBit 重写版本。所参考的脚本为 `scripts/review-lint.mjs`；其 MIT 声明署名为 **2026 wot-lynx-ui contributors**。该规则目录为兼容预设提供了参考。这是一种参考/移植关系，并不意味着已经独立证明不存在代码复制。本仓库在 [LICENSE](<LICENSE>) 中声明采用 Apache-2.0；另见[第三方归属声明](<THIRD_PARTY_NOTICES.zh-CN.md>)。
 
-由于公共结果字段和结构检查变体发生变化，本地清单现以 **0.3.0** 为目标版本。验证记录描述的是特定本地运行，而非已发布版本。MoonBit 模块规划工作已在 `1a5d8ce`（2026-11-12）中提交；各次运行的范围见[验证记录](#验证记录)。
+公共结果字段和结构检查变体已发生变化，本地清单现以 **0.3.1** 为目标版本，`ximo-156/moonlint@0.3.1` 已发布。验证记录描述的是特定本地运行。MoonBit 模块规划工作已在 `1a5d8ce`（2026-11-12）中提交；各次运行的范围见[验证记录](#验证记录)。
 
 ### 它能做什么
 
@@ -139,8 +142,8 @@ moonlint 最初是 Vue Lynx 组件库 [`ximo-156/wot-lynx-ui`](https://github.co
 
 ```bash
 # 克隆并构建
-git clone https://github.com/ximo-156/wot-lynx-ui-moonbit
-cd wot-lynx-ui-moonbit
+git clone https://github.com/ximo-156/MoonRipple
+cd MoonRipple
 moon build --target native
 ```
 
@@ -876,9 +879,12 @@ repo root/
 
 ## 开发与验证
 
-可执行程序需要 **macOS/Linux 上的 native 后端**，以执行文件系统、Git 和 UTC 日期操作。构建需要 MoonBit 和 C 工具链；运行构建好的程序不需要 Node.js 或 Rust 工具链。
+可执行程序需要 **macOS/Linux 上的 native 后端**，以执行文件系统、Git 和 UTC 日期操作。构建需要 **moonc 1.0.0-rc1 或更新版本**及 C 工具链；运行构建好的程序不需要 Node.js 或 Rust 工具链。
 
 ```bash
+moon version --all
+python3 tests/check_toolchain_test.py
+python3 tests/check_toolchain.py
 moon check --target native
 moon test --target native
 moon build --target native
@@ -891,7 +897,9 @@ moon info && moon fmt
 # 审查生成的接口/源码差异，然后重新运行受影响的关卡。
 ```
 
-[CI](<.github/workflows/ci.yml>) 执行显式的 native 关卡并编译示例。其安装器获取最新版，**并未固定工具链**；会记录版本并检查接口/格式漂移。提交 `e318b9e` 中记录的一次历史 CI 失败报告称，作业因账户计费锁定而无法启动。该记录不能证明当前远程 CI 状态。以上命令涵盖核心本地关卡；CI 还会执行稳定性审计并构建/测试示例模块，具体见工作流。
+[CI](<.github/workflows/ci.yml>) 在 native 关卡前检查 **moonc 1.0.0-rc1 最低版本**。其安装器获取最新版，**并未固定工具链**；会记录实际版本并检查接口/格式漂移。工作流配置 Node.js 22 和 pnpm 10.24.0，运行真实 Vitest 3.2.6 smoke、稳定性审计，以及示例模块的构建/测试。显式工作区 `examples/workspace-demo` 在其工作区根目录执行 `moon check`、`moon test` 和 `moon build`，随后通过 MoonImpact 的 `plan --file shared/shared.mbt --run examples/workspace-demo` 执行门禁。
+
+提交 `e318b9e` 中记录的一次历史 CI 失败报告称，作业因账户计费锁定而无法启动。该记录不能证明当前远程 CI 状态。以上命令涵盖核心本地关卡；额外运行器和示例门禁见工作流。
 
 [moonlint 验证说明](<docs/verification.md>) 描述的是 2026-11-04 的运行及其限制，并非当前测试结果。后续 MoonImpact 测量见[第三轮](<docs/moonimpact-round3-verification.zh-CN.md>)、[第四轮](<docs/moonimpact-round4-verification.zh-CN.md>)和[第五轮](<docs/moonimpact-round5-verification.zh-CN.md>)。此前两个 JS/TS 字面量文本预期失败现已成为普通回归测试：默认代码视图会清空字面量内容。本文不声称历史 wasm 失败已修复。
 

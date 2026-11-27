@@ -4,8 +4,13 @@
 
 [integration.py](<integration.py>) 仅使用 Python 标准库。它调用**已经构建好**的 native moonlint 可执行文件，不会构建 moonlint 或安装依赖。`policies` 阶段还会在隔离的测试样例中调用已安装的 MoonBit 工具链（`moon check`、`moon test`、`moon info` 和 `moon tree`）；如果 `moon` 不可用，则跳过这些编译器测试用例。
 
+构建可执行文件与运行依托编译器的测试用例要求 **moonc 1.0.0-rc1 或更新版本**。[check_toolchain_test.py](<check_toolchain_test.py>) 检查版本边界解析；[check_toolchain.py](<check_toolchain.py>) 根据当前 `moonc -v` 强制检查最低版本。CI 会运行二者：
+
 ```sh
-# 先构建，再针对 native 可执行文件运行测试套件。
+# 检查工具链、构建，再针对 native 可执行文件运行测试套件。
+moon version --all
+python3 tests/check_toolchain_test.py
+python3 tests/check_toolchain.py
 moon build --target native
 python3 tests/integration.py \
   --binary "$PWD/_build/native/debug/build/cmd/main/main.exe" \
@@ -81,6 +86,8 @@ python3 tests/integration.py \
 | [impact_moonbit_corpus.py](<impact_moonbit_corpus.py>) | 传入 `--binary` 和多个 `--project NAME=DIR`，使用[语料清单](<impact_moonbit_corpus.json>)中固定提交的干净检出目录。执行全量测试，并将 `moon test --outline` 与静态库存对照；加 `--mutate` 会临时注入声明的故障、逐项比较失败集合，之后恢复源码原始字节。不克隆、不改工具链、不更新快照；`moon` 可能解析依赖并写入构建产物。 |
 | [impact_moonbit_corpus_test.py](<impact_moonbit_corpus_test.py>) | 5 项无额外依赖的测试，覆盖运行器证据解析和异常时的源码恢复，纳入 CI。 |
 | [impact_stability.py](<impact_stability.py>) | 传入 `--binary`、`--project`，以及可选的 `--config` / `--samples`；审查现有项目，不修改项目或运行其测试。未传入 `--project` 时跳过。 |
-| [impact_vitest_smoke.py](<impact_vitest_smoke.py>) | 传入 `--binary` 和包含 `vitest.mjs` 的 `--vitest-dir`；要求已安装 Node.js 和 pnpm，运行临时的人工构造测试样例，不安装任何内容。 |
+| [impact_vitest_smoke.py](<impact_vitest_smoke.py>) | 传入 `--binary` 和包含 `vitest.mjs` 的 `--vitest-dir`；要求已安装 Node.js 和 pnpm，运行临时的人工构造测试样例，脚本自身不安装任何内容。CI 提供 Node.js 22、pnpm 10.24.0 和安装在临时前缀下的 Vitest 3.2.6，再运行此 smoke 测试。 |
 
 使用 `moon build --target native` 构建 MoonImpact 可执行文件；默认路径为 `_build/native/debug/build/cmd/impact/impact.exe`。
+
+[CI](<../.github/workflows/ci.yml>) 还会在[工作区样例](<../examples/workspace-demo/moon.work>)根目录执行 native check/test/build，然后以 `plan --file shared/shared.mbt --run examples/workspace-demo` 调用 MoonImpact，验证成员模块间的选中包执行。
